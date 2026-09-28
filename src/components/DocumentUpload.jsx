@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Download, FileSpreadsheet, FileText, Upload, X } from 'lucide-react'
 import api from '../services/api'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/api\/?$/, '')
 const MAX_DOCUMENTS = 20
 const MAX_FILE_SIZE = 20 * 1024 * 1024
 
