@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Camera, Upload, X } from 'lucide-react'
 import api from '../services/api'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/api\/?$/, '')
 const MAX_IMAGES = 10
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 
