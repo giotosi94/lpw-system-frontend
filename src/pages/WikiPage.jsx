@@ -24,10 +24,10 @@ const implementedModules = [
   'Reparti, linee e macchine',
   'Quick Kaizen e Standard Kaizen',
   'Major Kaizen e collegamenti con Quick/Standard',
+  'Action Plan e collegamenti polimorfici',
 ]
 
 const roadmapModules = [
-  'Action Plan',
   'Segnalazioni',
   'OPL e conferme di lettura',
   'Documenti, cartelle, upload e preview',
@@ -239,7 +239,7 @@ export default function WikiPage() {
       </Section>
 
       <div className="text-center text-xs text-gray-400">
-        Documento tecnico interno LPW System · Stato aggiornato dopo la validazione multi-plant di Reparti, Quick/Standard Kaizen e Major Kaizen
+        Documento tecnico interno LPW System · Stato aggiornato dopo la validazione multi-plant di Reparti, Quick/Standard Kaizen, Major Kaizen e Action Plan
       </div>
     </div>
   )
