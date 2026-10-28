@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react'
 import api from '../services/api'
+import { useConfigurations } from '../hooks/useConfigurations'
 import { FileText, Upload, Download, Search, Trash2, Edit2, X, Plus, Send, BarChart3, FileSpreadsheet, Pencil, ZoomIn, ZoomOut } from 'lucide-react'
 import OplPublishModal from '../components/opl/OplPublishModal'
 import OplNativaModal, { OplNativaPreview } from '../components/opl/OplNativaModal'
 import OplReadReportModal from '../components/opl/OplReadReportModal'
 import OplImportModal from '../components/opl/OplImportModal'
 
-const CATEGORIE = ['Operativa', 'Sicurezza', 'Manutenzione', 'Qualità', 'Pulizia', 'Allergeni', 'Avvio/Spegnimento']
 const STATI = ['Bozza', 'In Revisione', 'Approvato', 'Obsoleto']
 const STATO_BADGE = {
   'Bozza': 'bg-gray-100 text-gray-700',
@@ -60,6 +60,7 @@ export default function DocumentiPage() {
   const [publishingDoc, setPublishingDoc] = useState(null)
   const [reportDoc, setReportDoc] = useState(null)
   const [nextOplNumber, setNextOplNumber] = useState('')
+  const { items: categorie } = useConfigurations('categorie_documento')
 
   const user = readUser()
   const isAdmin = ['admin', 'administrator', 'amministratore'].includes(String(user.role || user.ruolo || '').toLowerCase())
@@ -129,7 +130,7 @@ export default function DocumentiPage() {
         </div>
         <select value={filterCategoria} onChange={(e) => setFilterCategoria(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
           <option value="">Tutte le categorie</option>
-          {CATEGORIE.map(c => <option key={c}>{c}</option>)}
+          {categorie.map(c => <option key={c._id || c.label} value={c.label}>{c.label}</option>)}
         </select>
         <select value={filterStato} onChange={(e) => setFilterStato(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
           <option value="">Tutti gli stati</option>
@@ -357,8 +358,19 @@ function EditModal({ doc, onClose, onSaved }) {
   })
   const [newFile, setNewFile] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [reparti, setReparti] = useState([])
   const fileRef = useRef(null)
+  const { items: categorie } = useConfigurations('categorie_documento')
   const set = (field, value) => setForm(current => ({ ...current, [field]: value }))
+
+  useEffect(() => {
+    api.get('/reparti/')
+      .then(res => setReparti((res.data || []).filter(r => r.attivo !== false)))
+      .catch(err => console.error('Errore reparti:', err))
+  }, [])
+
+  const linee = (reparti.find(r => r.nome === form.reparto)?.linee || []).filter(l => l.attivo !== false)
+  const macchine = (linee.find(l => l.nome === form.linea)?.macchine || []).filter(m => m.attivo !== false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -410,15 +422,32 @@ function EditModal({ doc, onClose, onSaved }) {
               <span className="block text-sm font-medium mb-1">Categoria</span>
               <select value={form.categoria} onChange={(e) => set('categoria', e.target.value)} className="w-full border rounded-lg px-3 py-2">
                 <option value="">-- Seleziona --</option>
-                {CATEGORIE.map(c => <option key={c}>{c}</option>)}
+                {withCurrent(categorie.map(c => c.label), form.categoria).map(label => <option key={label} value={label}>{label}</option>)}
               </select>
             </label>
             {input('Autore', 'autore')}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {input('Reparto', 'reparto')}
-            {input('Linea', 'linea')}
-            {input('Macchina', 'macchina')}
+            <SelectField
+              label="Reparto"
+              value={form.reparto}
+              options={reparti.map(r => r.nome)}
+              onChange={value => setForm(current => ({ ...current, reparto: value, linea: '', macchina: '' }))}
+            />
+            <SelectField
+              label="Linea"
+              value={form.linea}
+              options={linee.map(l => l.nome)}
+              disabled={!form.reparto}
+              onChange={value => setForm(current => ({ ...current, linea: value, macchina: '' }))}
+            />
+            <SelectField
+              label="Macchina"
+              value={form.macchina}
+              options={macchine.map(m => m.nome)}
+              disabled={!form.linea}
+              onChange={value => set('macchina', value)}
+            />
           </div>
           <label className="block">
             <span className="block text-sm font-medium mb-1">Descrizione</span>
@@ -463,5 +492,26 @@ function EditModal({ doc, onClose, onSaved }) {
         </form>
       </div>
     </div>
+  )
+}
+
+function withCurrent(options, current) {
+  return current && !options.includes(current) ? [current, ...options] : options
+}
+
+function SelectField({ label, value, options, onChange, disabled = false }) {
+  return (
+    <label className="block">
+      <span className="block text-sm font-medium mb-1">{label}</span>
+      <select
+        value={value || ''}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full border rounded-lg px-3 py-2 disabled:bg-gray-100"
+      >
+        <option value="">-- Seleziona --</option>
+        {withCurrent(options, value).map(option => <option key={option} value={option}>{option}</option>)}
+      </select>
+    </label>
   )
 }
