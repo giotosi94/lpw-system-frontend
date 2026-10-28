@@ -4,6 +4,9 @@ import api from '../../services/api'
 import { OPL_SYMBOLS } from './oplSymbols'
 import OplImageEditor from './OplImageEditor'
 
+const AREE_OPL = ['Produzione', 'Sicurezza', 'Ambiente', 'Qualità'].map(label => ({ _id: label, label }))
+const TIPI_OPL = ['Conoscenza di Base', 'Problema', 'Miglioramento'].map(label => ({ _id: label, label }))
+
 const LAYOUTS = [
   { id: 'single', label: 'Singola immagine', desc: 'Una o piu immagini in colonna' },
   { id: 'before_after', label: 'Prima - Dopo', desc: 'Due immagini affiancate' },
@@ -53,8 +56,8 @@ async function compressImage(file, maxSize = 1280, quality = 0.8) {
 export default function OplNativaModal({ onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [step, setStep] = useState(1)
-  const [areaOptions, setAreaOptions] = useState([])
-  const [tipoOptions, setTipoOptions] = useState([])
+  const areaOptions = AREE_OPL
+  const tipoOptions = TIPI_OPL
   const [reparti, setReparti] = useState([])
 
   const [form, setForm] = useState({
@@ -78,8 +81,6 @@ export default function OplNativaModal({ onClose, onSaved }) {
   })
 
   useEffect(() => {
-    api.get('/configurazioni/?tipo=area_opl&attivo=true').then(res => setAreaOptions(res.data || [])).catch(() => {})
-    api.get('/configurazioni/?tipo=tipo_opl&attivo=true').then(res => setTipoOptions(res.data || [])).catch(() => {})
     api.get('/reparti/').then(res => setReparti(res.data || [])).catch(() => {})
     try {
       const userStr = localStorage.getItem('user')
