@@ -95,20 +95,6 @@ const SECTIONS = [
         description: 'Categorizzazione dei documenti OPL/SOP/WI',
         usedIn: ['Documenti', 'Filtri Document Manager'],
       },
-      {
-        id: 'area_opl',
-        label: 'Area OPL',
-        color: 'purple',
-        description: 'Aree tematiche delle OPL Native (Produzione, Qualità, Sicurezza)',
-        usedIn: ['Form Nuova OPL Nativa', 'Filtri Documenti'],
-      },
-      {
-        id: 'tipo_opl',
-        label: 'Tipo OPL',
-        color: 'purple',
-        description: 'Tipologia di OPL Nativa (Conoscenza Base, Problema, Miglioramento)',
-        usedIn: ['Form Nuova OPL Nativa', 'Filtri Documenti'],
-      },
     ],
   },
   {
