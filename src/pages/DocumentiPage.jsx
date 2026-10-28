@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import api from '../services/api'
 import { useConfigurations } from '../hooks/useConfigurations'
-import { FileText, Upload, Download, Search, Trash2, Edit2, X, Plus, Send, BarChart3, FileSpreadsheet, Pencil, ZoomIn, ZoomOut } from 'lucide-react'
+import { FileText, Upload, Download, Search, Trash2, Edit2, X, Plus, Send, BarChart3, FileSpreadsheet, ZoomIn, ZoomOut } from 'lucide-react'
 import OplPublishModal from '../components/opl/OplPublishModal'
 import OplNativaModal, { OplNativaPreview } from '../components/opl/OplNativaModal'
 import OplReadReportModal from '../components/opl/OplReadReportModal'
@@ -50,6 +50,7 @@ function readUser() {
 export default function DocumentiPage() {
   const [documenti, setDocumenti] = useState([])
   const [search, setSearch] = useState('')
+  const [filterTipo, setFilterTipo] = useState('')
   const [filterCategoria, setFilterCategoria] = useState('')
   const [filterStato, setFilterStato] = useState('')
   const [editingDoc, setEditingDoc] = useState(null)
@@ -57,6 +58,7 @@ export default function DocumentiPage() {
   const [choiceOpen, setChoiceOpen] = useState(false)
   const [nativaOpen, setNativaOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [sopOpen, setSopOpen] = useState(false)
   const [publishingDoc, setPublishingDoc] = useState(null)
   const [reportDoc, setReportDoc] = useState(null)
   const [nextOplNumber, setNextOplNumber] = useState('')
@@ -65,16 +67,17 @@ export default function DocumentiPage() {
   const user = readUser()
   const isAdmin = ['admin', 'administrator', 'amministratore'].includes(String(user.role || user.ruolo || '').toLowerCase())
 
-  useEffect(() => { load() }, [filterCategoria, filterStato])
+  useEffect(() => { load() }, [filterTipo, filterCategoria, filterStato])
 
   const load = async () => {
     try {
-      const params = { tipo: 'OPL' }
+      const params = {}
+      if (filterTipo) params.tipo = filterTipo
       if (filterCategoria) params.categoria = filterCategoria
       if (filterStato) params.stato = filterStato
       if (search) params.search = search
       const res = await api.get('/documenti', { params })
-      setDocumenti(res.data)
+      setDocumenti((res.data || []).filter(doc => doc.tipo === 'OPL' || doc.tipo === 'SOP'))
       if (isAdmin) {
         const next = await api.get('/documenti/next-number/OPL').catch(() => null)
         setNextOplNumber(next?.data?.numero || '')
@@ -84,13 +87,13 @@ export default function DocumentiPage() {
     }
   }
 
-  const openNewOpl = () => {
+  const openNew = () => {
     if (isAdmin) setChoiceOpen(true)
     else setNativaOpen(true)
   }
 
   const deleteDoc = async (id) => {
-    if (!confirm('Vuoi davvero eliminare questa OPL?')) return
+    if (!confirm('Vuoi davvero eliminare questo documento?')) return
     try {
       await api.delete(`/documenti/${id}`)
       load()
@@ -103,17 +106,17 @@ export default function DocumentiPage() {
     <div>
       <div className="flex justify-between items-start mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">OPL</h1>
+          <h1 className="text-2xl font-bold text-gray-800">Documenti</h1>
           {isAdmin && nextOplNumber && (
-            <p className="text-sm text-gray-500 mt-1">Prossima codifica: <span className="font-semibold text-amber-700">{nextOplNumber}</span></p>
+            <p className="text-sm text-gray-500 mt-1">Prossima codifica OPL: <span className="font-semibold text-amber-700">{nextOplNumber}</span></p>
           )}
         </div>
         <button
           type="button"
-          onClick={openNewOpl}
+          onClick={openNew}
           className="bg-amber-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-amber-800 font-medium"
         >
-          <Plus size={18} /> Nuova OPL
+          <Plus size={18} /> Nuovo
         </button>
       </div>
 
@@ -128,6 +131,11 @@ export default function DocumentiPage() {
             className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm"
           />
         </div>
+        <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
+          <option value="">OPL e SOP</option>
+          <option value="OPL">OPL</option>
+          <option value="SOP">SOP</option>
+        </select>
         <select value={filterCategoria} onChange={(e) => setFilterCategoria(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
           <option value="">Tutte le categorie</option>
           {categorie.map(c => <option key={c._id || c.label} value={c.label}>{c.label}</option>)}
@@ -143,6 +151,7 @@ export default function DocumentiPage() {
           <thead className="bg-gray-50">
             <tr className="text-left text-gray-500">
               <th className="p-3">Numero</th>
+              <th className="p-3">Tipo</th>
               <th className="p-3">Titolo</th>
               <th className="p-3">Reparto</th>
               <th className="p-3">Linea</th>
@@ -153,7 +162,7 @@ export default function DocumentiPage() {
           </thead>
           <tbody>
             {documenti.length === 0 ? (
-              <tr><td colSpan="7" className="text-center text-gray-400 py-8">Nessuna OPL</td></tr>
+              <tr><td colSpan="8" className="text-center text-gray-400 py-8">Nessun documento</td></tr>
             ) : (
               documenti.map(doc => (
                 <tr key={doc._id} className="border-t hover:bg-gray-50">
@@ -166,6 +175,7 @@ export default function DocumentiPage() {
                       {doc.numero}
                     </button>
                   </td>
+                  <td className="p-3 text-xs font-semibold text-gray-600">{doc.tipo}</td>
                   <td className="p-3 font-medium">{doc.titolo}</td>
                   <td className="p-3 text-xs">{doc.reparto || '-'}</td>
                   <td className="p-3 text-xs">{doc.linea || '-'}</td>
@@ -179,7 +189,7 @@ export default function DocumentiPage() {
                   </td>
                   <td className="p-3">
                     <div className="flex gap-2">
-                      {doc.pubblicata ? (
+                      {doc.tipo !== 'OPL' ? null : doc.pubblicata ? (
                         <button type="button" onClick={() => setReportDoc(doc)} className="text-indigo-600 hover:bg-indigo-50 p-1 rounded" title="Report letture">
                           <BarChart3 size={16} />
                         </button>
@@ -211,10 +221,12 @@ export default function DocumentiPage() {
           onClose={() => setChoiceOpen(false)}
           onCreate={() => { setChoiceOpen(false); setNativaOpen(true) }}
           onImport={() => { setChoiceOpen(false); setImportOpen(true) }}
+          onSop={() => { setChoiceOpen(false); setSopOpen(true) }}
         />
       )}
       {nativaOpen && <OplNativaModal onClose={() => setNativaOpen(false)} onSaved={load} />}
       {importOpen && <OplImportModal onClose={() => setImportOpen(false)} onImported={load} />}
+      {sopOpen && <SopUploadModal onClose={() => setSopOpen(false)} onSaved={load} />}
       {editingDoc && <EditModal doc={editingDoc} onClose={() => setEditingDoc(null)} onSaved={load} />}
       {previewDoc && <PreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />}
       {publishingDoc && <OplPublishModal documento={publishingDoc} onClose={() => setPublishingDoc(null)} onPublished={load} />}
@@ -223,26 +235,122 @@ export default function DocumentiPage() {
   )
 }
 
-function OplChoiceModal({ onClose, onCreate, onImport }) {
+function OplChoiceModal({ onClose, onCreate, onImport, onSop }) {
+  const options = [
+    { title: 'Crea OPL', text: 'Compila la OPL nel sistema', onClick: onCreate },
+    { title: 'Importa OPL da Excel', text: 'Una o più OPL, salvate come immagine', onClick: onImport },
+    { title: 'Importa SOP', text: 'PDF esportato da PowerPoint', onClick: onSop },
+  ]
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl" onClick={event => event.stopPropagation()}>
+      <div className="bg-white rounded-xl w-full max-w-2xl shadow-2xl" onClick={event => event.stopPropagation()}>
         <div className="px-5 py-4 border-b flex justify-between items-center">
-          <h2 className="font-bold text-gray-800">Nuova OPL</h2>
+          <h2 className="font-bold text-gray-800">Nuovo documento</h2>
           <button type="button" onClick={onClose} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
         </div>
-        <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <button type="button" onClick={onCreate} className="border rounded-lg p-5 text-left hover:border-amber-600 hover:bg-amber-50">
-            <Pencil className="text-amber-700 mb-3" size={26} />
-            <div className="font-semibold text-gray-800">Crea scheda</div>
-            <div className="text-xs text-gray-500 mt-1">Compila la OPL nel sistema</div>
-          </button>
-          <button type="button" onClick={onImport} className="border rounded-lg p-5 text-left hover:border-amber-600 hover:bg-amber-50">
-            <FileSpreadsheet className="text-green-700 mb-3" size={26} />
-            <div className="font-semibold text-gray-800">Importa da Excel</div>
-            <div className="text-xs text-gray-500 mt-1">Una o più OPL, salvate come immagine</div>
-          </button>
+        <div className="p-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {options.map(option => (
+            <button
+              key={option.title}
+              type="button"
+              onClick={option.onClick}
+              className="border rounded-lg p-5 text-left hover:border-amber-600 hover:bg-amber-50"
+            >
+              <div className="font-semibold text-gray-800">{option.title}</div>
+              <div className="text-xs text-gray-500 mt-1">{option.text}</div>
+            </button>
+          ))}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function SopUploadModal({ onClose, onSaved }) {
+  const user = readUser()
+  const [form, setForm] = useState({
+    titolo: '',
+    categoria: '',
+    reparto: '',
+    linea: '',
+    macchina: '',
+    autore: user.full_name || user.email || '',
+    descrizione: '',
+  })
+  const [file, setFile] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const fileRef = useRef(null)
+  const { items: categorie } = useConfigurations('categorie_documento')
+  const set = (field, value) => setForm(current => ({ ...current, [field]: value }))
+
+  const pickFile = selected => {
+    if (!selected) return
+    if (!/\.pdf$/i.test(selected.name)) {
+      alert('Carica il PDF. Da PowerPoint: File > Esporta > Crea PDF')
+      return
+    }
+    setFile(selected)
+    if (!form.titolo) set('titolo', selected.name.replace(/\.pdf$/i, ''))
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!file) return alert('Seleziona il PDF')
+    if (!form.titolo.trim()) return alert('Inserisci il titolo')
+    setSaving(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('tipo', 'SOP')
+      formData.append('compress', 'false')
+      Object.entries(form).forEach(([key, value]) => value && formData.append(key, value))
+      await api.post('/documenti/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      onSaved()
+      onClose()
+    } catch (err) {
+      alert('Errore: ' + (err.response?.data?.detail || err.message))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="bg-primary text-white p-4 rounded-t-xl flex justify-between items-center sticky top-0">
+          <h2 className="text-lg font-bold">Importa SOP</h2>
+          <button type="button" onClick={onClose}><X size={20} /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div
+            className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-primary"
+            onClick={() => fileRef.current?.click()}
+            onDragOver={event => event.preventDefault()}
+            onDrop={event => { event.preventDefault(); pickFile(event.dataTransfer.files?.[0]) }}
+          >
+            <input ref={fileRef} type="file" accept=".pdf,application/pdf" onChange={(e) => pickFile(e.target.files?.[0])} className="hidden" />
+            {file ? (
+              <div>
+                <FileText className="mx-auto text-red-600 mb-1" size={24} />
+                <p className="text-sm font-medium">{file.name}</p>
+                <p className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+              </div>
+            ) : (
+              <div className="text-gray-400 text-sm">
+                <Upload className="mx-auto mb-1" size={24} />
+                Trascina qui il PDF della SOP oppure clicca
+                <div className="text-xs mt-1">Da PowerPoint: File &gt; Esporta &gt; Crea PDF</div>
+              </div>
+            )}
+          </div>
+          <DocumentFields form={form} setForm={setForm} categorie={categorie} />
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg">Annulla</button>
+            <button type="submit" disabled={saving || !file} className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-light disabled:opacity-50">
+              {saving ? 'Carico...' : 'Carica SOP'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )
@@ -358,19 +466,9 @@ function EditModal({ doc, onClose, onSaved }) {
   })
   const [newFile, setNewFile] = useState(null)
   const [saving, setSaving] = useState(false)
-  const [reparti, setReparti] = useState([])
   const fileRef = useRef(null)
   const { items: categorie } = useConfigurations('categorie_documento')
   const set = (field, value) => setForm(current => ({ ...current, [field]: value }))
-
-  useEffect(() => {
-    api.get('/reparti/')
-      .then(res => setReparti((res.data || []).filter(r => r.attivo !== false)))
-      .catch(err => console.error('Errore reparti:', err))
-  }, [])
-
-  const linee = (reparti.find(r => r.nome === form.reparto)?.linee || []).filter(l => l.attivo !== false)
-  const macchine = (linee.find(l => l.nome === form.linea)?.macchine || []).filter(m => m.attivo !== false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -393,13 +491,6 @@ function EditModal({ doc, onClose, onSaved }) {
     }
   }
 
-  const input = (label, field) => (
-    <label className="block">
-      <span className="block text-sm font-medium mb-1">{label}</span>
-      <input value={form[field]} onChange={(e) => set(field, e.target.value)} className="w-full border rounded-lg px-3 py-2" />
-    </label>
-  )
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -408,51 +499,13 @@ function EditModal({ doc, onClose, onSaved }) {
           <button type="button" onClick={onClose}><X size={20} /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {input('Titolo', 'titolo')}
-            <label className="block">
-              <span className="block text-sm font-medium mb-1">Stato</span>
-              <select value={form.stato} onChange={(e) => set('stato', e.target.value)} className="w-full border rounded-lg px-3 py-2">
-                {STATI.map(s => <option key={s}>{s}</option>)}
-              </select>
-            </label>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label className="block">
-              <span className="block text-sm font-medium mb-1">Categoria</span>
-              <select value={form.categoria} onChange={(e) => set('categoria', e.target.value)} className="w-full border rounded-lg px-3 py-2">
-                <option value="">-- Seleziona --</option>
-                {withCurrent(categorie.map(c => c.label), form.categoria).map(label => <option key={label} value={label}>{label}</option>)}
-              </select>
-            </label>
-            {input('Autore', 'autore')}
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <SelectField
-              label="Reparto"
-              value={form.reparto}
-              options={reparti.map(r => r.nome)}
-              onChange={value => setForm(current => ({ ...current, reparto: value, linea: '', macchina: '' }))}
-            />
-            <SelectField
-              label="Linea"
-              value={form.linea}
-              options={linee.map(l => l.nome)}
-              disabled={!form.reparto}
-              onChange={value => setForm(current => ({ ...current, linea: value, macchina: '' }))}
-            />
-            <SelectField
-              label="Macchina"
-              value={form.macchina}
-              options={macchine.map(m => m.nome)}
-              disabled={!form.linea}
-              onChange={value => set('macchina', value)}
-            />
-          </div>
           <label className="block">
-            <span className="block text-sm font-medium mb-1">Descrizione</span>
-            <textarea value={form.descrizione} onChange={(e) => set('descrizione', e.target.value)} rows={2} className="w-full border rounded-lg px-3 py-2" />
+            <span className="block text-sm font-medium mb-1">Stato</span>
+            <select value={form.stato} onChange={(e) => set('stato', e.target.value)} className="w-full border rounded-lg px-3 py-2">
+              {STATI.map(s => <option key={s}>{s}</option>)}
+            </select>
           </label>
+          <DocumentFields form={form} setForm={setForm} categorie={categorie} />
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-primary" onClick={() => fileRef.current?.click()}>
             <input ref={fileRef} type="file" onChange={(e) => setNewFile(e.target.files?.[0] || null)} className="hidden" />
             {newFile ? (
@@ -492,6 +545,67 @@ function EditModal({ doc, onClose, onSaved }) {
         </form>
       </div>
     </div>
+  )
+}
+
+function DocumentFields({ form, setForm, categorie }) {
+  const [reparti, setReparti] = useState([])
+  const set = (field, value) => setForm(current => ({ ...current, [field]: value }))
+
+  useEffect(() => {
+    api.get('/reparti/')
+      .then(res => setReparti((res.data || []).filter(r => r.attivo !== false)))
+      .catch(err => console.error('Errore reparti:', err))
+  }, [])
+
+  const linee = (reparti.find(r => r.nome === form.reparto)?.linee || []).filter(l => l.attivo !== false)
+  const macchine = (linee.find(l => l.nome === form.linea)?.macchine || []).filter(m => m.attivo !== false)
+  const text = (label, field) => (
+    <label className="block">
+      <span className="block text-sm font-medium mb-1">{label}</span>
+      <input value={form[field]} onChange={(e) => set(field, e.target.value)} className="w-full border rounded-lg px-3 py-2" />
+    </label>
+  )
+
+  return (
+    <>
+      {text('Titolo', 'titolo')}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <SelectField
+          label="Categoria"
+          value={form.categoria}
+          options={categorie.map(c => c.label)}
+          onChange={value => set('categoria', value)}
+        />
+        {text('Autore', 'autore')}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <SelectField
+          label="Reparto"
+          value={form.reparto}
+          options={reparti.map(r => r.nome)}
+          onChange={value => setForm(current => ({ ...current, reparto: value, linea: '', macchina: '' }))}
+        />
+        <SelectField
+          label="Linea"
+          value={form.linea}
+          options={linee.map(l => l.nome)}
+          disabled={!form.reparto}
+          onChange={value => setForm(current => ({ ...current, linea: value, macchina: '' }))}
+        />
+        <SelectField
+          label="Macchina"
+          value={form.macchina}
+          options={macchine.map(m => m.nome)}
+          disabled={!form.linea}
+          onChange={value => set('macchina', value)}
+        />
+      </div>
+      <label className="block">
+        <span className="block text-sm font-medium mb-1">Descrizione</span>
+        <textarea value={form.descrizione} onChange={(e) => set('descrizione', e.target.value)} rows={2} className="w-full border rounded-lg px-3 py-2" />
+      </label>
+    </>
   )
 }
 
