@@ -136,8 +136,6 @@ export default function OplImportModal({ onClose, onImported }) {
       titolo: item.titolo,
       reparto: item.reparto,
       linea: item.linea,
-      area_opl: item.area_opl,
-      tipo_opl: item.tipo_opl,
       data_documento: item.data_documento,
     }))
     setImporting(true)
@@ -271,10 +269,6 @@ export default function OplImportModal({ onClose, onImported }) {
                     <Field label="Titolo" value={selected.titolo} onChange={value => updateSelected('titolo', value)} />
                     <Field label="Reparto" value={selected.reparto} onChange={value => updateSelected('reparto', value)} />
                     <Field label="Linea" value={selected.linea} onChange={value => updateSelected('linea', value)} />
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Area OPL" value={selected.area_opl} onChange={value => updateSelected('area_opl', value)} />
-                      <Field label="Tipo OPL" value={selected.tipo_opl} onChange={value => updateSelected('tipo_opl', value)} />
-                    </div>
                     <Field label="Data" type="date" value={selected.data_documento} onChange={value => updateSelected('data_documento', value)} />
                     <p className="text-xs text-gray-500">Codice storico: {selected.numero_originale || 'non rilevato'}</p>
 
