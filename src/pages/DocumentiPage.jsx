@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import api from '../services/api'
-import { FileText, Upload, Download, Search, Trash2, Edit2, X, Plus, Pencil, Send, BarChart3, ArchiveRestore } from 'lucide-react'
+import { FileText, Upload, Download, Search, Trash2, Edit2, X, Plus, Send, BarChart3, FileSpreadsheet, Pencil } from 'lucide-react'
 import OplPublishModal from '../components/opl/OplPublishModal'
 import OplNativaModal, { OplNativaPreview } from '../components/opl/OplNativaModal'
 import OplReadReportModal from '../components/opl/OplReadReportModal'
@@ -24,6 +24,22 @@ function getFileType(filename) {
   return 'unknown'
 }
 
+async function downloadBlob(path, filename) {
+  try {
+    const res = await api.get(path, { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename || 'documento'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (err) {
+    alert('Errore download: ' + (err.response?.data?.detail || err.message))
+  }
+}
+
 export default function DocumentiPage() {
   const [documenti, setDocumenti] = useState([])
   const [stats, setStats] = useState({})
@@ -34,7 +50,7 @@ export default function DocumentiPage() {
   const [uploadOpen, setUploadOpen] = useState(false)
   const [editingDoc, setEditingDoc] = useState(null)
   const [previewDoc, setPreviewDoc] = useState(null)
-  const [bulkOpen, setBulkOpen] = useState(false)
+  const [oplChoiceOpen, setOplChoiceOpen] = useState(false)
   const [oplNativaOpen, setOplNativaOpen] = useState(false)
   const [publishingDoc, setPublishingDoc] = useState(null)
   const [reportDoc, setReportDoc] = useState(null)
@@ -64,7 +80,6 @@ export default function DocumentiPage() {
       setDocumenti(res.data)
       const statsRes = await api.get('/documenti/stats/summary')
       setStats(statsRes.data)
-
       if (isAdmin) {
         try {
           const nextNumberRes = await api.get('/documenti/next-number/OPL')
@@ -78,6 +93,11 @@ export default function DocumentiPage() {
   }
 
   const handleSearch = () => load()
+
+  const openNewOpl = () => {
+    if (isAdmin) setOplChoiceOpen(true)
+    else setOplNativaOpen(true)
+  }
 
   const deleteDoc = async (id) => {
     if (!confirm('Vuoi davvero eliminare questo documento?')) return
@@ -106,26 +126,19 @@ export default function DocumentiPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Document Manager (OPL / SOP)</h1>
         <div className="flex gap-2">
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => setHistoricalOpen(true)}
-              className="bg-amber-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-amber-800 font-medium"
-            >
-              <ArchiveRestore size={18} /> Importa OPL
-            </button>
-          )}
           <button
-            onClick={() => setOplNativaOpen(true)}
-            className="bg-yellow-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-yellow-600 font-medium"
+            type="button"
+            onClick={openNewOpl}
+            className="bg-amber-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-amber-800 font-medium"
           >
-            <Plus size={18} /> Nuova OPL Nativa
+            <Plus size={18} /> Nuova OPL
           </button>
           <button
+            type="button"
             onClick={() => setUploadOpen(true)}
-            className="bg-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-light"
+            className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
           >
-            <Upload size={18} /> Carica Singolo
+            <Upload size={18} /> Carica documento
           </button>
         </div>
       </div>
@@ -134,7 +147,6 @@ export default function DocumentiPage() {
         {['OPL', 'SOP'].map(tipo => {
           const total = Object.values(stats[tipo] || {}).reduce((s, n) => s + n, 0)
           const approvati = (stats[tipo] || {})['Approvato'] || 0
-
           return (
             <div key={tipo} className="bg-white rounded-xl shadow p-5">
               <div className="text-3xl mb-2">{getTipoIcon(tipo)}</div>
@@ -146,7 +158,6 @@ export default function DocumentiPage() {
             </div>
           )
         })}
-
         {isAdmin && (
           <div className="bg-white rounded-xl shadow p-5 md:col-start-4 border-l-4 border-amber-600">
             <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -214,96 +225,86 @@ export default function DocumentiPage() {
             {documenti.length === 0 ? (
               <tr><td colSpan="9" className="text-center text-gray-400 py-8">Nessun documento. Caricane uno!</td></tr>
             ) : (
-              documenti.map(doc => {
-                const handleTableDownload = async () => {
-                  try {
-                    const res = await api.get(`/documenti/${doc._id}/file`, { responseType: 'blob' })
-                    const url = URL.createObjectURL(res.data)
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = doc.file_name || 'documento'
-                    document.body.appendChild(a)
-                    a.click()
-                    document.body.removeChild(a)
-                    setTimeout(() => URL.revokeObjectURL(url), 1000)
-                  } catch (err) {
-                    alert('Errore download: ' + (err.response?.data?.detail || err.message))
-                  }
-                }
-                return (
-                  <tr key={doc._id} className="border-t hover:bg-gray-50">
-                    <td className="p-4">
-                      <button
-                        type="button"
-                        onClick={() => setPreviewDoc(doc)}
-                        className="font-mono text-primary font-bold hover:underline hover:text-primary-light"
-                        title="Apri documento"
-                      >
-                        {doc.numero}
+              documenti.map(doc => (
+                <tr key={doc._id} className="border-t hover:bg-gray-50">
+                  <td className="p-4">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewDoc(doc)}
+                      className="font-mono text-primary font-bold hover:underline hover:text-primary-light"
+                      title="Apri documento"
+                    >
+                      {doc.numero}
+                    </button>
+                  </td>
+                  <td className="p-4">
+                    <div className="flex items-center gap-2">
+                      <span>{getTipoIcon(doc.tipo)}</span>
+                      <div>
+                        <div className="font-medium">{doc.titolo}</div>
+                        {doc.descrizione && <div className="text-xs text-gray-500 truncate max-w-xs">{doc.descrizione}</div>}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="p-4">{doc.tipo}</td>
+                  <td className="p-4">{doc.categoria || '-'}</td>
+                  <td className="p-4 text-xs">{doc.reparto || '-'}</td>
+                  <td className="p-4 text-xs">{doc.linea || '-'}</td>
+                  <td className="p-4">
+                    <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">v{doc.versione || 1}</span>
+                  </td>
+                  <td className="p-4">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatoBadge(doc.stato)}`}>
+                      {doc.stato}
+                    </span>
+                  </td>
+                  <td className="p-4">
+                    <div className="flex gap-2">
+                      {doc.tipo === 'OPL' && !doc.pubblicata && (
+                        <button
+                          type="button"
+                          onClick={() => setPublishingDoc(doc)}
+                          className="text-purple-600 hover:bg-purple-50 p-1 rounded"
+                          title="Pubblica e assegna"
+                        >
+                          <Send size={16} />
+                        </button>
+                      )}
+                      {doc.tipo === 'OPL' && doc.pubblicata && (
+                        <button
+                          type="button"
+                          onClick={() => setReportDoc(doc)}
+                          className="text-indigo-600 hover:bg-indigo-50 p-1 rounded"
+                          title="Report letture"
+                        >
+                          <BarChart3 size={16} />
+                        </button>
+                      )}
+                      <button onClick={() => downloadBlob(`/documenti/${doc._id}/file`, doc.file_name)} className="text-green-600 hover:bg-green-50 p-1 rounded" title="Scarica">
+                        <Download size={16} />
                       </button>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <span>{getTipoIcon(doc.tipo)}</span>
-                        <div>
-                          <div className="font-medium">{doc.titolo}</div>
-                          {doc.descrizione && <div className="text-xs text-gray-500 truncate max-w-xs">{doc.descrizione}</div>}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4">{doc.tipo}</td>
-                    <td className="p-4">{doc.categoria || '-'}</td>
-                    <td className="p-4 text-xs">{doc.reparto || '-'}</td>
-                    <td className="p-4 text-xs">{doc.linea || '-'}</td>
-                    <td className="p-4">
-                      <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">v{doc.versione || 1}</span>
-                    </td>
-                    <td className="p-4">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatoBadge(doc.stato)}`}>
-                        {doc.stato}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex gap-2">
-                        {doc.tipo === 'OPL' && !doc.pubblicata && (
-                          <button
-                            type="button"
-                            onClick={() => setPublishingDoc(doc)}
-                            className="text-purple-600 hover:bg-purple-50 p-1 rounded"
-                            title="Pubblica e assegna"
-                          >
-                            <Send size={16} />
-                          </button>
-                        )}
-                        {doc.tipo === 'OPL' && doc.pubblicata && (
-                          <button
-                            type="button"
-                            onClick={() => setReportDoc(doc)}
-                            className="text-indigo-600 hover:bg-indigo-50 p-1 rounded"
-                            title="Report letture"
-                          >
-                            <BarChart3 size={16} />
-                          </button>
-                        )}
-                        <button onClick={handleTableDownload} className="text-green-600 hover:bg-green-50 p-1 rounded" title="Scarica">
-                          <Download size={16} />
-                        </button>
-                        <button onClick={() => setEditingDoc(doc)} className="text-yellow-600 hover:bg-yellow-50 p-1 rounded" title="Modifica">
-                          <Edit2 size={16} />
-                        </button>
-                        <button onClick={() => deleteDoc(doc._id)} className="text-red-600 hover:bg-red-50 p-1 rounded" title="Elimina">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })
+                      <button onClick={() => setEditingDoc(doc)} className="text-yellow-600 hover:bg-yellow-50 p-1 rounded" title="Modifica">
+                        <Edit2 size={16} />
+                      </button>
+                      <button onClick={() => deleteDoc(doc._id)} className="text-red-600 hover:bg-red-50 p-1 rounded" title="Elimina">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>
       </div>
 
+      {oplChoiceOpen && (
+        <OplChoiceModal
+          onClose={() => setOplChoiceOpen(false)}
+          onCreate={() => { setOplChoiceOpen(false); setOplNativaOpen(true) }}
+          onImport={() => { setOplChoiceOpen(false); setHistoricalOpen(true) }}
+        />
+      )}
       {uploadOpen && <UploadModal onClose={() => setUploadOpen(false)} onSaved={load} />}
       {editingDoc && <EditModal doc={editingDoc} onClose={() => setEditingDoc(null)} onSaved={load} />}
       {previewDoc && <PreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />}
@@ -331,9 +332,38 @@ export default function DocumentiPage() {
   )
 }
 
-// ─────────────────────────────────────────────────────────────
-// PREVIEW MODAL
-// ─────────────────────────────────────────────────────────────
+function OplChoiceModal({ onClose, onCreate, onImport }) {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl" onClick={event => event.stopPropagation()}>
+        <div className="px-5 py-4 border-b flex justify-between items-center">
+          <h2 className="font-bold text-gray-800">Nuova OPL</h2>
+          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
+        </div>
+        <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={onCreate}
+            className="border rounded-lg p-5 text-left hover:border-amber-600 hover:bg-amber-50"
+          >
+            <Pencil className="text-amber-700 mb-3" size={26} />
+            <div className="font-semibold text-gray-800">Crea scheda</div>
+            <div className="text-xs text-gray-500 mt-1">Compila la OPL direttamente nel sistema</div>
+          </button>
+          <button
+            type="button"
+            onClick={onImport}
+            className="border rounded-lg p-5 text-left hover:border-amber-600 hover:bg-amber-50"
+          >
+            <FileSpreadsheet className="text-green-700 mb-3" size={26} />
+            <div className="font-semibold text-gray-800">Importa da Excel</div>
+            <div className="text-xs text-gray-500 mt-1">Una o più OPL Excel, salvate come immagine</div>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function PreviewModal({ doc, onClose }) {
   const fileType = getFileType(doc.file_name)
@@ -343,24 +373,9 @@ function PreviewModal({ doc, onClose }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // Bottone Scarica: genera al volo un blob e forza il download (con JWT)
-  async function handleDownload() {
-    try {
-      const res = await api.get(`/documenti/${doc._id}/file`, { responseType: 'blob' })
-      const url = URL.createObjectURL(res.data)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = doc.file_name || 'documento'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
-    } catch (err) {
-      alert('Errore download: ' + (err.response?.data?.detail || err.message))
-    }
-  }
+  const handleDownload = () => downloadBlob(`/documenti/${doc._id}/file`, doc.file_name)
+  const handleExcelDownload = () => downloadBlob(`/documenti/${doc._id}/excel`, doc.file_name_originale || `${doc.numero}.xlsx`)
 
-  // Carica il file dal backend (JWT) per anteprima
   useEffect(() => {
     let currentUrl = null
     let cancelled = false
@@ -384,15 +399,16 @@ function PreviewModal({ doc, onClose }) {
         }
         return
       }
+
       const isOplNativaWithImage = doc.formato === 'nativa' && doc.file_id
       if (fileType !== 'pdf' && fileType !== 'image' && fileType !== 'text' && !isOplNativaWithImage) {
         setLoading(false)
         return
       }
+
       try {
         const res = await api.get(`/documenti/${doc._id}/file`, { responseType: 'blob' })
         if (cancelled) return
-
         if (fileType === 'text') {
           const text = await res.data.text()
           if (!cancelled) {
@@ -415,7 +431,6 @@ function PreviewModal({ doc, onClose }) {
     }
 
     loadFile()
-
     return () => {
       cancelled = true
       if (currentUrl) URL.revokeObjectURL(currentUrl)
@@ -423,11 +438,9 @@ function PreviewModal({ doc, onClose }) {
   }, [doc._id, fileType])
 
   const previewContent = (() => {
-    // OPL Nativa: layout strutturato in stile Lindt
     if (doc.formato === 'nativa' && doc.opl_data) {
       return <OplNativaPreview doc={doc} imageBlobUrl={blobUrl} />
     }
-
     if (loading) {
       return (
         <div className="w-full h-full flex items-center justify-center text-gray-500">
@@ -435,7 +448,6 @@ function PreviewModal({ doc, onClose }) {
         </div>
       )
     }
-
     if (error) {
       return (
         <div className="w-full h-full flex flex-col items-center justify-center text-gray-500 p-8">
@@ -451,7 +463,6 @@ function PreviewModal({ doc, onClose }) {
         </div>
       )
     }
-
     if (fileType === 'pdf' && blobUrl) {
       return React.createElement('iframe', {
         src: blobUrl,
@@ -459,21 +470,17 @@ function PreviewModal({ doc, onClose }) {
         title: doc.titolo,
       })
     }
-
     if (fileType === 'image' && blobUrl) {
       return (
-        <div className="w-full h-full flex items-center justify-center p-4 overflow-auto">
+        <div className="w-full h-full flex items-start justify-center p-4 overflow-auto">
           {React.createElement('img', {
             src: blobUrl,
             alt: doc.titolo,
             className: 'max-w-full object-contain block',
-            style: { maxHeight: '70vh' },
           })}
-
         </div>
       )
     }
-
     if (fileType === 'text') {
       return (
         <pre className="w-full h-full overflow-auto p-6 bg-gray-50 text-sm font-mono whitespace-pre-wrap">
@@ -481,7 +488,6 @@ function PreviewModal({ doc, onClose }) {
         </pre>
       )
     }
-
     if (fileType === 'office' && officeViewerUrl) {
       return (
         <div className="w-full h-full flex flex-col">
@@ -497,8 +503,6 @@ function PreviewModal({ doc, onClose }) {
         </div>
       )
     }
-
-    // Fallback per office se il token non è ancora pronto o tipi non supportati
     const isOffice = fileType === 'office'
     return (
       <div className="w-full h-full flex flex-col items-center justify-center text-gray-500 p-8">
@@ -534,6 +538,14 @@ function PreviewModal({ doc, onClose }) {
             </div>
           </div>
           <div className="flex gap-2 items-center flex-shrink-0">
+            {doc.excel_file_id && (
+              <button
+                onClick={handleExcelDownload}
+                className="bg-white text-green-700 px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-gray-100"
+              >
+                <FileSpreadsheet size={16} /> Excel
+              </button>
+            )}
             <button
               onClick={handleDownload}
               className="bg-white text-primary px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-gray-100"
@@ -545,11 +557,9 @@ function PreviewModal({ doc, onClose }) {
             </button>
           </div>
         </div>
-
         <div className="flex-1 overflow-hidden bg-gray-100 relative">
           {previewContent}
         </div>
-
         {(doc.descrizione || doc.autore) && (
           <div className="border-t bg-white px-6 py-2 text-xs text-gray-600 flex gap-4">
             {doc.autore && <span><strong>Autore:</strong> {doc.autore}</span>}
@@ -562,14 +572,10 @@ function PreviewModal({ doc, onClose }) {
   )
 }
 
-// ─────────────────────────────────────────────────────────────
-// UPLOAD MODAL
-// ─────────────────────────────────────────────────────────────
-
 function UploadModal({ onClose, onSaved }) {
   const [form, setForm] = useState({
     titolo: '',
-    tipo: 'OPL',
+    tipo: 'SOP',
     categoria: '',
     reparto: '',
     linea: '',
@@ -589,7 +595,6 @@ function UploadModal({ onClose, onSaved }) {
       .get('/reparti/')
       .then(response => setReparti((response.data || []).filter(reparto => reparto.attivo !== false)))
       .catch(error => console.error('Errore reparti:', error))
-
     try {
       const savedUser = localStorage.getItem('user')
       if (savedUser) {
@@ -612,26 +617,21 @@ function UploadModal({ onClose, onSaved }) {
     event.preventDefault()
     if (!file) return alert('Seleziona un file')
     setUploading(true)
-
     try {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('compress', compress ? 'true' : 'false')
       Object.entries(form).forEach(([key, value]) => value && formData.append(key, value))
-
       const response = await api.post('/documenti/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-
       const compression = response.data.compressione
       let message = `Documento ${response.data.numero} creato!`
-
       if (compression?.compressed) {
         const originalMb = (compression.original_size / 1024 / 1024).toFixed(2)
         const finalMb = (compression.final_size / 1024 / 1024).toFixed(2)
         message += `\n\nCompressione: ${originalMb} MB → ${finalMb} MB (-${compression.saved_pct}%)`
       }
-
       alert(message)
       onSaved()
       onClose()
@@ -650,7 +650,6 @@ function UploadModal({ onClose, onSaved }) {
           <h2 className="text-lg font-bold">Carica Documento</h2>
           <button type="button" onClick={onClose}><X size={20} /></button>
         </div>
-
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">File <span className="text-red-500">*</span></label>
@@ -671,7 +670,6 @@ function UploadModal({ onClose, onSaved }) {
               )}
             </div>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium mb-1">Titolo <span className="text-red-500">*</span></label>
@@ -680,11 +678,10 @@ function UploadModal({ onClose, onSaved }) {
             <div>
               <label className="block text-sm font-medium mb-1">Tipo <span className="text-red-500">*</span></label>
               <select value={form.tipo} onChange={event => setForm({ ...form, tipo: event.target.value })} className="w-full border rounded-lg px-3 py-2">
-                <option>OPL</option><option>SOP</option><option>Procedura</option><option>Istruzione</option>
+                <option>SOP</option><option>Procedura</option><option>Istruzione</option><option>OPL</option>
               </select>
             </div>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium mb-1">Categoria</label>
@@ -698,7 +695,6 @@ function UploadModal({ onClose, onSaved }) {
               <input value={form.autore} onChange={event => setForm({ ...form, autore: event.target.value })} className="w-full border rounded-lg px-3 py-2 bg-gray-50" />
             </div>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-sm font-medium mb-1">Reparto</label>
@@ -722,22 +718,18 @@ function UploadModal({ onClose, onSaved }) {
               </select>
             </div>
           </div>
-
           <div>
             <label className="block text-sm font-medium mb-1">Descrizione</label>
             <textarea value={form.descrizione} onChange={event => setForm({ ...form, descrizione: event.target.value })} rows={2} className="w-full border rounded-lg px-3 py-2" />
           </div>
-
           <div>
             <label className="block text-sm font-medium mb-1">Tag (separati da virgola)</label>
             <input value={form.tag} onChange={event => setForm({ ...form, tag: event.target.value })} className="w-full border rounded-lg px-3 py-2" />
           </div>
-
           <label className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200 cursor-pointer">
             <input type="checkbox" checked={compress} onChange={event => setCompress(event.target.checked)} className="w-4 h-4" />
             <span className="text-sm"><strong>Comprimi automaticamente</strong> — Riduce dimensioni di immagini, PDF e file Office</span>
           </label>
-
           <div className="flex justify-end gap-2 pt-4 border-t">
             <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg">Annulla</button>
             <button type="submit" disabled={uploading || !file} className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-light disabled:opacity-50">
@@ -749,10 +741,6 @@ function UploadModal({ onClose, onSaved }) {
     </div>
   )
 }
-
-// ─────────────────────────────────────────────────────────────
-// EDIT MODAL
-// ─────────────────────────────────────────────────────────────
 
 function EditModal({ doc, onClose, onSaved }) {
   const [form, setForm] = useState({
@@ -811,7 +799,6 @@ function EditModal({ doc, onClose, onSaved }) {
               </select>
             </div>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium mb-1">Categoria</label>
@@ -825,7 +812,6 @@ function EditModal({ doc, onClose, onSaved }) {
               <input value={form.autore} onChange={(e) => setForm({...form, autore: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
             </div>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-sm font-medium mb-1">Reparto</label>
@@ -840,12 +826,10 @@ function EditModal({ doc, onClose, onSaved }) {
               <input value={form.macchina} onChange={(e) => setForm({...form, macchina: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
             </div>
           </div>
-
           <div>
             <label className="block text-sm font-medium mb-1">Descrizione</label>
             <textarea value={form.descrizione} onChange={(e) => setForm({...form, descrizione: e.target.value})} rows={2} className="w-full border rounded-lg px-3 py-2" />
           </div>
-
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-primary" onClick={() => fileRef.current?.click()}>
             <input ref={fileRef} type="file" onChange={(e) => setNewFile(e.target.files[0])} className="hidden" />
             {newFile ? (
@@ -861,23 +845,23 @@ function EditModal({ doc, onClose, onSaved }) {
               </div>
             )}
           </div>
-
           {doc.versioni_precedenti && doc.versioni_precedenti.length > 0 && (
             <div>
               <label className="block text-sm font-medium mb-1">Versioni precedenti</label>
               <div className="space-y-1">
-                {doc.versioni_precedenti.map(v => {
-                  const vUrl = `${API_BASE}/api/documenti/${doc._id}/version/${v.versione}`
-                  return (
-                    <a key={v.versione} href={vUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-gray-600 hover:text-primary">
-                      <Download size={12} /> v{v.versione} — {v.file_name}
-                    </a>
-                  )
-                })}
+                {doc.versioni_precedenti.map(v => (
+                  <button
+                    type="button"
+                    key={v.versione}
+                    onClick={() => downloadBlob(`/documenti/${doc._id}/version/${v.versione}`, v.file_name)}
+                    className="flex items-center gap-2 text-xs text-gray-600 hover:text-primary"
+                  >
+                    <Download size={12} /> v{v.versione} — {v.file_name}
+                  </button>
+                ))}
               </div>
             </div>
           )}
-
           <div className="flex justify-end gap-2 pt-4 border-t">
             <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg">Annulla</button>
             <button type="submit" disabled={saving} className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-light disabled:opacity-50">
@@ -889,320 +873,3 @@ function EditModal({ doc, onClose, onSaved }) {
     </div>
   )
 }
-
-// ─────────────────────────────────────────────────────────────
-// BULK UPLOAD MODAL
-// ─────────────────────────────────────────────────────────────
-
-function BulkUploadModal({ onClose, onSaved }) {
-  const [files, setFiles] = useState([])
-  const [autore, setAutore] = useState('')
-  const [compress, setCompress] = useState(true)
-  const [uploading, setUploading] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [result, setResult] = useState(null)
-  const [dragOver, setDragOver] = useState(false)
-  const fileRef = useRef(null)
-
-  const namePattern = /\b(OPL|SOP|PROC|IST)\b[\s_\-]*(\d{1,5})/i
-
-  function analyzeFile(file) {
-    const filenameNoExt = file.name.replace(/\.[^.]+$/, '')
-    const match = filenameNoExt.match(namePattern)
-
-    if (match) {
-      const tipoRaw = match[1].toUpperCase()
-      const numero = match[2].padStart(3, '0')
-      let titoloRaw = filenameNoExt.replace(namePattern, '').trim()
-      titoloRaw = titoloRaw.replace(/^[\s_\-]+/, '')
-      let titolo = titoloRaw.replace(/_/g, ' ').replace(/\s+/g, ' ').trim()
-
-      if (!titolo) titolo = filenameNoExt.replace(/_/g, ' ').trim()
-
-      return {
-        valid: true,
-        tipo: tipoRaw,
-        numero: `${tipoRaw}-${numero}`,
-        titolo: titolo,
-      }
-    }
-    return {
-      valid: false,
-      titolo: filenameNoExt.replace(/_/g, ' ').replace(/-/g, ' ').trim(),
-    }
-  }
-
-  function handleFiles(selectedFiles) {
-    const arr = Array.from(selectedFiles)
-    const enriched = arr.map(f => ({
-      file: f,
-      name: f.name,
-      size: f.size,
-      analysis: analyzeFile(f),
-    }))
-    setFiles(prev => [...prev, ...enriched])
-  }
-
-  function removeFile(index) {
-    setFiles(files.filter((_, i) => i !== index))
-  }
-
-  function handleDrop(e) {
-    e.preventDefault()
-    setDragOver(false)
-    handleFiles(e.dataTransfer.files)
-  }
-
-  async function handleUpload() {
-    if (files.length === 0) return alert('Aggiungi almeno un file')
-    setUploading(true)
-    setProgress(0)
-
-    const formData = new FormData()
-    files.forEach(f => formData.append('files', f.file))
-    if (autore) formData.append('autore', autore)
-    formData.append('compress', compress ? 'true' : 'false')
-
-    try {
-      const res = await api.post('/documenti/bulk-upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: (e) => {
-          if (e.total) {
-            setProgress(Math.round((e.loaded * 100) / e.total))
-          }
-        },
-        timeout: 300000,
-      })
-      setResult(res.data)
-    } catch (err) {
-      console.error(err)
-      alert('Errore bulk upload: ' + (err.response?.data?.detail || err.message))
-      setUploading(false)
-    }
-  }
-
-  function handleClose() {
-    if (result) onSaved()
-    onClose()
-  }
-
-  const totalSize = files.reduce((sum, f) => sum + f.size, 0)
-  const validCount = files.filter(f => f.analysis.valid).length
-  const invalidCount = files.length - validCount
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl">
-        <div className="bg-green-600 text-white p-4 rounded-t-xl flex justify-between items-center sticky top-0 z-10">
-          <h2 className="text-lg font-bold">Bulk Upload — Carica multipli</h2>
-          <button onClick={handleClose}><X size={20} /></button>
-        </div>
-
-        <div className="p-6 space-y-4">
-          {!result && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
-              <div className="font-semibold text-blue-900 mb-1">Naming intelligente</div>
-              <div className="text-blue-700 text-xs space-y-0.5">
-                <div>I file con nome <code className="bg-blue-100 px-1 rounded">TIPO-ANNO-NUM_Titolo.ext</code> vengono parsati automaticamente.</div>
-                <div>Esempi: <code className="bg-blue-100 px-1 rounded">OPL-2026-001_Pulizia.pdf</code> · <code className="bg-blue-100 px-1 rounded">SOP-2026-014_Avviamento.docx</code></div>
-                <div>Altri nomi → numero progressivo automatico.</div>
-              </div>
-            </div>
-          )}
-
-          {!result && !uploading && (
-            <div
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={handleDrop}
-              onClick={() => fileRef.current?.click()}
-              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all ${
-                dragOver ? 'border-green-500 bg-green-50' : 'border-gray-300 hover:border-green-400'
-              }`}
-            >
-              <input
-                ref={fileRef}
-                type="file"
-                multiple
-                onChange={(e) => handleFiles(e.target.files)}
-                className="hidden"
-                accept=".pdf,.docx,.xlsx,.pptx,.doc,.xls,.ppt,.png,.jpg,.jpeg"
-              />
-              <Upload className="mx-auto mb-2 text-gray-400" size={48} />
-              <p className="text-lg font-medium">Trascina qui i tuoi file</p>
-              <p className="text-sm text-gray-500">oppure click per selezionarli</p>
-              <p className="text-xs text-gray-400 mt-2">PDF, DOCX, XLSX, PPTX, immagini (max 50MB)</p>
-            </div>
-          )}
-
-          {!result && files.length > 0 && !uploading && (
-            <div className="border rounded-lg overflow-hidden">
-              <div className="bg-gray-50 px-3 py-2 text-xs font-medium flex justify-between items-center">
-                <span>{files.length} file pronti · {(totalSize / 1024 / 1024).toFixed(2)} MB totali</span>
-                <span className="flex gap-3">
-                  <span className="text-green-600">{validCount} parsati</span>
-                  {invalidCount > 0 && <span className="text-orange-600">{invalidCount} manuali</span>}
-                  <button onClick={() => setFiles([])} className="text-red-600 hover:underline">Svuota</button>
-                </span>
-              </div>
-              <div className="max-h-64 overflow-y-auto">
-                {files.map((f, i) => (
-                  <div key={i} className="px-3 py-2 border-t flex items-center gap-3 text-sm hover:bg-gray-50">
-                    <FileText size={16} className={f.analysis.valid ? 'text-green-600' : 'text-orange-500'} />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{f.name}</div>
-                      <div className="text-xs text-gray-500 flex gap-2">
-                        <span>{(f.size / 1024).toFixed(1)} KB</span>
-                        {f.analysis.valid ? (
-                          <span className="text-green-600">→ {f.analysis.numero} · {f.analysis.titolo}</span>
-                        ) : (
-                          <span className="text-orange-600">→ Titolo: "{f.analysis.titolo}" · numero auto</span>
-                        )}
-                      </div>
-                    </div>
-                    <button onClick={() => removeFile(i)} className="text-red-500 hover:bg-red-50 p-1 rounded">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {!result && !uploading && files.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-              <div>
-                <label className="block text-sm font-medium mb-1">Autore (opzionale)</label>
-                <input
-                  value={autore}
-                  onChange={(e) => setAutore(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="flex items-end">
-                <label className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg border border-blue-200 cursor-pointer flex-1">
-                  <input
-                    type="checkbox"
-                    checked={compress}
-                    onChange={(e) => setCompress(e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">Comprimi automaticamente</span>
-                </label>
-              </div>
-            </div>
-          )}
-
-          {uploading && !result && (
-            <div className="text-center py-8">
-              <div className="text-lg font-medium mb-2">Caricamento in corso...</div>
-              <div className="text-sm text-gray-500 mb-4">
-                Sto caricando {files.length} file · {(totalSize / 1024 / 1024).toFixed(2)} MB
-                {compress && ' · con compressione attiva'}
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-                <div
-                  className="bg-green-500 h-4 transition-all duration-300 flex items-center justify-center text-xs text-white font-bold"
-                  style={{ width: `${progress}%` }}
-                >
-                  {progress > 10 && `${progress}%`}
-                </div>
-              </div>
-              <div className="text-xs text-gray-400 mt-2">
-                {progress < 100 ? 'Upload + compressione + salvataggio in corso...' : 'Elaborazione finale...'}
-              </div>
-            </div>
-          )}
-
-          {result && (
-            <div className="space-y-3">
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
-                <div className="text-3xl mb-2">🎉</div>
-                <div className="text-lg font-bold text-green-900">Bulk Upload completato!</div>
-                <div className="text-sm text-gray-700 mt-2 flex justify-center gap-4">
-                  <span>Totale: <strong>{result.totale}</strong></span>
-                  <span className="text-green-700">Successo: <strong>{result.successo}</strong></span>
-                  {result.fallimenti > 0 && (
-                    <span className="text-red-600">Errori: <strong>{result.fallimenti}</strong></span>
-                  )}
-                </div>
-                {result.risparmio_totale_mb > 0 && (
-                  <div className="mt-2 text-sm text-blue-700">
-                    Risparmio compressione: <strong>{result.risparmio_totale_mb} MB</strong>
-                  </div>
-                )}
-              </div>
-
-              {result.creati && result.creati.length > 0 && (
-                <details className="border rounded-lg" open>
-                  <summary className="px-3 py-2 bg-green-50 cursor-pointer font-medium text-sm">
-                    Nuovi documenti ({result.creati.length})
-                  </summary>
-                  <div className="max-h-48 overflow-y-auto text-xs">
-                    {result.creati.map((d, i) => (
-                      <div key={i} className="px-3 py-1.5 border-t flex justify-between">
-                        <span>
-                          <strong className="text-primary">{d.numero}</strong> — {d.titolo}
-                          {!d.auto_parsed && <span className="text-orange-500 ml-1">(titolo manuale)</span>}
-                        </span>
-                        {d.compressione?.compressed && (
-                          <span className="text-green-600">-{d.compressione.saved_pct}%</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              )}
-
-              {result.aggiornati && result.aggiornati.length > 0 && (
-                <details className="border rounded-lg">
-                  <summary className="px-3 py-2 bg-blue-50 cursor-pointer font-medium text-sm">
-                    Nuove versioni ({result.aggiornati.length})
-                  </summary>
-                  <div className="max-h-48 overflow-y-auto text-xs">
-                    {result.aggiornati.map((d, i) => (
-                      <div key={i} className="px-3 py-1.5 border-t">
-                        <strong className="text-primary">{d.numero}</strong> — {d.titolo} → v{d.versione}
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              )}
-
-              {result.errori && result.errori.length > 0 && (
-                <details className="border rounded-lg" open>
-                  <summary className="px-3 py-2 bg-red-50 cursor-pointer font-medium text-sm text-red-700">
-                    Errori ({result.errori.length})
-                  </summary>
-                  <div className="max-h-48 overflow-y-auto text-xs">
-                    {result.errori.map((e, i) => (
-                      <div key={i} className="px-3 py-1.5 border-t">
-                        <strong>{e.filename}</strong>: <span className="text-red-600">{e.errore}</span>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              )}
-            </div>
-          )}
-
-          <div className="flex justify-end gap-2 pt-4 border-t">
-            <button type="button" onClick={handleClose} className="px-4 py-2 border rounded-lg">
-              {result ? 'Chiudi' : 'Annulla'}
-            </button>
-            {!result && (
-              <button
-                onClick={handleUpload}
-                disabled={uploading || files.length === 0}
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
-              >
-                {uploading ? `Carico ${files.length}...` : `Carica ${files.length} file`}
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
