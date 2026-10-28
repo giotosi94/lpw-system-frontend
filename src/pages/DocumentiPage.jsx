@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import api from '../services/api'
-import { FileText, Upload, Download, Search, Trash2, Edit2, X, Plus, Send, BarChart3, FileSpreadsheet, Pencil } from 'lucide-react'
+import { FileText, Upload, Download, Search, Trash2, Edit2, X, Plus, Send, BarChart3, FileSpreadsheet, Pencil, ZoomIn, ZoomOut } from 'lucide-react'
 import OplPublishModal from '../components/opl/OplPublishModal'
 import OplNativaModal, { OplNativaPreview } from '../components/opl/OplNativaModal'
 import OplReadReportModal from '../components/opl/OplReadReportModal'
@@ -254,6 +254,7 @@ function PreviewModal({ doc, onClose }) {
   const [blobUrl, setBlobUrl] = useState(null)
   const [loading, setLoading] = useState(canShow)
   const [error, setError] = useState(null)
+  const [fit, setFit] = useState(true)
 
   useEffect(() => {
     if (!canShow) return undefined
@@ -284,8 +285,13 @@ function PreviewModal({ doc, onClose }) {
     content = <iframe src={blobUrl} className="w-full h-full border-0" title={doc.titolo} />
   } else if (fileType === 'image' && blobUrl) {
     content = (
-      <div className="h-full overflow-auto p-4 flex justify-center items-start">
-        <img src={blobUrl} alt={doc.titolo} className="max-w-full block" />
+      <div className={`h-full p-2 flex justify-center ${fit ? 'items-center overflow-hidden' : 'items-start overflow-auto'}`}>
+        <img
+          src={blobUrl}
+          alt={doc.titolo}
+          onClick={() => setFit(value => !value)}
+          className={fit ? 'max-w-full max-h-full object-contain cursor-zoom-in block' : 'w-full max-w-none cursor-zoom-out block'}
+        />
       </div>
     )
   } else {
@@ -301,6 +307,16 @@ function PreviewModal({ doc, onClose }) {
             <div className="text-xs opacity-80">v{doc.versione || 1} • {doc.stato}</div>
           </div>
           <div className="flex gap-2 items-center flex-shrink-0">
+            {fileType === 'image' && blobUrl && (
+              <button
+                type="button"
+                onClick={() => setFit(value => !value)}
+                className="bg-white text-gray-700 px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-gray-100"
+              >
+                {fit ? <ZoomIn size={16} /> : <ZoomOut size={16} />}
+                {fit ? 'Ingrandisci' : 'Adatta'}
+              </button>
+            )}
             {doc.excel_file_id && (
               <button
                 type="button"
