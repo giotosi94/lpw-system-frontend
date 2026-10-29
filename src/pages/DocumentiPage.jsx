@@ -281,7 +281,7 @@ export default function DocumentiPage() {
                   </td>
                   <td className="p-3">
                     <div className="flex gap-2">
-                      {doc.tipo !== 'OPL' ? null : doc.pubblicata ? (
+                      {doc.pubblicata ? (
                         <button type="button" onClick={() => setReportDoc(doc)} className="text-indigo-600 hover:bg-indigo-50 p-1 rounded" title="Report letture">
                           <BarChart3 size={16} />
                         </button>
