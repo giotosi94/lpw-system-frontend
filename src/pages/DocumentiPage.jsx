@@ -39,6 +39,10 @@ async function downloadBlob(path, filename) {
   }
 }
 
+function numeroBreve(numero) {
+  return String(numero || '').replace(/^(OPL|SOP)-/i, '')
+}
+
 function readUser() {
   try {
     return JSON.parse(localStorage.getItem('user') || '{}')
@@ -108,7 +112,7 @@ export default function DocumentiPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Documenti</h1>
           {isAdmin && nextOplNumber && (
-            <p className="text-sm text-gray-500 mt-1">Prossima codifica OPL: <span className="font-semibold text-amber-700">{nextOplNumber}</span></p>
+            <p className="text-sm text-gray-500 mt-1">Prossima codifica: <span className="font-semibold text-amber-700">{numeroBreve(nextOplNumber)}</span></p>
           )}
         </div>
         <button
@@ -127,7 +131,7 @@ export default function DocumentiPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && load()}
-            placeholder="Cerca per titolo o numero e premi Invio"
+            placeholder="Cerca"
             className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm"
           />
         </div>
@@ -172,7 +176,7 @@ export default function DocumentiPage() {
                       onClick={() => setPreviewDoc(doc)}
                       className="font-mono text-primary font-bold hover:underline"
                     >
-                      {doc.numero}
+                      {numeroBreve(doc.numero)}
                     </button>
                   </td>
                   <td className="p-3 text-xs font-semibold text-gray-600">{doc.tipo}</td>
@@ -413,7 +417,7 @@ function PreviewModal({ doc, onClose }) {
       <div className="bg-white rounded-xl w-full max-w-6xl h-[92vh] flex flex-col shadow-2xl">
         <div className="bg-primary text-white px-6 py-3 rounded-t-xl flex justify-between items-center">
           <div className="min-w-0">
-            <div className="font-semibold truncate">{doc.numero} - {doc.titolo}</div>
+            <div className="font-semibold truncate">{doc.tipo} {numeroBreve(doc.numero)} - {doc.titolo}</div>
             <div className="text-xs opacity-80">v{doc.versione || 1} • {doc.stato}</div>
           </div>
           <div className="flex gap-2 items-center flex-shrink-0">
@@ -498,7 +502,7 @@ function EditModal({ doc, onClose, onSaved }) {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="bg-primary text-white p-4 rounded-t-xl flex justify-between items-center sticky top-0">
-          <h2 className="text-lg font-bold">Modifica {doc.numero} (v{doc.versione || 1})</h2>
+          <h2 className="text-lg font-bold">Modifica {doc.tipo} {numeroBreve(doc.numero)} (v{doc.versione || 1})</h2>
           <button type="button" onClick={onClose}><X size={20} /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
