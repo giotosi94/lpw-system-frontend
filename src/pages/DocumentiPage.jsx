@@ -198,7 +198,7 @@ export default function DocumentiPage() {
                           <Send size={16} />
                         </button>
                       )}
-                      <button type="button" onClick={() => downloadBlob(`/documenti/${doc._id}/file`, doc.file_name)} className="text-green-600 hover:bg-green-50 p-1 rounded" title="Scarica">
+                      <button type="button" onClick={() => doc.originale_file_id ? downloadBlob(`/documenti/${doc._id}/originale`, doc.file_name_originale || doc.numero) : downloadBlob(`/documenti/${doc._id}/file`, doc.file_name)} className="text-green-600 hover:bg-green-50 p-1 rounded" title="Scarica">
                         <Download size={16} />
                       </button>
                       <button type="button" onClick={() => setEditingDoc(doc)} className="text-yellow-600 hover:bg-yellow-50 p-1 rounded" title="Modifica">
@@ -436,13 +436,15 @@ function PreviewModal({ doc, onClose }) {
                 <FileSpreadsheet size={16} /> {originalLabel}
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => downloadBlob(`/documenti/${doc._id}/file`, doc.file_name)}
-              className="bg-white text-primary px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-gray-100"
-            >
-              <Download size={16} /> Scarica
-            </button>
+            {!doc.originale_file_id && (
+              <button
+                type="button"
+                onClick={() => downloadBlob(`/documenti/${doc._id}/file`, doc.file_name)}
+                className="bg-white text-primary px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-gray-100"
+              >
+                <Download size={16} /> Scarica
+              </button>
+            )}
             <button type="button" onClick={onClose} className="hover:bg-primary-light p-1.5 rounded">
               <X size={20} />
             </button>
