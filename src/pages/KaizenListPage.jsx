@@ -163,6 +163,8 @@ export default function KaizenListPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [dashboards, setDashboards] = useState([])
   const [routes, setRoutes] = useState([])
+  const [routeError, setRouteError] = useState('')
+  const [preparingRoute, setPreparingRoute] = useState(false)
 
   const { configs } = useAllConfigurations()
   const { pillars } = usePillars()
@@ -175,8 +177,37 @@ export default function KaizenListPage() {
   useEffect(() => {
     api.get('/reparti/').then(res => setReparti(res.data || [])).catch(() => setReparti([]))
     api.get('/dashboards/').then(res => setDashboards(res.data || [])).catch(() => setDashboards([]))
-    api.get('/route-catalog/?stato=pubblicata').then(res => setRoutes(res.data || [])).catch(() => setRoutes([]))
+    loadRoutes()
   }, [])
+
+  const loadRoutes = async () => {
+    try {
+      const res = await api.get('/route-catalog/?stato=pubblicata')
+      setRoutes(res.data || [])
+      setRouteError('')
+      return res.data || []
+    } catch (error) {
+      setRouteError('Impossibile caricare le Route. Riprova.')
+      return null
+    }
+  }
+
+  const prepareRoute = async () => {
+    setPreparingRoute(true)
+    try {
+      const res = await api.post('/route-catalog/seed')
+      const available = await loadRoutes()
+      if (available?.some(route => route._id === res.data.route_id)) {
+        setNewKaizen(current => ({ ...current, route_id: res.data.route_id }))
+      } else {
+        setRouteError('La Route esiste ma non risulta pubblicata. Verifica il catalogo nei Settings.')
+      }
+    } catch (error) {
+      setRouteError('Preparazione Route non riuscita: ' + (error.response?.data?.detail || error.message))
+    } finally {
+      setPreparingRoute(false)
+    }
+  }
 
   // Linee/Macchine per FORM (in base al reparto del nuovo Kaizen)
   const lineeFormDisponibili = useMemo(() => {
@@ -401,6 +432,8 @@ const majorKaizens =
         null,
       dashboard_id: newKaizen.dashboard_id || null,
       dashboard_nome: newKaizen.dashboard_nome || null,
+      project_leader: newKaizen.team_leader_id ? { id: newKaizen.team_leader_id, nome: newKaizen.team_leader_nome } : null,
+      team_members: (newKaizen.team_members_data || []).map(member => ({ id: member.id, nome: member.name })),
     }
         const resMajor = await api.post('/major-kaizen/', payloadMajor)
         setShowModal(false)
@@ -858,6 +891,19 @@ const majorKaizens =
               </div>
 
               {newKaizen.tipo === 'Major' && (
+              <div className="space-y-2">
+                {routeError && <p className="text-sm text-red-700" role="alert">{routeError}</p>}
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={loadRoutes} className="text-sm underline">Aggiorna elenco</button>
+                  {isAdmin && (
+                    <button type="button" disabled={preparingRoute} onClick={prepareRoute} className="text-sm underline disabled:opacity-50">
+                      {preparingRoute ? 'Preparazione...' : 'Prepara Route Riduzione Scarti v2.0'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {newKaizen.tipo === 'Major' && (
                 <div>
                   <label className="block text-sm font-medium mb-1">
                     Tipologia di progetto (Route) <span className="text-red-500">*</span>
@@ -876,7 +922,7 @@ const majorKaizens =
                   </select>
                   {routes.length === 0 && (
                     <div className="text-xs text-orange-600 mt-1">
-                      Nessuna Route pubblicata. Lancia il seed o pubblica una Route nei Settings.
+  Nessuna Route pubblicata disponibile.
                     </div>
                   )}
                 </div>
