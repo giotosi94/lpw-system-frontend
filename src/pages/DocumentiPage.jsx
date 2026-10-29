@@ -85,6 +85,8 @@ export default function DocumentiPage() {
   const [filterTipo, setFilterTipo] = useState('')
   const [filterCategoria, setFilterCategoria] = useState('')
   const [filterStato, setFilterStato] = useState('')
+  const [filterReparto, setFilterReparto] = useState('')
+  const [filterLinea, setFilterLinea] = useState('')
   const [editingDoc, setEditingDoc] = useState(null)
   const [previewDoc, setPreviewDoc] = useState(null)
   const [choiceOpen, setChoiceOpen] = useState(false)
@@ -119,7 +121,12 @@ export default function DocumentiPage() {
     }
   }
 
-  const sorted = [...documenti].sort((a, b) => {
+  const reparti = [...new Set(documenti.map(doc => doc.reparto).filter(Boolean))].sort()
+  const linee = [...new Set(documenti.filter(doc => !filterReparto || doc.reparto === filterReparto).map(doc => doc.linea).filter(Boolean))].sort()
+  const visibili = documenti.filter(doc =>
+    (!filterReparto || doc.reparto === filterReparto) && (!filterLinea || doc.linea === filterLinea)
+  )
+  const sorted = [...visibili].sort((a, b) => {
     const diff = numeroValore(a.numero) - numeroValore(b.numero)
     return sortDesc ? -diff : diff
   })
@@ -193,6 +200,14 @@ export default function DocumentiPage() {
         <select value={filterCategoria} onChange={(e) => setFilterCategoria(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
           <option value="">Tutte le categorie</option>
           {categorie.map(c => <option key={c._id || c.label} value={c.label}>{c.label}</option>)}
+        </select>
+        <select value={filterReparto} onChange={(e) => { setFilterReparto(e.target.value); setFilterLinea('') }} className="border rounded-lg px-3 py-2 text-sm">
+          <option value="">Tutti i reparti</option>
+          {reparti.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <select value={filterLinea} onChange={(e) => setFilterLinea(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
+          <option value="">Tutte le linee</option>
+          {linee.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
         <select value={filterStato} onChange={(e) => setFilterStato(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
           <option value="">Tutti gli stati</option>
@@ -546,15 +561,15 @@ function EditModal({ doc, onClose, onSaved }) {
   })
   const [newFile, setNewFile] = useState(null)
   const [saving, setSaving] = useState(false)
+  const approvato = doc.stato === 'Approvato'
+  const [unlocked, setUnlocked] = useState(!approvato)
   const fileRef = useRef(null)
   const { items: categorie } = useConfigurations('categorie_documento')
-  const set = (field, value) => setForm(current => ({ ...current, [field]: value }))
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const save = async (stato) => {
     setSaving(true)
     try {
-      await api.put(`/documenti/${doc._id}`, form)
+      await api.put(`/documenti/${doc._id}`, { ...form, stato })
       if (newFile) {
         const formData = new FormData()
         formData.append('file', newFile)
@@ -571,22 +586,33 @@ function EditModal({ doc, onClose, onSaved }) {
     }
   }
 
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    save(approvato ? 'In Revisione' : form.stato)
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="bg-primary text-white p-4 rounded-t-xl flex justify-between items-center sticky top-0">
-          <h2 className="text-lg font-bold">Modifica {doc.tipo} {numeroBreve(doc.numero)} (v{doc.versione || 1})</h2>
+          <h2 className="text-lg font-bold">{doc.tipo} {numeroBreve(doc.numero)} (v{doc.versione || 1})</h2>
           <button type="button" onClick={onClose}><X size={20} /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <label className="block">
-            <span className="block text-sm font-medium mb-1">Stato</span>
-            <select value={form.stato} onChange={(e) => set('stato', e.target.value)} className="w-full border rounded-lg px-3 py-2">
-              {STATI.map(s => <option key={s}>{s}</option>)}
-            </select>
-          </label>
+          <div className="flex items-center justify-between">
+            <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATO_BADGE[doc.stato] || STATO_BADGE.Bozza}`}>{doc.stato}</span>
+            {approvato && !unlocked && (
+              <button type="button" onClick={() => setUnlocked(true)} className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2">
+                <Edit2 size={14} /> Modifica
+              </button>
+            )}
+            {approvato && unlocked && (
+              <span className="text-xs text-amber-700">Al salvataggio il documento torna In Revisione</span>
+            )}
+          </div>
+          <fieldset disabled={!unlocked} className="space-y-4 disabled:opacity-70">
           <DocumentFields form={form} setForm={setForm} categorie={categorie} />
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-primary" onClick={() => fileRef.current?.click()}>
+          <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-primary" onClick={() => unlocked && fileRef.current?.click()}>
             <input ref={fileRef} type="file" onChange={(e) => setNewFile(e.target.files?.[0] || null)} className="hidden" />
             {newFile ? (
               <div>
@@ -601,6 +627,7 @@ function EditModal({ doc, onClose, onSaved }) {
               </div>
             )}
           </div>
+          </fieldset>
           {doc.versioni_precedenti?.length > 0 && (
             <div>
               <span className="block text-sm font-medium mb-1">Versioni precedenti</span>
@@ -617,10 +644,17 @@ function EditModal({ doc, onClose, onSaved }) {
             </div>
           )}
           <div className="flex justify-end gap-2 pt-4 border-t">
-            <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg">Annulla</button>
-            <button type="submit" disabled={saving} className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-light disabled:opacity-50">
-              {saving ? 'Salvo...' : 'Salva'}
-            </button>
+            <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg">{unlocked ? 'Annulla' : 'Chiudi'}</button>
+            {unlocked && (
+              <button type="submit" disabled={saving} className="px-6 py-2 border border-primary text-primary rounded-lg hover:bg-gray-50 disabled:opacity-50">
+                {saving ? 'Salvo...' : 'Salva'}
+              </button>
+            )}
+            {unlocked && (
+              <button type="button" onClick={() => save('Approvato')} disabled={saving} className="px-6 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800 disabled:opacity-50">
+                Approva
+              </button>
+            )}
           </div>
         </form>
       </div>
