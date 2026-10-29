@@ -364,6 +364,7 @@ function PreviewModal({ doc, onClose }) {
   const [loading, setLoading] = useState(canShow)
   const [error, setError] = useState(null)
   const [fit, setFit] = useState(true)
+  const originalLabel = doc.excel_file_id ? 'Excel' : doc.originale_file_id ? 'PowerPoint' : null
 
   useEffect(() => {
     if (!canShow) return undefined
@@ -426,13 +427,13 @@ function PreviewModal({ doc, onClose }) {
                 {fit ? 'Ingrandisci' : 'Adatta'}
               </button>
             )}
-            {doc.excel_file_id && (
+            {originalLabel && (
               <button
                 type="button"
-                onClick={() => downloadBlob(`/documenti/${doc._id}/excel`, doc.file_name_originale || `${doc.numero}.xlsx`)}
+                onClick={() => downloadBlob(`/documenti/${doc._id}/originale`, doc.file_name_originale || doc.numero)}
                 className="bg-white text-green-700 px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-gray-100"
               >
-                <FileSpreadsheet size={16} /> Excel
+                <FileSpreadsheet size={16} /> {originalLabel}
               </button>
             )}
             <button
