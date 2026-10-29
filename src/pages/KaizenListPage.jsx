@@ -164,7 +164,6 @@ export default function KaizenListPage() {
   const [dashboards, setDashboards] = useState([])
   const [routes, setRoutes] = useState([])
   const [routeError, setRouteError] = useState('')
-  const [preparingRoute, setPreparingRoute] = useState(false)
 
   const { configs } = useAllConfigurations()
   const { pillars } = usePillars()
@@ -189,23 +188,6 @@ export default function KaizenListPage() {
     } catch (error) {
       setRouteError('Impossibile caricare le Route. Riprova.')
       return null
-    }
-  }
-
-  const prepareRoute = async () => {
-    setPreparingRoute(true)
-    try {
-      const res = await api.post('/route-catalog/seed')
-      const available = await loadRoutes()
-      if (available?.some(route => route._id === res.data.route_id)) {
-        setNewKaizen(current => ({ ...current, route_id: res.data.route_id }))
-      } else {
-        setRouteError('La Route esiste ma non risulta pubblicata. Verifica il catalogo nei Settings.')
-      }
-    } catch (error) {
-      setRouteError('Preparazione Route non riuscita: ' + (error.response?.data?.detail || error.message))
-    } finally {
-      setPreparingRoute(false)
     }
   }
 
@@ -890,19 +872,9 @@ const majorKaizens =
                 </div>
               </div>
 
-              {newKaizen.tipo === 'Major' && (
-              <div className="space-y-2">
-                {routeError && <p className="text-sm text-red-700" role="alert">{routeError}</p>}
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={loadRoutes} className="text-sm underline">Aggiorna elenco</button>
-                  {isAdmin && (
-                    <button type="button" disabled={preparingRoute} onClick={prepareRoute} className="text-sm underline disabled:opacity-50">
-                      {preparingRoute ? 'Preparazione...' : 'Prepara Route Riduzione Scarti v2.0'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
+              {newKaizen.tipo === 'Major' && routeError && (
+                <p className="text-sm text-red-700" role="alert">{routeError}</p>
+              )}
             {newKaizen.tipo === 'Major' && (
                 <div>
                   <label className="block text-sm font-medium mb-1">
@@ -916,7 +888,7 @@ const majorKaizens =
                     <option value="">Seleziona una Route</option>
                     {routes.map(r => (
                       <option key={r._id} value={r._id}>
-                        {r.nome} (v{r.versione})
+                        {r.nome.split('|').pop().trim()}
                       </option>
                     ))}
                   </select>
