@@ -39,6 +39,32 @@ async function downloadBlob(path, filename) {
   }
 }
 
+const WIDTHS_KEY = 'lpw_documenti_colonne'
+const COLUMNS = [
+  { key: 'numero', label: '#' },
+  { key: 'tipo', label: 'Tipo' },
+  { key: 'titolo', label: 'Titolo' },
+  { key: 'reparto', label: 'Reparto' },
+  { key: 'linea', label: 'Linea' },
+  { key: 'versione', label: 'Versione' },
+  { key: 'stato', label: 'Stato' },
+  { key: 'azioni', label: 'Azioni' },
+]
+const DEFAULT_WIDTHS = { numero: 90, tipo: 70, titolo: 420, reparto: 160, linea: 120, versione: 90, stato: 120, azioni: 150 }
+
+function readWidths() {
+  try {
+    return { ...DEFAULT_WIDTHS, ...JSON.parse(localStorage.getItem(WIDTHS_KEY) || '{}') }
+  } catch {
+    return DEFAULT_WIDTHS
+  }
+}
+
+function numeroValore(numero) {
+  const value = parseInt(numeroBreve(numero), 10)
+  return Number.isNaN(value) ? 0 : value
+}
+
 function numeroBreve(numero) {
   return String(numero || '').replace(/^(OPL|SOP)-/i, '')
 }
@@ -53,6 +79,8 @@ function readUser() {
 
 export default function DocumentiPage() {
   const [documenti, setDocumenti] = useState([])
+  const [sortDesc, setSortDesc] = useState(true)
+  const [widths, setWidths] = useState(readWidths)
   const [search, setSearch] = useState('')
   const [filterTipo, setFilterTipo] = useState('')
   const [filterCategoria, setFilterCategoria] = useState('')
@@ -89,6 +117,28 @@ export default function DocumentiPage() {
     } catch (err) {
       console.error(err)
     }
+  }
+
+  const sorted = [...documenti].sort((a, b) => {
+    const diff = numeroValore(a.numero) - numeroValore(b.numero)
+    return sortDesc ? -diff : diff
+  })
+
+  const resizeColumn = (key, startX, startWidth) => {
+    const move = event => {
+      const width = Math.max(50, startWidth + event.clientX - startX)
+      setWidths(current => ({ ...current, [key]: width }))
+    }
+    const stop = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', stop)
+      setWidths(current => {
+        localStorage.setItem(WIDTHS_KEY, JSON.stringify(current))
+        return current
+      })
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', stop)
   }
 
   const openNew = () => {
@@ -150,25 +200,48 @@ export default function DocumentiPage() {
         </select>
       </div>
 
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-xl shadow overflow-x-auto">
+        <table className="w-full text-sm table-fixed">
+          <colgroup>
+            {COLUMNS.map(column => <col key={column.key} style={{ width: widths[column.key] }} />)}
+          </colgroup>
           <thead className="bg-gray-50">
             <tr className="text-left text-gray-500">
-              <th className="p-3">Numero</th>
-              <th className="p-3">Tipo</th>
-              <th className="p-3">Titolo</th>
-              <th className="p-3">Reparto</th>
-              <th className="p-3">Linea</th>
-              <th className="p-3">Versione</th>
-              <th className="p-3">Stato</th>
-              <th className="p-3 w-40">Azioni</th>
+              {COLUMNS.map(column => (
+                <th key={column.key} className="p-3 relative select-none">
+                  {column.key === 'numero' ? (
+                    <button
+                      type="button"
+                      onClick={() => setSortDesc(value => !value)}
+                      className="font-semibold hover:text-gray-800"
+                      title="Ordina per numero"
+                    >
+                      # {sortDesc ? '↓' : '↑'}
+                    </button>
+                  ) : column.label}
+                  {column.key !== 'azioni' && (
+                    <span
+                      onMouseDown={event => {
+                        event.preventDefault()
+                        resizeColumn(column.key, event.clientX, event.currentTarget.parentElement.offsetWidth)
+                      }}
+                      onDoubleClick={() => {
+                        const next = { ...widths, [column.key]: DEFAULT_WIDTHS[column.key] }
+                        setWidths(next)
+                        localStorage.setItem(WIDTHS_KEY, JSON.stringify(next))
+                      }}
+                      className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-amber-200"
+                    />
+                  )}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {documenti.length === 0 ? (
               <tr><td colSpan="8" className="text-center text-gray-400 py-8">Nessun documento</td></tr>
             ) : (
-              documenti.map(doc => (
+              sorted.map(doc => (
                 <tr key={doc._id} className="border-t hover:bg-gray-50">
                   <td className="p-3">
                     <button
@@ -180,9 +253,9 @@ export default function DocumentiPage() {
                     </button>
                   </td>
                   <td className="p-3 text-xs font-semibold text-gray-600">{doc.tipo}</td>
-                  <td className="p-3 font-medium">{doc.titolo}</td>
-                  <td className="p-3 text-xs">{doc.reparto || '-'}</td>
-                  <td className="p-3 text-xs">{doc.linea || '-'}</td>
+                  <td className="p-3 font-medium truncate" title={doc.titolo}>{doc.titolo}</td>
+                  <td className="p-3 text-xs truncate">{doc.reparto || '-'}</td>
+                  <td className="p-3 text-xs truncate">{doc.linea || '-'}</td>
                   <td className="p-3">
                     <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">v{doc.versione || 1}</span>
                   </td>
