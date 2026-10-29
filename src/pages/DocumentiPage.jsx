@@ -239,7 +239,7 @@ function OplChoiceModal({ onClose, onCreate, onImport, onSop }) {
   const options = [
     { title: 'Crea OPL', text: 'Compila la OPL nel sistema', onClick: onCreate },
     { title: 'Importa OPL da Excel', text: 'Una o più OPL, salvate come immagine', onClick: onImport },
-    { title: 'Importa SOP', text: 'PDF esportato da PowerPoint', onClick: onSop },
+    { title: 'Importa SOP', text: 'File PowerPoint o PDF', onClick: onSop },
   ]
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -285,17 +285,17 @@ function SopUploadModal({ onClose, onSaved }) {
 
   const pickFile = selected => {
     if (!selected) return
-    if (!/\.pdf$/i.test(selected.name)) {
-      alert('Carica il PDF. Da PowerPoint: File > Esporta > Crea PDF')
+    if (!/\.(pptx?|pdf)$/i.test(selected.name)) {
+      alert('Formato non supportato. Carica un file PowerPoint o PDF')
       return
     }
     setFile(selected)
-    if (!form.titolo) set('titolo', selected.name.replace(/\.pdf$/i, ''))
+    if (!form.titolo) set('titolo', selected.name.replace(/\.(pptx?|pdf)$/i, ''))
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!file) return alert('Seleziona il PDF')
+    if (!file) return alert('Seleziona il file della SOP')
     if (!form.titolo.trim()) return alert('Inserisci il titolo')
     setSaving(true)
     try {
@@ -328,7 +328,7 @@ function SopUploadModal({ onClose, onSaved }) {
             onDragOver={event => event.preventDefault()}
             onDrop={event => { event.preventDefault(); pickFile(event.dataTransfer.files?.[0]) }}
           >
-            <input ref={fileRef} type="file" accept=".pdf,application/pdf" onChange={(e) => pickFile(e.target.files?.[0])} className="hidden" />
+            <input ref={fileRef} type="file" accept=".pptx,.ppt,.pdf" onChange={(e) => pickFile(e.target.files?.[0])} className="hidden" />
             {file ? (
               <div>
                 <FileText className="mx-auto text-red-600 mb-1" size={24} />
@@ -338,8 +338,8 @@ function SopUploadModal({ onClose, onSaved }) {
             ) : (
               <div className="text-gray-400 text-sm">
                 <Upload className="mx-auto mb-1" size={24} />
-                Trascina qui il PDF della SOP oppure clicca
-                <div className="text-xs mt-1">Da PowerPoint: File &gt; Esporta &gt; Crea PDF</div>
+                Trascina qui la SOP oppure clicca
+                <div className="text-xs mt-1">PowerPoint o PDF</div>
               </div>
             )}
           </div>
