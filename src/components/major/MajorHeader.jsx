@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 
-export default function MajorHeader({ major, onOpenData }) {
+export default function MajorHeader({ major, onOpenData, onOpenPlanning }) {
   const navigate = useNavigate()
   const location = [major.reparto, major.linea, major.macchina].filter(Boolean).join(' / ')
   return (
@@ -15,7 +15,10 @@ export default function MajorHeader({ major, onOpenData }) {
           <h1 className="mt-1 text-xl font-semibold text-gray-900 break-words">{major.titolo}</h1>
           {location && <p className="mt-1 text-sm text-gray-600">{location}</p>}
         </div>
-        <button type="button" onClick={onOpenData} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">Dati progetto</button>
+        <div className="flex gap-2">
+          <button type="button" onClick={onOpenPlanning} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">Pianificazione</button>
+          <button type="button" onClick={onOpenData} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">Dati progetto</button>
+        </div>
       </div>
     </header>
   )
