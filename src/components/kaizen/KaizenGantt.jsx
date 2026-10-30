@@ -98,7 +98,8 @@ function getBarPosition(ap, columns) {
 // ──────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ──────────────────────────────────────────────────────────
-export default function KaizenGantt({ kaizenId, kaizenNumero }) {
+export default function KaizenGantt({ kaizenId, kaizenNumero, parent = null }) {
+  const isMajor = Boolean(parent)
   const [actionPlans, setActionPlans] = useState([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState('week')
@@ -111,6 +112,9 @@ export default function KaizenGantt({ kaizenId, kaizenNumero }) {
   // { apId, mode: 'move' | 'resize-right' | 'resize-left', startX, originalStart, originalEnd }
 
   const containerRef = useRef(null)
+  const plansRef = useRef([])
+  const movedRef = useRef(false)
+  const yearSetRef = useRef(false)
 
   const columns = useMemo(() => buildColumns(view, year), [view, year])
   const totalWidth = columns.length * CELL_WIDTH
@@ -119,16 +123,31 @@ export default function KaizenGantt({ kaizenId, kaizenNumero }) {
   const loadAP = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await api.get(`/kaizens/${kaizenId}/action-plans`)
-      setActionPlans(res.data || [])
+      let list
+      if (isMajor) {
+        const res = await api.get('/action-plans/', { params: { parent_id: parent.parent_id } })
+        list = (res.data || [])
+          .filter(ap => ap.parent_type === parent.parent_type && ap.parent_id === parent.parent_id)
+          .sort((a, b) => new Date(a.data_inizio || a.data_scadenza || 0) - new Date(b.data_inizio || b.data_scadenza || 0))
+        const first = list.find(ap => ap.data_inizio || ap.data_scadenza)
+        if (first && !yearSetRef.current) {
+          yearSetRef.current = true
+          setYear(new Date(first.data_inizio || first.data_scadenza).getFullYear())
+        }
+      } else {
+        const res = await api.get(`/kaizens/${kaizenId}/action-plans`)
+        list = res.data || []
+      }
+      setActionPlans(list)
     } catch (err) {
       console.error('Errore caricamento AP:', err)
     } finally {
       setLoading(false)
     }
-  }, [kaizenId])
+  }, [kaizenId, isMajor, parent?.parent_id, parent?.parent_type])
 
   useEffect(() => { loadAP() }, [loadAP])
+  useEffect(() => { plansRef.current = actionPlans }, [actionPlans])
 
   // ──────────────────────────────────────────
   // DRAG: gestione mouse
@@ -137,6 +156,7 @@ export default function KaizenGantt({ kaizenId, kaizenNumero }) {
     e.preventDefault()
     e.stopPropagation()
     if (!ap.data_inizio || !ap.data_scadenza) return
+    movedRef.current = false
     setDragging({
       apId: ap._id,
       mode,
@@ -151,6 +171,7 @@ export default function KaizenGantt({ kaizenId, kaizenNumero }) {
 
     const onMove = (e) => {
       const deltaX = e.clientX - dragging.startX
+      if (Math.abs(deltaX) > 3) movedRef.current = true
       const totalRangeMs = columns[columns.length - 1].end.getTime() - columns[0].start.getTime()
       const deltaMs = (deltaX / totalWidth) * totalRangeMs
 
@@ -180,8 +201,8 @@ export default function KaizenGantt({ kaizenId, kaizenNumero }) {
 
     const onUp = async () => {
       // Salvataggio finale al backend
-      const ap = actionPlans.find(a => a._id === dragging.apId)
-      if (ap) {
+      const ap = plansRef.current.find(a => a._id === dragging.apId)
+      if (ap && movedRef.current) {
         try {
           await api.put(`/action-plans/${ap._id}`, {
             data_inizio: ap.data_inizio,
@@ -209,6 +230,11 @@ export default function KaizenGantt({ kaizenId, kaizenNumero }) {
   // Creazione nuovo AP
   // ──────────────────────────────────────────
   async function handleNewAP() {
+    if (isMajor) {
+      setEditingAP(null)
+      setShowForm(true)
+      return
+    }
     // Crea subito un AP "vuoto" con date di default e responsabile placeholder
     const today = new Date()
     const inDays14 = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000)
@@ -296,7 +322,7 @@ export default function KaizenGantt({ kaizenId, kaizenNumero }) {
       <div className="bg-white rounded-xl shadow overflow-hidden">
         {actionPlans.length === 0 ? (
           <div className="p-12 text-center text-gray-400">
-            <p className="mb-3">Nessun Action Plan ancora in questo Kaizen</p>
+            <p className="mb-3">Nessun Action Plan ancora in questo {isMajor ? 'progetto' : 'Kaizen'}</p>
             <button onClick={handleNewAP} className="text-primary hover:underline text-sm">
               + Crea il primo task
             </button>
@@ -379,6 +405,11 @@ export default function KaizenGantt({ kaizenId, kaizenNumero }) {
                             }}
                             onMouseDown={(e) => startDrag(e, ap, 'move')}
                             onClick={(e) => {
+                              if (movedRef.current) {
+                                movedRef.current = false
+                                e.stopPropagation()
+                                return
+                              }
                               if (!dragging) {
                                 e.stopPropagation()
                                 setEditingAP(ap)
@@ -461,7 +492,8 @@ export default function KaizenGantt({ kaizenId, kaizenNumero }) {
       {showForm && (
         <ActionPlanFormShared
           plan={editingAP?._id ? editingAP : null}
-          prefilledKaizen={!editingAP?._id ? { kaizen_id: kaizenId, kaizen_numero: kaizenNumero } : null}
+          prefilledKaizen={!isMajor && !editingAP?._id ? { kaizen_id: kaizenId, kaizen_numero: kaizenNumero } : null}
+          prefilledParent={isMajor && !editingAP?._id ? parent : null}
           onClose={() => { setShowForm(false); setEditingAP(null) }}
           onSaved={() => { setShowForm(false); setEditingAP(null); loadAP() }}
         />
