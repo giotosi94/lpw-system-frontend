@@ -78,7 +78,7 @@ function formatDate(value) {
   return value ? new Date(value).toLocaleDateString('it-IT') : 'Senza scadenza'
 }
 
-export default function BasicConditions({ stepData, onChange, major, allStepsData }) {
+export default function BasicConditions({ stepData, onChange, major, allStepsData, step }) {
   const [form, setForm] = useState(() => buildForm(stepData?.dati || {}))
   const [status, setStatus] = useState('saved')
   const [actionPlans, setActionPlans] = useState([])
@@ -420,6 +420,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
             linea: major?.linea || '',
             macchina: major?.macchina || '',
             titolo: formAnomaly.descrizione.trim().slice(0, 120),
+            gant_step_id: step?.step_id || null,
           }}
           prefilledKaizen={null}
           onClose={() => setFormAnomalyId(null)}
