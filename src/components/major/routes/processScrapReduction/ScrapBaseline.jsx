@@ -17,6 +17,7 @@ const input = 'w-full min-w-0 border border-gray-300 rounded px-2 py-2 text-sm b
 function initial(data, major) {
   return {
     ...data,
+    stain_tipi: data.stain_tipi || data.stain_snapshot?.tipi || ['rework', 'scarto', 'non_classificato'],
     definizione: data.definizione || { che_cosa: data.problema || '', dove: data.dove || data.perimetro || '', quando: data.quando || '', chi: data.coinvolti || '', quale: '', come: data.manifestazione || '' },
     manuale_da: data.manuale_da || '',
     manuale_a: data.manuale_a || '',
@@ -91,17 +92,18 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
   }, [])
 
   const loadStain = async () => {
+    if (!form.stain_tipi.length) { setStainError('Seleziona almeno un tipo di perdita'); return }
     if (!form.periodo_da || !form.periodo_a || !form.stain_linea) { setStainError('Seleziona periodo e linea STAIN'); return }
     if (form.periodo_da > form.periodo_a) { setStainError('Periodo non valido'); return }
     setStainBusy(true)
     setStainError('')
     try {
-      const res = await api.get('/stain/scarti', { params: { dal: form.periodo_da, al: form.periodo_a, linea: form.stain_linea } })
+      const res = await api.get('/stain/scarti', { params: { dal: form.periodo_da, al: form.periodo_a, linea: form.stain_linea, tipi: [...form.stain_tipi].sort().join(',') } })
       change({ stain_snapshot: res.data, priorita_stain: [] })
     } catch (error) { setStainError(error.response?.data?.detail || 'Caricamento STAIN non riuscito') }
     finally { setStainBusy(false) }
   }
-  const staleStain = form.stain_snapshot && (form.stain_snapshot.dal !== form.periodo_da || form.stain_snapshot.al !== form.periodo_a || form.stain_snapshot.linea !== form.stain_linea)
+  const staleStain = form.stain_snapshot && (form.stain_snapshot.dal !== form.periodo_da || form.stain_snapshot.al !== form.periodo_a || form.stain_snapshot.linea !== form.stain_linea || JSON.stringify([...(form.stain_snapshot.tipi || ['rework', 'scarto', 'non_classificato'])].sort()) !== JSON.stringify([...form.stain_tipi].sort()))
 
 function calculate(form, staleStain) {
     if (form.origine === 'stain') {
@@ -109,7 +111,7 @@ function calculate(form, staleStain) {
       const pareto = (snapshot?.pareto || []).map(row => ({ ...row, categoria: `${row.codice} - ${row.causale}`, quantita: row.kg, quantita_calcolata: row.kg }))
       const selected = pareto.filter(row => form.priorita.includes(row.categoria)).reduce((sum, row) => sum + row.quantita, 0)
       const issues = [...(snapshot?.warnings || [])]
-      if (staleStain) issues.push('Periodo o linea modificati: ricarica i dati STAIN.')
+      if (staleStain) issues.push('Periodo, linea o filtro modificati: clicca Carica da STAIN per aggiornare i risultati.')
       const baseline = !snapshot || issues.length || (form.perimetro_kpi === 'priorita' && !form.priorita.length) ? null : form.perimetro_kpi === 'priorita' ? selected : snapshot.totale_kg
       return { pareto, total: snapshot?.totale_kg || 0, selected, timeline: (snapshot?.andamento || []).map(row => ({ periodo: row.data, totale: row.kg })), baseline, issues, production: null }
     }
@@ -231,6 +233,10 @@ function calculate(form, staleStain) {
           {field('Periodo da', 'periodo_da', 'date')}{field('Periodo a', 'periodo_a', 'date')}
           <label className="text-sm">Linea STAIN<select className={`${input} mt-1`} value={form.stain_linea} onChange={event => change({ stain_linea: event.target.value })}><option value="">Seleziona linea macchina</option>{stainLines.map(row => <option key={`${row.reparto}-${row.valore}`} value={row.valore}>{row.nome} / {row.reparto}</option>)}</select></label>
         </div>
+          <fieldset className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-3" disabled={stainBusy}>
+            <legend className="text-sm font-medium mb-2">Tipo di perdita</legend>
+            {[['rework', 'Rework · Sacco blu e lilla'], ['scarto', 'Scarto · Sacco verde'], ['non_classificato', 'Altre causali']].map(([value, label]) => <label key={value} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.stain_tipi.includes(value)} onChange={event => change({ stain_tipi: event.target.checked ? [...form.stain_tipi, value] : form.stain_tipi.filter(item => item !== value) })} />{label}</label>)}
+          </fieldset>
         <button type="button" className={button} disabled={stainBusy} onClick={loadStain}>{stainBusy ? 'Caricamento...' : 'Carica da STAIN'}</button>
         {stainError && <p role="alert" className="mt-2 text-sm text-red-700">{stainError}</p>}
         {form.stain_snapshot && <p className="mt-3 text-sm text-gray-600">{form.stain_snapshot.linea.trim()} · {form.stain_snapshot.dal} / {form.stain_snapshot.al} · {fmt(form.stain_snapshot.totale_kg)} kg · Caricato {new Date(form.stain_snapshot.caricato_il).toLocaleString('it-IT')}</p>}
@@ -242,7 +248,7 @@ function calculate(form, staleStain) {
           {field('Periodo raccolta da', 'manuale_da', 'date')}{field('Periodo raccolta a', 'manuale_a', 'date')}
           <label className="text-sm">Unità raccolta manuale<select className={`${input} mt-1`} value={form.unita_manuale} onChange={event => change({ unita_manuale: event.target.value })}><option value="kg">kg</option><option value="pezzi">pezzi</option><option value="%">%</option></select></label>
         </div>
-        <p className="text-xs text-gray-600 mb-3">Rilevazioni sul campo, separate dai dati MES e mai sommate a STAIN. Il caricamento STAIN non modifica questa tabella.</p>
+
         <div className="flex flex-wrap gap-2 mb-3">
           <button type="button" className={button} onClick={() => change(current => ({ ...current, categorie_scarto: [...current.categorie_scarto, blank()] }))}>Aggiungi riga</button>
           <button type="button" className={button} onClick={() => file.current?.click()}>Importa Excel</button>
@@ -275,12 +281,19 @@ function calculate(form, staleStain) {
 }
 
 function AnalysisPanel({ analysis, unit, priorities, onPriorities }) {
+    const labelHeight = Math.max(170, Math.min(620, Math.max(0, ...analysis.pareto.map(row => String(row.categoria).length)) * 6 + 20))
+    const chartHeight = 280 + labelHeight
+    const chartMinWidth = Math.max(600, analysis.pareto.length * 70 + 130)
   return <div className="mt-4 space-y-3">
     {analysis.issues.length > 0 && <p role="alert" className="text-sm text-amber-800">{analysis.issues.join(' ')}</p>}
     {unit === '%' ? <p className="text-sm text-gray-600">Le percentuali restano singole rilevazioni: non vengono sommate. Per la baseline complessiva servono i denominatori di produzione.</p> : analysis.pareto.length ? <>
-      <div className="h-80"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.pareto} margin={{ top: 10, right: 10, bottom: 35, left: 0 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="categoria" tickFormatter={value => value.length > 24 ? `${value.slice(0, 24)}…` : value} /><YAxis yAxisId="quantity" /><YAxis yAxisId="percent" orientation="right" domain={[0, 100]} unit="%" /><Tooltip /><Legend /><Bar yAxisId="quantity" dataKey="quantita" name={`Quantità (${unit})`} fill="#76513b" /><Line yAxisId="percent" dataKey="cumulata" name="Cumulata %" stroke="#b57928" /></ComposedChart></ResponsiveContainer></div>
+        <div className="overflow-x-auto"><div style={{ height: chartHeight, minWidth: chartMinWidth }}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.pareto} margin={{ top: 10, right: 15, bottom: 15, left: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="categoria" interval={0} height={labelHeight} tick={<VerticalCategoryTick />} /><YAxis yAxisId="quantity" /><YAxis yAxisId="percent" orientation="right" domain={[0, 100]} unit="%" /><Tooltip /><Legend /><Bar yAxisId="quantity" dataKey="quantita" name={`Quantità (${unit})`} fill="#76513b" /><Line yAxisId="percent" dataKey="cumulata" name="Cumulata %" stroke="#b57928" /></ComposedChart></ResponsiveContainer></div></div>
       <div className="flex flex-wrap gap-x-5 gap-y-2">{analysis.pareto.map(row => <label key={row.categoria} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={priorities.includes(row.categoria)} onChange={event => onPriorities(event.target.checked ? [...priorities, row.categoria] : priorities.filter(value => value !== row.categoria))} />{row.categoria}</label>)}</div>
     </> : <p className="text-sm text-gray-500">Nessun dato disponibile per il Pareto.</p>}
     {unit !== '%' && analysis.timeline.length > 1 && <details><summary className="text-sm cursor-pointer">Andamento per periodo</summary><div className="h-60"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.timeline}><XAxis dataKey="periodo" /><YAxis /><Tooltip /><Line dataKey="totale" name={`Quantità (${unit})`} stroke="#76513b" /></ComposedChart></ResponsiveContainer></div></details>}
   </div>
+}
+
+function VerticalCategoryTick({ x, y, payload }) {
+  return <g transform={`translate(${x},${y})`}><text transform="rotate(-90)" x={-10} y={0} textAnchor="end" dominantBaseline="central" fontSize={11} fill="#4b5563">{payload?.value}</text></g>
 }
