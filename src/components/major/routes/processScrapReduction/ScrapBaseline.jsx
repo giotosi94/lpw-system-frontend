@@ -123,7 +123,7 @@ function calculate(form, staleStain) {
       if (!row.categoria.trim() && row.quantita === '') return
       if (!row.categoria.trim() || !valid(row.quantita)) { issues.push(`Riga ${index + 1}: indica scarto e quantità non negativa.`); return }
       const quantity = number(row.quantita)
-      const category = row.categoria.trim()
+      const category = `${row.categoria.trim()} · ${row.tipo === 'Rework' ? 'Rework' : 'Scarto'}`
       groups.set(category, (groups.get(category) || 0) + quantity)
       const period = row.periodo.trim()
       if (period) {
@@ -254,7 +254,7 @@ function calculate(form, staleStain) {
           <button type="button" className={button} onClick={() => file.current?.click()}>Importa Excel</button>
           <button type="button" className={button} onClick={() => exportExcel()}>Esporta Excel</button>
           <button type="button" className={button} onClick={() => exportExcel(true)}>Modello Excel</button>
-          <button type="button" className={button} onClick={print}>Stampa</button>
+          <a className={button} href="/modelli/Raccolta_manuale_A4.xlsx" download="Raccolta_manuale_A4.xlsx">Scheda A4 da compilare</a>
           <input ref={file} type="file" accept=".xlsx,.xls,.csv" onChange={importExcel} className="hidden" />
         </div>
         {errors.length > 0 && <div role="alert" className="text-sm text-red-700 mb-3">{errors.slice(0, 20).map((error, index) => <p key={index}>{error}</p>)}{errors.length > 20 && <p>Altri {errors.length - 20} errori. Nessuna riga importata.</p>}</div>}
@@ -282,6 +282,8 @@ function calculate(form, staleStain) {
 
 function lossColor(row) {
   const label = String(row.causale || row.categoria || '').toUpperCase()
+  if (label.endsWith(' · REWORK')) return '#2563eb'
+  if (label.endsWith(' · SCARTO')) return '#16a34a'
   if (row.tipo === 'rework' || /SACCO\s+(BLU|LILLA)/.test(label)) return '#2563eb'
   if (row.tipo === 'scarto' || /SACCO\s+VERDE/.test(label)) return '#16a34a'
   return '#76513b'
