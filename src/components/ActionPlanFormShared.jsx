@@ -15,7 +15,7 @@ const QUINTA_M = [
 
 export default function ActionPlanFormShared({ plan, onClose, onSaved, prefilledKaizen = null, prefilledParent = null }) {
 const [form, setForm] = useState({
-  titolo: plan?.titolo || '',
+  titolo: plan?.titolo || prefilledParent?.titolo || '',
   tipo: plan?.tipo || prefilledParent?.tipo || '',
   priorita: plan?.priorita || '',
   stato: plan?.stato || '',
