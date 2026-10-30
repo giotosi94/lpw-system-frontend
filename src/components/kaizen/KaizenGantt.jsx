@@ -98,8 +98,9 @@ function getBarPosition(ap, columns) {
 // ──────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ──────────────────────────────────────────────────────────
-export default function KaizenGantt({ kaizenId, kaizenNumero, parent = null }) {
+export default function KaizenGantt({ kaizenId, kaizenNumero, parent = null, phases = [] }) {
   const isMajor = Boolean(parent)
+  const phaseById = Object.fromEntries(phases.map(phase => [phase.step_id, phase]))
   const [actionPlans, setActionPlans] = useState([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState('week')
@@ -268,6 +269,10 @@ export default function KaizenGantt({ kaizenId, kaizenNumero, parent = null }) {
     return (offsetMs / totalRangeMs) * totalWidth
   }, [columns, totalWidth])
 
+  const visiblePlans = isMajor && phases.length
+    ? [...actionPlans].sort((a, b) => (phaseById[a.gant_step_id]?.ordine ?? 99) - (phaseById[b.gant_step_id]?.ordine ?? 99))
+    : actionPlans
+
   if (loading) {
     return <div className="bg-white rounded-xl shadow p-12 text-center text-gray-400">Caricamento Gantt...</div>
   }
@@ -334,14 +339,19 @@ export default function KaizenGantt({ kaizenId, kaizenNumero, parent = null }) {
               <div className="h-14 bg-gray-50 border-b flex items-center px-4 font-bold text-sm uppercase text-gray-600">
                 Action Plan
               </div>
-              {actionPlans.map((ap, idx) => (
+              {visiblePlans.map((ap, idx) => (
                 <div
                   key={ap._id}
                   className="border-b px-3 py-2 hover:bg-gray-50 cursor-pointer"
                   style={{ height: ROW_HEIGHT }}
                   onClick={() => { setEditingAP(ap); setShowForm(true) }}
                 >
-                  <div className="text-xs font-mono text-primary font-bold">{ap.numero}</div>
+                  <div className="text-xs font-mono text-primary font-bold">
+                    {ap.numero}
+                    {phaseById[ap.gant_step_id] && (
+                      <span className="ml-2 font-sans font-normal text-gray-500">Fase {phaseById[ap.gant_step_id].ordine} · {phaseById[ap.gant_step_id].titolo}</span>
+                    )}
+                  </div>
                   <div className="text-sm font-medium truncate">{ap.titolo}</div>
                   {ap.responsabile && (
                     <div className="text-[10px] text-gray-500 truncate">{ap.responsabile}</div>
@@ -371,7 +381,7 @@ export default function KaizenGantt({ kaizenId, kaizenNumero, parent = null }) {
 
                 {/* Righe + barre */}
                 <div className="relative">
-                  {actionPlans.map((ap, idx) => {
+                  {visiblePlans.map((ap, idx) => {
                     const pos = getBarPosition(ap, columns)
                     const color = getColorForAP(ap)
                     return (
