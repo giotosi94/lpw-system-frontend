@@ -2,7 +2,7 @@ import ProblemDefinition from '../../../kaizen/ProblemDefinition'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import api from '../../../../services/api'
 import * as XLSX from 'xlsx'
-import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts'
+import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Cell } from 'recharts'
 
 const HEADERS = ['Data', 'Prodotto', 'Formato', 'Operazione / fase macchina', 'Scarto / Rework', 'Quantità', 'Note']
 const KEYS = ['periodo', 'prodotto', 'formato', 'operazione', 'tipo', 'quantita', 'note']
@@ -280,6 +280,13 @@ function calculate(form, staleStain) {
   )
 }
 
+function lossColor(row) {
+  const label = String(row.causale || row.categoria || '').toUpperCase()
+  if (row.tipo === 'rework' || /SACCO\s+(BLU|LILLA)/.test(label)) return '#2563eb'
+  if (row.tipo === 'scarto' || /SACCO\s+VERDE/.test(label)) return '#16a34a'
+  return '#76513b'
+}
+
 function AnalysisPanel({ analysis, unit, priorities, onPriorities }) {
     const labelHeight = Math.max(170, Math.min(620, Math.max(0, ...analysis.pareto.map(row => String(row.categoria).length)) * 6 + 20))
     const chartHeight = 280 + labelHeight
@@ -287,7 +294,7 @@ function AnalysisPanel({ analysis, unit, priorities, onPriorities }) {
   return <div className="mt-4 space-y-3">
     {analysis.issues.length > 0 && <p role="alert" className="text-sm text-amber-800">{analysis.issues.join(' ')}</p>}
     {unit === '%' ? <p className="text-sm text-gray-600">Le percentuali restano singole rilevazioni: non vengono sommate. Per la baseline complessiva servono i denominatori di produzione.</p> : analysis.pareto.length ? <>
-        <div className="overflow-x-auto"><div style={{ height: chartHeight, minWidth: chartMinWidth }}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.pareto} margin={{ top: 10, right: 15, bottom: 15, left: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="categoria" interval={0} height={labelHeight} tick={<VerticalCategoryTick />} /><YAxis yAxisId="quantity" /><YAxis yAxisId="percent" orientation="right" domain={[0, 100]} unit="%" /><Tooltip /><Legend /><Bar yAxisId="quantity" dataKey="quantita" name={`Quantità (${unit})`} fill="#76513b" /><Line yAxisId="percent" dataKey="cumulata" name="Cumulata %" stroke="#b57928" /></ComposedChart></ResponsiveContainer></div></div>
+        <div className="overflow-x-auto"><div style={{ height: chartHeight, minWidth: chartMinWidth }}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.pareto} margin={{ top: 10, right: 15, bottom: 15, left: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="categoria" interval={0} height={labelHeight} tick={<VerticalCategoryTick />} /><YAxis yAxisId="quantity" /><Tooltip /><Legend /><Bar yAxisId="quantity" dataKey="quantita" name={`Quantità (${unit})`} fill="#64748b">{analysis.pareto.map(row => <Cell key={row.categoria} fill={lossColor(row)} />)}</Bar></ComposedChart></ResponsiveContainer></div></div>
       <div className="flex flex-wrap gap-x-5 gap-y-2">{analysis.pareto.map(row => <label key={row.categoria} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={priorities.includes(row.categoria)} onChange={event => onPriorities(event.target.checked ? [...priorities, row.categoria] : priorities.filter(value => value !== row.categoria))} />{row.categoria}</label>)}</div>
     </> : <p className="text-sm text-gray-500">Nessun dato disponibile per il Pareto.</p>}
     {unit !== '%' && analysis.timeline.length > 1 && <details><summary className="text-sm cursor-pointer">Andamento per periodo</summary><div className="h-60"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.timeline}><XAxis dataKey="periodo" /><YAxis /><Tooltip /><Line dataKey="totale" name={`Quantità (${unit})`} stroke="#76513b" /></ComposedChart></ResponsiveContainer></div></details>}
