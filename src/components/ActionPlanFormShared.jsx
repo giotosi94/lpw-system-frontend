@@ -26,6 +26,7 @@ const [form, setForm] = useState({
   reparto: plan?.reparto || prefilledParent?.reparto || '',
   linea: plan?.linea || prefilledParent?.linea || '',
   macchina: plan?.macchina || prefilledParent?.macchina || '',
+  data_inizio: plan?.data_inizio ? plan.data_inizio.slice(0, 10) : '',
   data_scadenza: plan?.data_scadenza ? plan.data_scadenza.slice(0, 10) : '',
   parent_type: plan?.parent_type || prefilledParent?.parent_type || 'standalone',
   parent_id: plan?.parent_id || prefilledParent?.parent_id || null,
@@ -91,10 +92,17 @@ const [form, setForm] = useState({
       alert('La scadenza è obbligatoria')
       return
     }
+    if (form.data_inizio && form.data_inizio > form.data_scadenza) {
+      alert('La data di inizio non può essere successiva alla scadenza')
+      return
+    }
     setSaving(true)
     try {
       const payload = {
         ...form,
+        data_inizio: form.data_inizio
+          ? new Date(form.data_inizio).toISOString()
+          : '',
         data_scadenza: form.data_scadenza
           ? new Date(form.data_scadenza).toISOString()
           : null,
@@ -315,15 +323,25 @@ const [form, setForm] = useState({
             </Field>
           </div>
 
-          <Field label="Scadenza *">
-            <input
-              required
-              type="date"
-              value={form.data_scadenza}
-              onChange={(e) => setForm({ ...form, data_scadenza: e.target.value })}
-              className="w-full border rounded-lg px-3 py-2"
-            />
-          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Inizio">
+              <input
+                type="date"
+                value={form.data_inizio}
+                onChange={(e) => setForm({ ...form, data_inizio: e.target.value })}
+                className="w-full border rounded-lg px-3 py-2"
+              />
+            </Field>
+            <Field label="Scadenza *">
+              <input
+                required
+                type="date"
+                value={form.data_scadenza}
+                onChange={(e) => setForm({ ...form, data_scadenza: e.target.value })}
+                className="w-full border rounded-lg px-3 py-2"
+              />
+            </Field>
+          </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t">
             <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg">
