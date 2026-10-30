@@ -1,3 +1,4 @@
+import ProblemDefinition from '../../../kaizen/ProblemDefinition'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import api from '../../../../services/api'
 import * as XLSX from 'xlsx'
@@ -16,6 +17,14 @@ const input = 'w-full min-w-0 border border-gray-300 rounded px-2 py-2 text-sm b
 function initial(data, major) {
   return {
     ...data,
+    definizione: data.definizione || { che_cosa: data.problema || '', dove: data.dove || data.perimetro || '', quando: data.quando || '', chi: data.coinvolti || '', quale: '', come: data.manifestazione || '' },
+    manuale_da: data.manuale_da || '',
+    manuale_a: data.manuale_a || '',
+    unita_manuale: data.unita_manuale || (data.origine === 'manuale' ? data.unita_misura : 'kg') || 'kg',
+    priorita_manuali: data.priorita_manuali || (data.origine === 'manuale' ? data.priorita : []) || [],
+    priorita_stain: data.priorita_stain || (data.origine === 'stain' ? data.priorita : []) || [],
+    baseline_fonte: data.baseline_fonte || data.origine || 'stain',
+
     origine: data.origine || 'manuale',
     stain_linea: data.stain_linea || '',
     stain_snapshot: data.stain_snapshot || null,
@@ -74,13 +83,12 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
   const updateRow = (id, key, value) => change(current => ({ ...current, categorie_scarto: current.categorie_scarto.map(row => row.id === id ? { ...row, [key]: value } : row) }))
 
   useEffect(() => {
-    if (form.origine !== 'stain') return
     let cancelled = false
     api.get('/stain/linee').then(res => {
       if (!cancelled) { setStainLines(res.data || []); setStainError('') }
     }).catch(error => { if (!cancelled) setStainError(error.response?.data?.detail || 'Impossibile caricare le linee STAIN') })
     return () => { cancelled = true }
-  }, [form.origine])
+  }, [])
 
   const loadStain = async () => {
     if (!form.periodo_da || !form.periodo_a || !form.stain_linea) { setStainError('Seleziona periodo e linea STAIN'); return }
@@ -89,13 +97,13 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
     setStainError('')
     try {
       const res = await api.get('/stain/scarti', { params: { dal: form.periodo_da, al: form.periodo_a, linea: form.stain_linea } })
-      change({ stain_snapshot: res.data, unita_misura: 'kg', metrica: 'quantita', priorita: [], fonte_dati: 'STAIN' })
+      change({ stain_snapshot: res.data, priorita_stain: [] })
     } catch (error) { setStainError(error.response?.data?.detail || 'Caricamento STAIN non riuscito') }
     finally { setStainBusy(false) }
   }
-  const staleStain = form.origine === 'stain' && form.stain_snapshot && (form.stain_snapshot.dal !== form.periodo_da || form.stain_snapshot.al !== form.periodo_a || form.stain_snapshot.linea !== form.stain_linea)
+  const staleStain = form.stain_snapshot && (form.stain_snapshot.dal !== form.periodo_da || form.stain_snapshot.al !== form.periodo_a || form.stain_snapshot.linea !== form.stain_linea)
 
-  const analysis = useMemo(() => {
+function calculate(form, staleStain) {
     if (form.origine === 'stain') {
       const snapshot = form.stain_snapshot
       const pareto = (snapshot?.pareto || []).map(row => ({ ...row, categoria: `${row.codice} - ${row.causale}`, quantita: row.kg, quantita_calcolata: row.kg }))
@@ -142,17 +150,24 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
     const numerator = form.perimetro_kpi === 'priorita' ? selected : total
     const baseline = form.unita_misura === '%' ? null : issues.length || (form.perimetro_kpi === 'priorita' && !form.priorita.length) ? null : form.metrica === 'percentuale' ? production ? numerator / production * 100 : null : pareto.length ? numerator : null
     return { pareto, total, selected, timeline, baseline, issues, production }
-  }, [form, staleStain])
+  }
 
+
+  const stainAnalysis = useMemo(() => calculate({ ...form, origine: 'stain', priorita: form.priorita_stain }, staleStain), [form, staleStain])
+  const manualAnalysis = useMemo(() => calculate({ ...form, origine: 'manuale', unita_misura: form.unita_manuale, priorita: form.priorita_manuali, metrica: 'quantita' }, false), [form])
+  const analysis = form.baseline_fonte === 'stain' ? stainAnalysis : manualAnalysis
+  const baselineUnit = form.baseline_fonte === 'stain' ? 'kg' : form.unita_manuale
+  const baselinePriorities = form.baseline_fonte === 'stain' ? form.priorita_stain : form.priorita_manuali
   const save = async () => {
-    if (staleStain) { setStatus('Ricarica i dati STAIN per il periodo e la linea selezionati'); return }
-    if (form.target !== '' && (!valid(form.target) || (form.unita_misura === '%' && number(form.target) > 100))) { setStatus('Target non valido'); return }
+
+    if (form.target !== '' && (!valid(form.target) || (baselineUnit === '%' && number(form.target) > 100))) { setStatus('Target non valido'); return }
+    if (form.manuale_da && form.manuale_a && form.manuale_da > form.manuale_a) { setStatus('Periodo della raccolta manuale non valido'); return }
     if (form.periodo_da && form.periodo_a && form.periodo_da > form.periodo_a) { setStatus('Il periodo finale precede quello iniziale'); return }
     const currentRevision = revision.current
     setSaving(true)
     setStatus('Salvataggio...')
     try {
-      const result = await onChange({ dati: { ...form, baseline: analysis.baseline ?? '', perimetro: form.dove, quantita_totale: analysis.total, pareto: analysis.pareto, categoria_prioritaria: form.priorita[0] || '' }, output_compilati: { problema: !!form.problema.trim(), perimetro: !!form.dove.trim(), fonte_dati: !!form.fonte_dati.trim(), periodo: !!(form.periodo_da && form.periodo_a), pareto: analysis.pareto.length > 0, categoria_prioritaria: form.priorita.length > 0, baseline: analysis.baseline !== null, target: form.target !== '' } })
+      const result = await onChange({ dati: { ...form, origine: form.baseline_fonte, unita_misura: baselineUnit, priorita: baselinePriorities, problema: form.definizione.che_cosa || '', dove: form.definizione.dove || '', baseline: analysis.baseline ?? '', perimetro: form.definizione.dove, quantita_totale: analysis.total, pareto: analysis.pareto, categoria_prioritaria: baselinePriorities[0] || '' }, output_compilati: { problema: !!form.definizione.che_cosa?.trim(), perimetro: !!form.definizione.dove?.trim(), fonte_dati: !!form.fonte_dati.trim(), periodo: !!(form.periodo_da && form.periodo_a), pareto: analysis.pareto.length > 0, categoria_prioritaria: baselinePriorities.length > 0, baseline: analysis.baseline !== null, target: form.target !== '' } })
       if (result === false) throw new Error('Salvataggio non riuscito')
       dirty.current = revision.current !== currentRevision
       setStatus(dirty.current ? 'Nuove modifiche da salvare' : 'Salvato')
@@ -164,7 +179,7 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
     const workbook = XLSX.utils.book_new()
     const rows = template ? [] : form.categorie_scarto.map(row => KEYS.map(key => row[key]))
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([HEADERS, ...rows]), 'Scarti')
-    if (!template && form.origine === 'stain' && form.stain_snapshot) XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(form.stain_snapshot.pareto), 'STAIN Pareto')
+    if (!template && form.stain_snapshot) XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(form.stain_snapshot.pareto), 'STAIN Pareto')
     XLSX.writeFile(workbook, template ? 'Modello_scarti.xlsx' : 'Dati_scarti.xlsx')
   }
   const importExcel = async event => {
@@ -178,7 +193,7 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
       if (!HEADERS.every((header, index) => String(matrix[0]?.[index] || '').trim() === header)) throw new Error('Intestazioni diverse dal modello. Scarica il modello e mantieni le colonne.')
       if (matrix.length > 5001) throw new Error('Massimo 5000 righe per importazione')
       const rows = matrix.slice(1).filter(row => row.some(value => String(value).trim())).map(row => Object.fromEntries([['id', uid()], ...KEYS.map((key, index) => [key, String(row[index] ?? '').trim()])]))
-      const problems = rows.flatMap((row, index) => !row.prodotto || !/^\d{4}-\d{2}-\d{2}$/.test(row.periodo) || !valid(row.quantita) || (form.unita_misura === '%' && number(row.quantita) > 100) || !['Scarto', 'Rework'].includes(row.tipo) ? [`Riga ${index + 2}: controlla data (AAAA-MM-GG), prodotto, quantità e tipo (Scarto/Rework).`] : [])
+      const problems = rows.flatMap((row, index) => !row.prodotto || !/^\d{4}-\d{2}-\d{2}$/.test(row.periodo) || !valid(row.quantita) || (form.unita_manuale === '%' && number(row.quantita) > 100) || !['Scarto', 'Rework'].includes(row.tipo) ? [`Riga ${index + 2}: controlla data (AAAA-MM-GG), prodotto, quantità e tipo (Scarto/Rework).`] : [])
       setErrors(problems)
       setPending(problems.length ? null : rows)
     } catch (error) { setPending(null); setErrors([error.message || 'File non leggibile']) }
@@ -190,11 +205,11 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
     title.textContent = `${major?.titolo || 'Major Kaizen'} - Definire`
     popup.document.body.appendChild(title)
     const summary = popup.document.createElement('p')
-    summary.textContent = `${form.problema}\nPeriodo: ${form.periodo_da} / ${form.periodo_a}. Fonte: ${form.fonte_dati}. Unità: ${form.unita_misura}. Baseline: ${fmt(analysis.baseline)}. Target: ${form.target}`
+    summary.textContent = `${form.definizione.che_cosa || ''}\nRaccolta manuale: ${form.manuale_da} / ${form.manuale_a}. Unità: ${form.unita_manuale}. Baseline (${form.baseline_fonte}): ${fmt(analysis.baseline)} ${baselineUnit}. Target: ${form.target}`
     popup.document.body.appendChild(summary)
     const table = popup.document.createElement('table')
     table.style.borderCollapse = 'collapse'
-    ;(form.origine === 'stain' ? [['Codice', 'Causale', 'kg', 'Cumulata %'], ...(form.stain_snapshot?.pareto || []).map(row => [row.codice, row.causale, row.kg, row.cumulata ?? ''])] : [HEADERS, ...form.categorie_scarto.map(row => KEYS.map(key => row[key]))]).forEach((values, index) => {
+    ;[HEADERS, ...form.categorie_scarto.map(row => KEYS.map(key => row[key]))].forEach((values, index) => {
       const tr = popup.document.createElement('tr')
       values.forEach(value => { const cell = popup.document.createElement(index ? 'td' : 'th'); cell.textContent = String(value); cell.style.cssText = 'border:1px solid #aaa;padding:6px;font:12px sans-serif'; tr.appendChild(cell) })
       table.appendChild(tr)
@@ -209,28 +224,25 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
 
   return (
     <div ref={printArea} className="space-y-7">
-      <section className="border-b pb-5">
-        <h3 className="font-semibold mb-3">1. Definire il problema</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {[['Cosa: difetto osservato e risultato atteso', 'problema'], ['Dove: operazione, componente e zona', 'dove'], ['Quando: condizioni in cui compare', 'quando'], ['Chi / cosa: prodotti, formati o postazioni coinvolti', 'coinvolti'], ['Come si manifesta', 'manifestazione'], ['Perché è un problema: impatto, non causa', 'impatto']].map(([label, key]) => <label key={key} className="block text-sm">{label}<textarea rows={2} className={`${input} mt-1`} value={form[key]} onChange={event => change({ [key]: event.target.value })} /></label>)}
-        </div>
-      </section>
-      <section className="border-b pb-5">
-        <h3 className="font-semibold mb-3">2. Scarti e dati</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+      <ProblemDefinition value={form.definizione} onChange={value => change({ definizione: value })} />
+      <section className="bg-white border border-gray-300 rounded-lg p-4 md:p-5">
+        <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">PASSO 2 - ANALISI DEI DATI STAIN</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
           {field('Periodo da', 'periodo_da', 'date')}{field('Periodo a', 'periodo_a', 'date')}
-          <label className="text-sm">Origine dati<select className={`${input} mt-1`} value={form.origine} onChange={event => change({ origine: event.target.value, priorita: [], unita_misura: event.target.value === 'stain' ? 'kg' : form.unita_misura, metrica: 'quantita' })}><option value="manuale">Raccolta manuale</option><option value="stain">STAIN</option></select></label>
-          <label className="text-sm">Unità<select className={`${input} mt-1`} disabled={form.origine === 'stain'} value={form.unita_misura} onChange={event => change({ unita_misura: event.target.value, metrica: 'quantita' })}><option value="kg">kg</option><option value="pezzi">pezzi</option><option value="%">%</option></select></label>
-          {form.origine === 'manuale' && field('Fonte dati', 'fonte_dati')}
-          </div>
-          {form.origine === 'stain' && <div className="space-y-3 mb-4">
-            <div className="flex flex-wrap items-end gap-3"><label className="text-sm flex-1">Linea STAIN<select className={`${input} mt-1`} value={form.stain_linea} onChange={event => change({ stain_linea: event.target.value })}><option value="">Seleziona la linea macchina</option>{stainLines.map(row => <option key={`${row.reparto}-${row.valore}`} value={row.valore}>{row.nome} / {row.reparto}</option>)}</select></label><button type="button" className={button} disabled={stainBusy} onClick={loadStain}>{stainBusy ? 'Caricamento...' : 'Carica da STAIN'}</button></div>
-            {stainError && <p role="alert" className="text-sm text-red-700">{stainError}</p>}
-            {form.stain_snapshot && <p className="text-sm text-gray-600">Snapshot: {form.stain_snapshot.linea.trim()} · {form.stain_snapshot.dal} / {form.stain_snapshot.al} · {form.stain_snapshot.righe_origine} righe · {fmt(form.stain_snapshot.totale_kg)} kg. Caricato: {new Date(form.stain_snapshot.caricato_il).toLocaleString('it-IT')}. Salva fase per conservarlo.</p>}
-            <p className="text-xs text-gray-500">Escluse le linee duplicate “Linea Bindler”. Il Pareto usa le causali MES; la percentuale sulla produzione non è ancora disponibile.</p>
-          </div>}
-          <div className="mt-5 border-t border-gray-200 pt-4"><h4 className="font-semibold text-sm mb-3">Raccolta manuale</h4>
-          <p className="text-xs text-gray-600 mb-3">Dati separati da STAIN: non vengono sommati al MES. Date Excel in formato AAAA-MM-GG. Le percentuali non vengono sommate né usate per un Pareto quantitativo.</p>
+          <label className="text-sm">Linea STAIN<select className={`${input} mt-1`} value={form.stain_linea} onChange={event => change({ stain_linea: event.target.value })}><option value="">Seleziona linea macchina</option>{stainLines.map(row => <option key={`${row.reparto}-${row.valore}`} value={row.valore}>{row.nome} / {row.reparto}</option>)}</select></label>
+        </div>
+        <button type="button" className={button} disabled={stainBusy} onClick={loadStain}>{stainBusy ? 'Caricamento...' : 'Carica da STAIN'}</button>
+        {stainError && <p role="alert" className="mt-2 text-sm text-red-700">{stainError}</p>}
+        {form.stain_snapshot && <p className="mt-3 text-sm text-gray-600">{form.stain_snapshot.linea.trim()} · {form.stain_snapshot.dal} / {form.stain_snapshot.al} · {fmt(form.stain_snapshot.totale_kg)} kg · Caricato {new Date(form.stain_snapshot.caricato_il).toLocaleString('it-IT')}</p>}
+        <AnalysisPanel analysis={stainAnalysis} unit="kg" priorities={form.priorita_stain} onPriorities={value => change({ priorita_stain: value })} />
+      </section>
+      <section className="bg-white border-2 border-primary rounded-lg p-4 md:p-5">
+        <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">PASSO 3 - RACCOLTA MANUALE</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          {field('Periodo raccolta da', 'manuale_da', 'date')}{field('Periodo raccolta a', 'manuale_a', 'date')}
+          <label className="text-sm">Unità raccolta manuale<select className={`${input} mt-1`} value={form.unita_manuale} onChange={event => change({ unita_manuale: event.target.value })}><option value="kg">kg</option><option value="pezzi">pezzi</option><option value="%">%</option></select></label>
+        </div>
+        <p className="text-xs text-gray-600 mb-3">Rilevazioni sul campo, separate dai dati MES e mai sommate a STAIN. Il caricamento STAIN non modifica questa tabella.</p>
         <div className="flex flex-wrap gap-2 mb-3">
           <button type="button" className={button} onClick={() => change(current => ({ ...current, categorie_scarto: [...current.categorie_scarto, blank()] }))}>Aggiungi riga</button>
           <button type="button" className={button} onClick={() => file.current?.click()}>Importa Excel</button>
@@ -241,28 +253,34 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
         </div>
         {errors.length > 0 && <div role="alert" className="text-sm text-red-700 mb-3">{errors.slice(0, 20).map((error, index) => <p key={index}>{error}</p>)}{errors.length > 20 && <p>Altri {errors.length - 20} errori. Nessuna riga importata.</p>}</div>}
         {pending && <div className="border p-3 mb-3 text-sm"><p>{pending.length} righe valide. Prime righe: {pending.slice(0, 3).map(row => `${row.prodotto}: ${row.quantita}`).join('; ')}</p><div className="flex gap-2 mt-2"><button type="button" className={button} onClick={() => { change(current => ({ ...current, categorie_scarto: [...current.categorie_scarto, ...pending] })); setPending(null) }}>Aggiungi ai dati</button><button type="button" className={button} onClick={() => { if (confirm('Sostituire tutte le righe attuali?')) { change({ categorie_scarto: pending }); setPending(null) } }}>Sostituisci dati</button><button type="button" className={button} onClick={() => setPending(null)}>Annulla</button></div></div>}
-        <div className="overflow-x-auto"><table className="w-full text-sm min-w-[1100px]"><thead><tr>{HEADERS.map(header => <th key={header} className="text-left p-2 border-b font-medium">{header === 'Quantità' ? `Quantità (${form.unita_misura})` : header}</th>)}<th className="p-2 border-b">Azioni</th></tr></thead><tbody>{form.categorie_scarto.map(row => <tr key={row.id}>{KEYS.map(key => <td key={key} className="p-1 border-b">{key === 'tipo' ? <select className={input} value={row.tipo} onChange={event => updateRow(row.id, key, event.target.value)}><option>Scarto</option><option>Rework</option></select> : <input aria-label={HEADERS[KEYS.indexOf(key)]} className={input} value={row[key]} type={key === 'periodo' ? 'date' : key === 'quantita' ? 'number' : 'text'} min="0" step="any" onChange={event => updateRow(row.id, key, event.target.value)} />}</td>)}<td className="p-2"><button type="button" className="text-red-700 text-xs" onClick={() => change(current => ({ ...current, categorie_scarto: current.categorie_scarto.filter(item => item.id !== row.id) }))}>Elimina</button></td></tr>)}</tbody></table></div>
-          </div>
-        {analysis.issues.length > 0 && <p role="alert" className="text-red-700 text-sm mt-2">{analysis.issues.slice(0, 5).join(' ')}</p>}
-      </section>
-      <section className="border-b pb-5">
-        <h3 className="font-semibold mb-3">3. Scegliere le priorità</h3>
-          {form.origine === 'manuale' && <label className="block text-sm mb-3">Raggruppa per<select className={`${input} mt-1 max-w-sm`} value={form.raggruppamento} onChange={event => change({ raggruppamento: event.target.value, priorita: [] })}><option value="prodotto">Prodotto</option><option value="formato">Formato</option><option value="operazione">Operazione / fase macchina</option></select></label>}
-          {form.unita_misura === '%' && form.origine === 'manuale' ? <p className="text-sm text-gray-600">Percentuali per rilevazione: nessuna somma o cumulata. Per una baseline complessiva servono i denominatori di produzione.</p> : analysis.pareto.length ? <><div className="h-72"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.pareto} margin={{ top: 10, right: 15, bottom: 25, left: 0 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="categoria" /><YAxis yAxisId="quantita" /><YAxis yAxisId="percentuale" orientation="right" domain={[0, 100]} unit="%" /><Tooltip /><Legend /><Bar yAxisId="quantita" dataKey="quantita" name={`Scarto (${form.unita_misura || 'quantità'})`} fill="#76513b" /><Line yAxisId="percentuale" dataKey="cumulata" name="Cumulata %" stroke="#b57928" /></ComposedChart></ResponsiveContainer></div><div className="flex flex-wrap gap-4 mt-3">{analysis.pareto.map(row => <label key={row.categoria} className="text-sm flex gap-2 items-center"><input type="checkbox" checked={form.priorita.includes(row.categoria)} onChange={event => change({ priorita: event.target.checked ? [...form.priorita, row.categoria] : form.priorita.filter(value => value !== row.categoria) })} />{row.categoria}</label>)}</div></> : <p className="text-sm text-gray-500">Inserisci gli scarti e le quantità per costruire il Pareto.</p>}
-        {form.unita_misura !== '%' && analysis.timeline.length > 1 && <details className="mt-4"><summary className="text-sm cursor-pointer">Andamento per periodo</summary><p className="text-xs text-gray-500 mt-2">Confronta solo periodi della stessa durata e con esposizione comparabile.</p><div className="h-60"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.timeline}><XAxis dataKey="periodo" /><YAxis /><Tooltip /><Line dataKey="totale" name="Scarto totale" stroke="#76513b" /></ComposedChart></ResponsiveContainer></div></details>}
+        <div className="overflow-x-auto"><table className="w-full text-sm min-w-[1100px]"><thead><tr>{HEADERS.map(header => <th key={header} className="text-left p-2 border-b font-medium">{header === 'Quantità' ? `Quantità (${form.unita_manuale})` : header}</th>)}<th className="p-2 border-b">Azioni</th></tr></thead><tbody>{form.categorie_scarto.map(row => <tr key={row.id}>{KEYS.map(key => <td key={key} className="p-1 border-b">{key === 'tipo' ? <select className={input} value={row.tipo} onChange={event => updateRow(row.id, key, event.target.value)}><option>Scarto</option><option>Rework</option></select> : <input aria-label={HEADERS[KEYS.indexOf(key)]} className={input} value={row[key]} type={key === 'periodo' ? 'date' : key === 'quantita' ? 'number' : 'text'} min="0" step="any" onChange={event => updateRow(row.id, key, event.target.value)} />}</td>)}<td className="p-2"><button type="button" className="text-red-700 text-xs" onClick={() => change(current => ({ ...current, categorie_scarto: current.categorie_scarto.filter(item => item.id !== row.id) }))}>Elimina</button></td></tr>)}</tbody></table></div>
+        <label className="block text-sm mt-4">Raggruppa raccolta manuale per<select className={`${input} mt-1 max-w-sm`} value={form.raggruppamento} onChange={event => change({ raggruppamento: event.target.value, priorita_manuali: [] })}><option value="prodotto">Prodotto</option><option value="formato">Formato</option><option value="operazione">Operazione / fase macchina</option></select></label>
+        <AnalysisPanel analysis={manualAnalysis} unit={form.unita_manuale} priorities={form.priorita_manuali} onPriorities={value => change({ priorita_manuali: value })} />
       </section>
       <section>
-        <h3 className="font-semibold mb-3">4. Baseline e obiettivo</h3>
+        <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">PASSO 4 - PRIORITÀ E OBIETTIVO</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <label className="text-sm">KPI<output className={`${input} mt-1 block`}>{form.unita_misura === '%' ? 'Percentuale per rilevazione' : 'Quantità di scarto / rework'}</output></label>
+          <label className="text-sm">Fonte baseline<select className={`${input} mt-1`} value={form.baseline_fonte} onChange={event => change({ baseline_fonte: event.target.value, target: '' })}><option value="stain">STAIN</option><option value="manuale">Raccolta manuale</option></select></label>
+          <label className="text-sm">KPI<output className={`${input} mt-1 block`}>{baselineUnit === '%' ? 'Percentuale per rilevazione' : 'Quantità di scarto / rework'}</output></label>
           <label className="text-sm">Perimetro<select className={`${input} mt-1`} value={form.perimetro_kpi} onChange={event => change({ perimetro_kpi: event.target.value })}><option value="totale">Tutte le categorie</option><option value="priorita">Categorie prioritarie</option></select></label>
-          <label className="text-sm">Baseline calcolata<output className={`${input} mt-1 block bg-gray-50`}>{fmt(analysis.baseline)} {form.unita_misura}</output></label>
+          <label className="text-sm">Baseline calcolata<output className={`${input} mt-1 block bg-gray-50`}>{fmt(analysis.baseline)} {baselineUnit}</output></label>
           {field('Target', 'target', 'number')}{field('Scadenza', 'scadenza', 'date')}
         </div>
-        {form.unita_misura === '%' && analysis.production === null && <p className="text-sm text-amber-800 mt-2">Baseline complessiva non calcolata: mancano i denominatori di produzione.</p>}
+        {baselineUnit === '%' && analysis.production === null && <p className="text-sm text-amber-800 mt-2">Baseline complessiva non calcolata: mancano i denominatori di produzione.</p>}
         {reduction !== null && <p className="text-sm mt-3">Riduzione attesa rispetto alla baseline: {fmt(reduction)}%.</p>}
       </section>
       <div className="flex flex-wrap justify-end items-center gap-3 border-t pt-4"><span role="status" className="text-sm">{status}</span><button type="button" className="bg-primary text-white px-4 py-2 rounded disabled:opacity-50" disabled={saving} onClick={save}>{saving ? 'Salvataggio...' : 'Salva fase'}</button></div>
     </div>
   )
+}
+
+function AnalysisPanel({ analysis, unit, priorities, onPriorities }) {
+  return <div className="mt-4 space-y-3">
+    {analysis.issues.length > 0 && <p role="alert" className="text-sm text-amber-800">{analysis.issues.join(' ')}</p>}
+    {unit === '%' ? <p className="text-sm text-gray-600">Le percentuali restano singole rilevazioni: non vengono sommate. Per la baseline complessiva servono i denominatori di produzione.</p> : analysis.pareto.length ? <>
+      <div className="h-80"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.pareto} margin={{ top: 10, right: 10, bottom: 35, left: 0 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="categoria" tickFormatter={value => value.length > 24 ? `${value.slice(0, 24)}…` : value} /><YAxis yAxisId="quantity" /><YAxis yAxisId="percent" orientation="right" domain={[0, 100]} unit="%" /><Tooltip /><Legend /><Bar yAxisId="quantity" dataKey="quantita" name={`Quantità (${unit})`} fill="#76513b" /><Line yAxisId="percent" dataKey="cumulata" name="Cumulata %" stroke="#b57928" /></ComposedChart></ResponsiveContainer></div>
+      <div className="flex flex-wrap gap-x-5 gap-y-2">{analysis.pareto.map(row => <label key={row.categoria} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={priorities.includes(row.categoria)} onChange={event => onPriorities(event.target.checked ? [...priorities, row.categoria] : priorities.filter(value => value !== row.categoria))} />{row.categoria}</label>)}</div>
+    </> : <p className="text-sm text-gray-500">Nessun dato disponibile per il Pareto.</p>}
+    {unit !== '%' && analysis.timeline.length > 1 && <details><summary className="text-sm cursor-pointer">Andamento per periodo</summary><div className="h-60"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.timeline}><XAxis dataKey="periodo" /><YAxis /><Tooltip /><Line dataKey="totale" name={`Quantità (${unit})`} stroke="#76513b" /></ComposedChart></ResponsiveContainer></div></details>}
+  </div>
 }
