@@ -250,11 +250,9 @@ function calculate(form, staleStain) {
         </div>
 
         <div className="flex flex-wrap gap-2 mb-3">
-          <button type="button" className={button} onClick={() => change(current => ({ ...current, categorie_scarto: [...current.categorie_scarto, blank()] }))}>Aggiungi riga</button>
+          <button type="button" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" onClick={() => change(current => ({ ...current, categorie_scarto: [...current.categorie_scarto, blank()] }))}>Aggiungi riga</button>
           <button type="button" className={button} onClick={() => file.current?.click()}>Importa Excel</button>
-          <button type="button" className={button} onClick={() => exportExcel()}>Esporta Excel</button>
-          <button type="button" className={button} onClick={() => exportExcel(true)}>Modello Excel</button>
-          <a className={button} href="/modelli/Raccolta_manuale_A4.xlsx" download="Raccolta_manuale_A4.xlsx">Scheda A4 da compilare</a>
+          <a className="inline-flex items-center rounded-lg border-2 border-primary bg-white px-4 py-2 text-sm font-semibold text-primary hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" href="/modelli/Raccolta_manuale_A4.xlsx" download="Raccolta_manuale_A4.xlsx">Scheda da stampare</a>
           <input ref={file} type="file" accept=".xlsx,.xls,.csv" onChange={importExcel} className="hidden" />
         </div>
         {errors.length > 0 && <div role="alert" className="text-sm text-red-700 mb-3">{errors.slice(0, 20).map((error, index) => <p key={index}>{error}</p>)}{errors.length > 20 && <p>Altri {errors.length - 20} errori. Nessuna riga importata.</p>}</div>}
