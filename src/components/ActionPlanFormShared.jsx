@@ -33,6 +33,7 @@ const [form, setForm] = useState({
   parent_label: plan?.parent_label || prefilledParent?.parent_label || null,
   pillar_id: plan?.pillar_id || prefilledParent?.pillar_id || null,
   dashboard_id: plan?.dashboard_id || prefilledParent?.dashboard_id || null,
+  gant_step_id: plan?.gant_step_id || prefilledParent?.gant_step_id || null,
 })
   const [saving, setSaving] = useState(false)
   const { configs } = useAllConfigurations()
