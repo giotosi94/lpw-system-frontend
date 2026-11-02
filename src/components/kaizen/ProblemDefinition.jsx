@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useId } from 'react'
 import { Info } from 'lucide-react'
 
-const CINQUE_W_UNA_H = {
+export const CINQUE_W_UNA_H = {
   che_cosa: {
     titolo: 'CHE COSA?',
     domanda: 'Che cosa non funziona esattamente?',
@@ -82,12 +82,12 @@ function Help({ info }) {
   </span>
 }
 
-export default function ProblemDefinition({ value = {}, onChange, title = 'PASSO 1 - DEFINIZIONE DEL PROBLEMA' }) {
+export default function ProblemDefinition({ value = {}, onChange, title = 'PASSO 1 - DEFINIZIONE DEL PROBLEMA', guides = CINQUE_W_UNA_H }) {
   const id = useId()
   return <section className="bg-white border border-gray-200 rounded-lg p-4 md:p-5">
     <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">{title}</h3>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-3">
-      {Object.entries(CINQUE_W_UNA_H).map(([key, info]) => <div key={key}>
+      {Object.entries(guides).map(([key, info]) => <div key={key}>
         <div className="flex items-center gap-1.5 text-sm font-bold text-gray-600 uppercase mb-1"><label htmlFor={`${id}-${key}`}>{info.titolo}</label><Help info={info} /></div>
         <textarea id={`${id}-${key}`} value={value[key] || ''} onChange={event => onChange({ ...value, [key]: event.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
       </div>)}
