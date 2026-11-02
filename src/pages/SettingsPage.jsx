@@ -22,7 +22,7 @@ const SECTIONS = [
         label: 'Reparti / Linee / Macchine',
         color: 'indigo',
         isRepartiTree: true,
-        description: 'Struttura gerarchica della fabbrica (3 livelli)',
+        description: 'Struttura gerarchica della fabbrica: reparto, linea, macchina e componenti',
         usedIn: ['Action Plan', 'Kaizen', 'Documenti', 'Filtri'],
       },
     ],
@@ -454,7 +454,7 @@ function RepartoCard({ reparto, allReparti = [], expanded, onToggle, expandedLin
   }
 
   async function handleDuplicateLinea(linea) {
-    const clonedMacchine = (linea.macchine || []).map(m => ({ ...m, id: genLocalId() }))
+    const clonedMacchine = (linea.macchine || []).map(m => ({ ...m, id: genLocalId(), componenti: (m.componenti || []).map(c => ({ ...c, id: genLocalId() })) }))
     try {
       await api.post(`/reparti/${reparto._id}/linee`, {
         nome: `${linea.nome} (copia)`,
@@ -633,7 +633,7 @@ function LineaCard({ reparto, allReparti = [], linea, expanded, onToggle, onEdit
   }
 
   async function copyFromLinea(sourceLinea, mode) {
-    const cloned = (sourceLinea.macchine || []).map(m => ({ ...m, id: genLocalId() }))
+    const cloned = (sourceLinea.macchine || []).map(m => ({ ...m, id: genLocalId(), componenti: (m.componenti || []).map(c => ({ ...c, id: genLocalId() })) }))
     const newMacchine = mode === 'replace' ? cloned : [...macchine, ...cloned]
     setShowCopyModal(false)
     await saveMacchine(newMacchine)
@@ -718,6 +718,11 @@ function LineaCard({ reparto, allReparti = [], linea, expanded, onToggle, onEdit
                   )}
                   {m.descrizione && (
                     <span className="text-[10px] text-gray-500 ml-2">{m.descrizione}</span>
+                  )}
+                  {(m.componenti || []).length > 0 && (
+                    <span className="text-[10px] text-gray-500 ml-2">
+                      {m.componenti.filter(c => c.attivo !== false).map(c => c.nome).join(' · ')}
+                    </span>
                   )}
                 </div>
                 <button
@@ -987,8 +992,25 @@ function MacchinaFormModal({ reparto, linea, macchina, onClose, onSaved }) {
     codice: macchina?.codice || '',
     descrizione: macchina?.descrizione || '',
     attivo: macchina?.attivo !== false,
+    componenti: macchina?.componenti || [],
   })
+  const [nuovaComponente, setNuovaComponente] = useState('')
   const [saving, setSaving] = useState(false)
+
+  function addComponente() {
+    const nome = nuovaComponente.trim()
+    if (!nome) return
+    if (form.componenti.some(c => c.nome.toLowerCase() === nome.toLowerCase())) {
+      setNuovaComponente('')
+      return
+    }
+    setForm({ ...form, componenti: [...form.componenti, { id: genLocalId(), nome, attivo: true }] })
+    setNuovaComponente('')
+  }
+
+  function removeComponente(id) {
+    setForm({ ...form, componenti: form.componenti.filter(c => c.id !== id) })
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -1029,6 +1051,33 @@ function MacchinaFormModal({ reparto, linea, macchina, onClose, onSaved }) {
           <div>
             <label className="block text-sm font-medium mb-1">Descrizione</label>
             <textarea value={form.descrizione} onChange={(e) => setForm({ ...form, descrizione: e.target.value })} rows={2} className="w-full border rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Componenti</label>
+            {form.componenti.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {form.componenti.map(c => (
+                  <span key={c.id} className="inline-flex items-center gap-1 bg-gray-100 border rounded px-2 py-1 text-xs">
+                    {c.nome}
+                    <button type="button" onClick={() => removeComponente(c.id)} className="text-gray-500 hover:text-red-600" aria-label={`Rimuovi ${c.nome}`}>
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                value={nuovaComponente}
+                onChange={(e) => setNuovaComponente(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addComponente() } }}
+                placeholder="Es. Ugelli, Stampo, Pinza"
+                className="flex-1 border rounded-lg px-3 py-2 text-sm"
+              />
+              <button type="button" onClick={addComponente} className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 flex items-center gap-1">
+                <Plus size={14} /> Aggiungi
+              </button>
+            </div>
           </div>
           <label className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg cursor-pointer">
             <input type="checkbox" checked={form.attivo} onChange={(e) => setForm({ ...form, attivo: e.target.checked })} className="w-4 h-4" />
