@@ -392,11 +392,58 @@ function AnalysisPanel({ analysis, unit, priorities, onPriorities }) {
     const chartMinWidth = Math.max(600, analysis.pareto.length * 70 + 130)
   return <div className="mt-4 space-y-3">
     {analysis.issues.length > 0 && <p role="alert" className="text-sm text-amber-800">{analysis.issues.join(' ')}</p>}
+    {unit !== '%' && <TrendChart timeline={analysis.timeline} unit={unit} />}
     {unit === '%' ? <p className="text-sm text-gray-600">Le percentuali restano singole rilevazioni: non vengono sommate. Per la baseline complessiva servono i denominatori di produzione.</p> : analysis.pareto.length ? <>
         <div className="overflow-x-auto"><div style={{ height: chartHeight, minWidth: chartMinWidth }}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.pareto} margin={{ top: 10, right: 15, bottom: 15, left: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="categoria" interval={0} height={labelHeight} tick={<VerticalCategoryTick />} /><YAxis yAxisId="quantity" /><Tooltip /><Legend /><Bar yAxisId="quantity" dataKey="quantita" name={`Quantità (${unit})`} fill="#64748b">{analysis.pareto.map(row => <Cell key={row.categoria} fill={lossColor(row)} />)}</Bar></ComposedChart></ResponsiveContainer></div></div>
       <div className="flex flex-wrap gap-x-5 gap-y-2">{analysis.pareto.map(row => <label key={row.categoria} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={priorities.includes(row.categoria)} onChange={event => onPriorities(event.target.checked ? [...priorities, row.categoria] : priorities.filter(value => value !== row.categoria))} />{row.categoria}</label>)}</div>
     </> : <p className="text-sm text-gray-500">Nessun dato disponibile per il Pareto.</p>}
-    {unit !== '%' && analysis.timeline.length > 1 && <details><summary className="text-sm cursor-pointer">Andamento per periodo</summary><div className="h-60"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.timeline}><XAxis dataKey="periodo" /><YAxis /><Tooltip /><Line dataKey="totale" name={`Quantità (${unit})`} stroke="#76513b" /></ComposedChart></ResponsiveContainer></div></details>}
+  </div>
+}
+
+const GROUPINGS = [['giorno', 'Giorno'], ['settimana', 'Settimana'], ['mese', 'Mese']]
+
+function periodKey(value, grouping) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || grouping === 'giorno') return value
+  if (grouping === 'mese') return value.slice(0, 7)
+  const date = new Date(`${value}T00:00:00Z`)
+  const day = date.getUTCDay() || 7
+  date.setUTCDate(date.getUTCDate() + 4 - day)
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
+  const week = Math.ceil(((date - yearStart) / 86400000 + 1) / 7)
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`
+}
+
+function periodLabel(key) {
+  const week = key.match(/^(\d{4})-W(\d{2})$/)
+  if (week) return `Sett. ${Number(week[2])} ${week[1]}`
+  const month = key.match(/^(\d{4})-(\d{2})$/)
+  if (month) return new Date(Number(month[1]), Number(month[2]) - 1, 1).toLocaleDateString('it-IT', { month: 'short', year: 'numeric' })
+  const day = key.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (day) return `${day[3]}/${day[2]}`
+  return key
+}
+
+function groupTimeline(timeline, grouping) {
+  const totals = new Map()
+  timeline.forEach(row => {
+    const key = periodKey(row.periodo, grouping)
+    totals.set(key, (totals.get(key) || 0) + row.totale)
+  })
+  return [...totals].sort((a, b) => a[0].localeCompare(b[0])).map(([key, totale]) => ({ periodo: periodLabel(key), totale }))
+}
+
+function TrendChart({ timeline, unit }) {
+  const [grouping, setGrouping] = useState('giorno')
+  const data = useMemo(() => groupTimeline(timeline, grouping), [timeline, grouping])
+  if (!timeline.length) return null
+  return <div className="border border-gray-200 rounded-lg p-3">
+    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+      <h4 className="text-sm font-semibold text-gray-700">Andamento</h4>
+      <div role="group" aria-label="Raggruppa andamento" className="flex bg-gray-100 rounded-lg p-1 gap-1">
+        {GROUPINGS.map(([value, label]) => <button key={value} type="button" aria-pressed={grouping === value} onClick={() => setGrouping(value)} className={`px-3 py-1 text-xs rounded-md ${grouping === value ? 'bg-white text-primary shadow-sm font-semibold' : 'text-gray-600 hover:bg-gray-200'}`}>{label}</button>)}
+      </div>
+    </div>
+    <div className="h-40"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={data} margin={{ top: 5, right: 10, bottom: 0, left: 0 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="periodo" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} width={45} /><Tooltip formatter={value => [`${fmt(value)} ${unit}`, 'Quantità']} />{data.length > 1 ? <Line dataKey="totale" name={`Quantità (${unit})`} stroke="#76513b" strokeWidth={2} dot={{ r: 3 }} /> : <Bar dataKey="totale" name={`Quantità (${unit})`} fill="#76513b" barSize={40} />}</ComposedChart></ResponsiveContainer></div>
   </div>
 }
 
