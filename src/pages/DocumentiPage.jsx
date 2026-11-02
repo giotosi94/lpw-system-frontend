@@ -69,7 +69,7 @@ function numeroBreve(numero) {
   return String(numero || '').replace(/^(OPL|SOP)-/i, '')
 }
 
-function readUser() {
+export function readUser() {
   try {
     return JSON.parse(localStorage.getItem('user') || '{}')
   } catch {
@@ -327,7 +327,7 @@ export default function DocumentiPage() {
   )
 }
 
-function OplChoiceModal({ onClose, onCreate, onImport, onSop }) {
+export function OplChoiceModal({ onClose, onCreate, onImport, onSop }) {
   const options = [
     { title: 'Crea OPL', text: 'Compila la OPL nel sistema', onClick: onCreate },
     { title: 'Importa OPL da Excel', text: 'Una o più OPL, salvate come immagine', onClick: onImport },
@@ -358,7 +358,7 @@ function OplChoiceModal({ onClose, onCreate, onImport, onSop }) {
   )
 }
 
-function SopUploadModal({ onClose, onSaved }) {
+export function SopUploadModal({ onClose, onSaved, initial = {} }) {
   const user = readUser()
   const [form, setForm] = useState({
     titolo: '',
@@ -368,6 +368,7 @@ function SopUploadModal({ onClose, onSaved }) {
     macchina: '',
     autore: user.full_name || user.email || '',
     descrizione: '',
+    ...initial,
   })
   const [file, setFile] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -396,8 +397,8 @@ function SopUploadModal({ onClose, onSaved }) {
       formData.append('tipo', 'SOP')
       formData.append('compress', 'false')
       Object.entries(form).forEach(([key, value]) => value && formData.append(key, value))
-      await api.post('/documenti/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
-      onSaved()
+      const res = await api.post('/documenti/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      onSaved(res.data)
       onClose()
     } catch (err) {
       alert('Errore: ' + (err.response?.data?.detail || err.message))
@@ -448,7 +449,7 @@ function SopUploadModal({ onClose, onSaved }) {
   )
 }
 
-function PreviewModal({ doc, onClose }) {
+export function PreviewModal({ doc, onClose }) {
   const fileType = getFileType(doc.file_name)
   const isNativa = doc.formato === 'nativa' && doc.opl_data
   const canShow = fileType === 'pdf' || fileType === 'image' || (isNativa && doc.file_id)
