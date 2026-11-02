@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, X } from 'lucide-react'
 import api from '../../../../services/api'
 import ImageUpload from '../../../ImageUpload'
 import UserPicker from '../../../UserPicker'
 import KaizenAzioniList from '../../../kaizen/KaizenAzioniList'
+import OplNativaModal from '../../../opl/OplNativaModal'
+import OplImportModal from '../../../opl/OplImportModal'
+import { OplChoiceModal, SopUploadModal, PreviewModal, readUser } from '../../../../pages/DocumentiPage'
 
 const SAVE_DELAY = 800
 
@@ -32,7 +35,7 @@ function newArea() {
 }
 
 function newAnomaly() {
-  return { id: createId('anomaly'), zona: '', descrizione: '', foto_prima: [], foto_dopo: [], verifica: '' }
+  return { id: createId('anomaly'), zona: '', descrizione: '', foto_prima: [], foto_dopo: [], verifica: '', documento_id: '', documento_label: '' }
 }
 
 function newStandard() {
@@ -71,10 +74,23 @@ function shortNumber(value) {
   return String(value || '').replace(/^(OPL|SOP)-/i, '')
 }
 
+function documentLabel(doc) {
+  return `${doc.tipo} ${shortNumber(doc.numero)} - ${doc.titolo || ''}`
+}
+
+function documentNumber(doc) {
+  const value = parseInt(shortNumber(doc.numero), 10)
+  return Number.isNaN(value) ? 0 : value
+}
+
+const ADMIN_ROLES = ['admin', 'administrator', 'amministratore']
+
 export default function BasicConditions({ stepData, onChange, major, allStepsData, step }) {
   const [form, setForm] = useState(() => buildForm(stepData?.dati || {}))
   const [status, setStatus] = useState('saved')
   const [documents, setDocuments] = useState([])
+  const [creating, setCreating] = useState(null)
+  const [previewDoc, setPreviewDoc] = useState(null)
 
   const formRef = useRef(form)
   const baseRef = useRef(stepData?.dati || {})
@@ -161,17 +177,20 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     }
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    api.get('/documenti')
-      .then(response => {
-        if (!cancelled) setDocuments((response.data || []).filter(doc => doc.tipo === 'OPL' || doc.tipo === 'SOP'))
-      })
-      .catch(() => {
-        if (!cancelled) setDocuments([])
-      })
-    return () => { cancelled = true }
+  const loadDocuments = useCallback(async () => {
+    try {
+      const response = await api.get('/documenti')
+      const loaded = (response.data || []).filter(doc => doc.tipo === 'OPL' || doc.tipo === 'SOP')
+      setDocuments(loaded)
+      return loaded
+    } catch {
+      return null
+    }
   }, [])
+
+  useEffect(() => {
+    loadDocuments()
+  }, [loadDocuments])
 
   const lossOptions = useMemo(() => {
     const values = new Set()
@@ -225,12 +244,54 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
   }))
   const removeStandard = id => mutate(current => ({ ...current, standard_righe: current.standard_righe.filter(item => item.id !== id) }))
 
-  const selectDocument = (id, documentId) => {
-    const doc = documents.find(item => item._id === documentId)
-    patchStandard(id, {
-      documento_id: documentId,
-      documento_label: doc ? `${doc.tipo} ${shortNumber(doc.numero)} - ${doc.titolo}` : '',
-    })
+  const standardDocIds = form.standard_righe.map(row => row.documento_id).filter(Boolean)
+
+  const linkDocument = (target, id, doc) => {
+    const patch = { documento_id: doc?._id || '', documento_label: doc ? documentLabel(doc) : '' }
+    if (target === 'anomaly') patchAnomaly(id, patch)
+    else patchStandard(id, patch)
+  }
+
+  const startCreate = (target, id, titolo) => {
+    const user = readUser()
+    const isAdmin = ADMIN_ROLES.includes(String(user.role || user.ruolo || '').toLowerCase())
+    setCreating({ target, id, titolo: titolo || '', mode: isAdmin ? 'choice' : 'nativa' })
+  }
+
+  const handleCreated = async createdId => {
+    const current = creating
+    setCreating(null)
+    const loaded = await loadDocuments()
+    if (!current || !createdId) return
+    const doc = (loaded || []).find(item => item._id === createdId)
+    if (doc) linkDocument(current.target, current.id, doc)
+  }
+
+  const openDocument = async id => {
+    const found = documents.find(doc => doc._id === id)
+    if (found) {
+      setPreviewDoc(found)
+      return
+    }
+    try {
+      const response = await api.get(`/documenti/${id}`)
+      setPreviewDoc(response.data)
+    } catch {
+      alert('Documento non disponibile')
+    }
+  }
+
+  const labelFor = row => {
+    if (row.documento_label) return row.documento_label
+    const doc = documents.find(item => item._id === row.documento_id)
+    return doc ? documentLabel(doc) : 'Documento collegato'
+  }
+
+  const createInitial = {
+    titolo: creating?.titolo || '',
+    reparto: major?.reparto || '',
+    linea: major?.linea || '',
+    macchina: major?.macchina || '',
   }
 
   return (
@@ -304,6 +365,19 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
               <label className="block text-sm mt-4">Verifica del ripristino: come hai controllato (foto, misura, prova funzionale)
                 <textarea rows={2} className={`${input} mt-1`} value={item.verifica} onChange={event => patchAnomaly(item.id, { verifica: event.target.value })} />
               </label>
+              <div className="mt-4">
+                <span className="block text-sm mb-1">Standard di riferimento (OPL / SOP)</span>
+                <DocumentPicker
+                  value={item.documento_id}
+                  label={labelFor(item)}
+                  documents={documents}
+                  priorityIds={standardDocIds}
+                  major={major}
+                  onSelect={doc => linkDocument('anomaly', item.id, doc)}
+                  onCreate={() => startCreate('anomaly', item.id, item.descrizione)}
+                  onOpen={() => openDocument(item.documento_id)}
+                />
+              </div>
             </article>
           ))}
         </div>
@@ -321,7 +395,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
       <section className={panel}>
         <h3 className={heading}>PASSO 4 - STANDARD INIZIALE</h3>
         <p className="text-sm text-gray-600 mb-3">
-          Dopo i ripristini, indica come mantenere le condizioni: collega gli OPL e le SOP già presenti.
+          Dopo i ripristini, indica come mantenere le condizioni: collega un OPL o una SOP esistente, oppure creane uno nuovo.
         </p>
         <button type="button" onClick={addStandard} className={addButton}><Plus size={16} /> Aggiungi standard</button>
         <div className="mt-4">
@@ -329,7 +403,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
             <p className="p-6 text-center text-sm text-gray-400">Nessuno standard inserito</p>
           ) : (
             <>
-              <div className="hidden lg:grid grid-cols-[1.4fr_1.2fr_1.4fr_0.8fr_1.2fr_2.5rem] gap-2 border-b pb-2 text-sm font-medium text-gray-600">
+              <div className="hidden lg:grid grid-cols-[1.3fr_1.1fr_2fr_0.7fr_1.2fr_2.5rem] gap-2 border-b pb-2 text-sm font-medium text-gray-600">
                 <span>Attività / controllo</span>
                 <span>Metodo</span>
                 <span>Documento OPL / SOP</span>
@@ -338,18 +412,18 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
                 <span />
               </div>
               {form.standard_righe.map(row => (
-                <div key={row.id} className="grid grid-cols-1 lg:grid-cols-[1.4fr_1.2fr_1.4fr_0.8fr_1.2fr_2.5rem] gap-2 items-start border-b py-2">
+                <div key={row.id} className="grid grid-cols-1 lg:grid-cols-[1.3fr_1.1fr_2fr_0.7fr_1.2fr_2.5rem] gap-2 items-start border-b py-2">
                   <input aria-label="Attività o controllo" placeholder="Attività / controllo" className={input} value={row.attivita} onChange={event => patchStandard(row.id, { attivita: event.target.value })} />
                   <input aria-label="Metodo" placeholder="Metodo" className={input} value={row.metodo} onChange={event => patchStandard(row.id, { metodo: event.target.value })} />
-                  <select aria-label="Documento OPL o SOP" className={input} value={row.documento_id} onChange={event => selectDocument(row.id, event.target.value)}>
-                    <option value="">Nessun documento</option>
-                    {row.documento_id && !documents.some(doc => doc._id === row.documento_id) && (
-                      <option value={row.documento_id}>{row.documento_label || 'Documento non disponibile'}</option>
-                    )}
-                    {documents.map(doc => (
-                      <option key={doc._id} value={doc._id}>{doc.tipo} {shortNumber(doc.numero)} - {doc.titolo}</option>
-                    ))}
-                  </select>
+                  <DocumentPicker
+                    value={row.documento_id}
+                    label={labelFor(row)}
+                    documents={documents}
+                    major={major}
+                    onSelect={doc => linkDocument('standard', row.id, doc)}
+                    onCreate={() => startCreate('standard', row.id, row.attivita)}
+                    onOpen={() => openDocument(row.documento_id)}
+                  />
                   <input aria-label="Frequenza" placeholder="Frequenza" className={input} value={row.frequenza} onChange={event => patchStandard(row.id, { frequenza: event.target.value })} />
                   <UserPicker mode="single" value={row.responsabile} onChange={value => patchStandard(row.id, { responsabile: value })} placeholder="Responsabile" />
                   <button type="button" aria-label="Elimina standard" onClick={() => removeStandard(row.id)} className="p-2 text-red-600 hover:bg-red-50 rounded"><Trash2 size={15} /></button>
@@ -364,6 +438,114 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
         <span className={status === 'error' ? 'text-red-700' : 'text-gray-600'}>{STATUS_LABELS[status]}</span>
         {status === 'error' && <button type="button" onClick={persist} className={smallButton}>Riprova</button>}
       </div>
+
+      {creating?.mode === 'choice' && (
+        <OplChoiceModal
+          onClose={() => setCreating(null)}
+          onCreate={() => setCreating(current => ({ ...current, mode: 'nativa' }))}
+          onImport={() => setCreating(current => ({ ...current, mode: 'import' }))}
+          onSop={() => setCreating(current => ({ ...current, mode: 'sop' }))}
+        />
+      )}
+      {creating?.mode === 'nativa' && (
+        <OplNativaModal initial={createInitial} onClose={() => setCreating(null)} onSaved={doc => handleCreated(doc?._id)} />
+      )}
+      {creating?.mode === 'import' && (
+        <OplImportModal
+          onClose={() => setCreating(null)}
+          onImported={created => (created?.length ? handleCreated(created[0].id) : loadDocuments())}
+        />
+      )}
+      {creating?.mode === 'sop' && (
+        <SopUploadModal initial={createInitial} onClose={() => setCreating(null)} onSaved={doc => handleCreated(doc?.id)} />
+      )}
+      {previewDoc && <PreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />}
+    </div>
+  )
+}
+
+function DocumentPicker({ value, label, documents, priorityIds = [], major, onSelect, onCreate, onOpen }) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const listId = useId()
+  const priorityKey = priorityIds.join('|')
+
+  const results = useMemo(() => {
+    const priority = new Set(priorityKey ? priorityKey.split('|') : [])
+    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    const score = doc => {
+      const place = major?.linea && doc.linea === major.linea ? 0 : major?.reparto && doc.reparto === major.reparto ? 1 : 2
+      return (priority.has(doc._id) ? 0 : 3) + place
+    }
+    return documents
+      .filter(doc => {
+        const text = `${doc.tipo} ${shortNumber(doc.numero)} ${doc.titolo || ''} ${doc.macchina || ''}`.toLowerCase()
+        return terms.every(term => text.includes(term))
+      })
+      .sort((a, b) => score(a) - score(b) || documentNumber(b) - documentNumber(a))
+      .slice(0, 8)
+  }, [query, documents, priorityKey, major?.linea, major?.reparto])
+
+  const choose = doc => {
+    onSelect(doc)
+    setQuery('')
+    setOpen(false)
+  }
+
+  if (value) {
+    return (
+      <div className="flex items-center gap-1 min-w-0">
+        <span className="min-w-0 flex-1 truncate rounded border border-gray-300 bg-gray-50 px-2 py-2 text-sm" title={label}>{label}</span>
+        <button type="button" onClick={onOpen} className={smallButton}>Apri</button>
+        <button type="button" aria-label="Scollega documento" onClick={() => onSelect(null)} className="rounded p-2 text-gray-500 hover:bg-gray-100"><X size={14} /></button>
+      </div>
+    )
+  }
+
+  const priority = new Set(priorityIds)
+  return (
+    <div className="relative">
+      <div className="flex gap-1">
+        <input
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-label="Cerca documento OPL o SOP"
+          className={input}
+          placeholder="Cerca numero o titolo"
+          value={query}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onChange={event => { setQuery(event.target.value); setOpen(true) }}
+          onKeyDown={event => {
+            if (event.key === 'Enter' && results.length) { event.preventDefault(); choose(results[0]) }
+            if (event.key === 'Escape') setOpen(false)
+          }}
+        />
+        <button type="button" onClick={onCreate} className="shrink-0 rounded border border-primary px-2 text-xs font-semibold text-primary hover:bg-gray-50">+ Nuova</button>
+      </div>
+      {open && (
+        <ul id={listId} role="listbox" className="absolute z-30 mt-1 max-h-72 w-full min-w-[280px] overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+          {results.length === 0 ? (
+            <li className="px-3 py-2 text-sm text-gray-500">Nessun documento trovato</li>
+          ) : results.map(doc => (
+            <li key={doc._id} role="option" aria-selected="false">
+              <button
+                type="button"
+                onMouseDown={event => event.preventDefault()}
+                onClick={() => choose(doc)}
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+              >
+                <span className="font-semibold">{doc.tipo} {shortNumber(doc.numero)}</span> - {doc.titolo}
+                <span className="block text-xs text-gray-500">
+                  {priority.has(doc._id) ? 'Standard di questa fase' : [doc.reparto, doc.linea].filter(Boolean).join(' / ') || 'Senza reparto'}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
