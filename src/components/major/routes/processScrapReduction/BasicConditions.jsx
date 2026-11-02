@@ -2,7 +2,6 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
 import api from '../../../../services/api'
 import ImageUpload from '../../../ImageUpload'
-import UserPicker from '../../../UserPicker'
 import KaizenAzioniList from '../../../kaizen/KaizenAzioniList'
 import OplNativaModal from '../../../opl/OplNativaModal'
 import OplImportModal from '../../../opl/OplImportModal'
@@ -35,7 +34,7 @@ function newArea() {
 }
 
 function newAnomaly() {
-  return { id: createId('anomaly'), zona: '', descrizione: '', foto_prima: [], foto_dopo: [], verifica: '', documento_id: '', documento_label: '' }
+  return { id: createId('anomaly'), zona: '', descrizione: '', foto_prima: [], foto_dopo: [], verifica: '', documenti: [] }
 }
 
 function newStandard() {
@@ -53,6 +52,9 @@ function buildForm(data) {
       verifica: item.verifica ?? item.note ?? '',
       foto_prima: list(item.foto_prima),
       foto_dopo: list(item.foto_dopo),
+      documenti: list(item.documenti).length
+        ? list(item.documenti)
+        : item.documento_id ? [{ id: item.documento_id, label: item.documento_label || '' }] : [],
     })),
     standard_righe: list(data.standard_righe).map(item => ({ ...newStandard(), ...item, id: item.id || createId('standard') })),
   }
@@ -66,8 +68,7 @@ function outputs(form) {
   return {
     aree_critiche: form.aree.some(item => item.zona.trim()),
     anomalie_ripristini: form.anomalie.some(item => item.descrizione.trim()),
-    standard_iniziale: form.standard_righe.some(item => item.attivita.trim()),
-  }
+}
 }
 
 function shortNumber(value) {
@@ -91,6 +92,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
   const [documents, setDocuments] = useState([])
   const [creating, setCreating] = useState(null)
   const [previewDoc, setPreviewDoc] = useState(null)
+  const [machines, setMachines] = useState([])
 
   const formRef = useRef(form)
   const baseRef = useRef(stepData?.dati || {})
@@ -100,8 +102,6 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
   const revisionRef = useRef(0)
   const timerRef = useRef(null)
 
-  const lossListId = useId()
-  const zoneListId = useId()
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -192,6 +192,29 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     loadDocuments()
   }, [loadDocuments])
 
+  useEffect(() => {
+    let cancelled = false
+    api.get('/reparti/')
+      .then(response => {
+        if (cancelled) return
+        const reparto = (response.data || []).find(item => item.nome === major?.reparto)
+        const linea = list(reparto?.linee).find(item => item.nome === major?.linea)
+        const options = []
+        list(linea?.macchine)
+          .filter(item => item.attivo !== false)
+          .sort((a, b) => (a.nome === major?.macchina ? -1 : 0) - (b.nome === major?.macchina ? -1 : 0))
+          .forEach(macchina => {
+            options.push(macchina.nome)
+            list(macchina.componenti)
+              .filter(item => item.attivo !== false)
+              .forEach(componente => options.push(`${macchina.nome} · ${componente.nome}`))
+          })
+        setMachines(options)
+      })
+      .catch(() => { if (!cancelled) setMachines([]) })
+    return () => { cancelled = true }
+  }, [major?.reparto, major?.linea, major?.macchina])
+
   const lossOptions = useMemo(() => {
     const values = new Set()
     Object.values(allStepsData || {}).forEach(item => {
@@ -201,10 +224,12 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     return [...values]
   }, [allStepsData])
 
-  const zoneOptions = useMemo(
+  const areaZones = useMemo(
     () => [...new Set(form.aree.map(item => item.zona.trim()).filter(Boolean))],
     [form.aree],
   )
+  const zoneOptions = useMemo(() => [...new Set([...areaZones, ...machines])], [areaZones, machines])
+  const missingZones = areaZones.filter(zona => !form.anomalie.some(item => item.zona === zona))
 
   const phases = useMemo(
     () => list(major?.route_snapshot?.steps)
@@ -231,31 +256,39 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
   const removeArea = id => mutate(current => ({ ...current, aree: current.aree.filter(item => item.id !== id) }))
 
   const addAnomaly = () => mutate(current => ({ ...current, anomalie: [...current.anomalie, newAnomaly()] }))
+  const addAnomaliesFromAreas = () => mutate(current => ({
+    ...current,
+    anomalie: [...current.anomalie, ...missingZones.map(zona => ({ ...newAnomaly(), zona }))],
+  }))
   const patchAnomaly = (id, patch) => mutate(current => ({
     ...current,
     anomalie: current.anomalie.map(item => (item.id === id ? { ...item, ...patch } : item)),
   }))
   const removeAnomaly = id => mutate(current => ({ ...current, anomalie: current.anomalie.filter(item => item.id !== id) }))
 
-  const addStandard = () => mutate(current => ({ ...current, standard_righe: [...current.standard_righe, newStandard()] }))
-  const patchStandard = (id, patch) => mutate(current => ({
-    ...current,
-    standard_righe: current.standard_righe.map(item => (item.id === id ? { ...item, ...patch } : item)),
-  }))
-  const removeStandard = id => mutate(current => ({ ...current, standard_righe: current.standard_righe.filter(item => item.id !== id) }))
+  const linkedDocIds = [...new Set(form.anomalie.flatMap(item => item.documenti.map(doc => doc.id)))]
 
-  const standardDocIds = form.standard_righe.map(row => row.documento_id).filter(Boolean)
-
-  const linkDocument = (target, id, doc) => {
-    const patch = { documento_id: doc?._id || '', documento_label: doc ? documentLabel(doc) : '' }
-    if (target === 'anomaly') patchAnomaly(id, patch)
-    else patchStandard(id, patch)
+  const addDocument = (anomalyId, doc) => {
+    if (!doc) return
+    mutate(current => ({
+      ...current,
+      anomalie: current.anomalie.map(item => (item.id !== anomalyId || item.documenti.some(entry => entry.id === doc._id)
+        ? item
+        : { ...item, documenti: [...item.documenti, { id: doc._id, label: documentLabel(doc) }] })),
+    }))
   }
 
-  const startCreate = (target, id, titolo) => {
+  const removeDocument = (anomalyId, docId) => mutate(current => ({
+    ...current,
+    anomalie: current.anomalie.map(item => (item.id === anomalyId
+      ? { ...item, documenti: item.documenti.filter(entry => entry.id !== docId) }
+      : item)),
+  }))
+
+  const startCreate = (id, titolo) => {
     const user = readUser()
     const isAdmin = ADMIN_ROLES.includes(String(user.role || user.ruolo || '').toLowerCase())
-    setCreating({ target, id, titolo: titolo || '', mode: isAdmin ? 'choice' : 'nativa' })
+    setCreating({ id, titolo: titolo || '', mode: isAdmin ? 'choice' : 'nativa' })
   }
 
   const handleCreated = async createdId => {
@@ -264,7 +297,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     const loaded = await loadDocuments()
     if (!current || !createdId) return
     const doc = (loaded || []).find(item => item._id === createdId)
-    if (doc) linkDocument(current.target, current.id, doc)
+    if (doc) addDocument(current.id, doc)
   }
 
   const openDocument = async id => {
@@ -281,9 +314,9 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     }
   }
 
-  const labelFor = row => {
-    if (row.documento_label) return row.documento_label
-    const doc = documents.find(item => item._id === row.documento_id)
+  const labelFor = entry => {
+    if (entry.label) return entry.label
+    const doc = documents.find(item => item._id === entry.id)
     return doc ? documentLabel(doc) : 'Documento collegato'
   }
 
@@ -301,9 +334,9 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
         <p className="text-sm text-gray-600 mb-3">
           Indica dove verificare le condizioni di base per i difetti prioritari e quale standard ci si aspetta.
         </p>
-        <datalist id={lossListId}>
-          {lossOptions.map(value => <option key={value} value={value} />)}
-        </datalist>
+        {lossOptions.length === 0 && (
+          <p className="text-sm text-amber-800 mb-3">Nessuna priorità selezionata nella fase 1: spunta le priorità da attaccare sotto il Pareto.</p>
+        )}
         <button type="button" onClick={addArea} className={addButton}><Plus size={16} /> Aggiungi area</button>
         <div className="overflow-x-auto mt-4">
           <table className="w-full min-w-[900px] text-sm">
@@ -321,8 +354,8 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
                 <tr><td colSpan="5" className="p-6 text-center text-gray-400">Nessuna area inserita</td></tr>
               ) : form.aree.map(row => (
                 <tr key={row.id} className="border-b align-top">
-                  <td className="p-1"><input list={lossListId} aria-label="Perdita di riferimento" className={input} value={row.perdita} onChange={event => patchArea(row.id, { perdita: event.target.value })} /></td>
-                  <td className="p-1"><input aria-label="Componente o zona" className={input} value={row.zona} onChange={event => patchArea(row.id, { zona: event.target.value })} /></td>
+                  <td className="p-1"><OptionSelect label="Perdita di riferimento" value={row.perdita} options={lossOptions} onChange={value => patchArea(row.id, { perdita: value })} /></td>
+                  <td className="p-1"><OptionSelect label="Componente o zona" value={row.zona} options={machines} onChange={value => patchArea(row.id, { zona: value })} /></td>
                   <td className="p-1"><input aria-label="Condizione da verificare" className={input} value={row.condizione} onChange={event => patchArea(row.id, { condizione: event.target.value })} /></td>
                   <td className="p-1"><input aria-label="Standard atteso" className={input} value={row.standard} onChange={event => patchArea(row.id, { standard: event.target.value })} /></td>
                   <td className="p-1 text-center"><button type="button" aria-label="Elimina area" onClick={() => removeArea(row.id)} className="p-2 text-red-600 hover:bg-red-50 rounded"><Trash2 size={15} /></button></td>
@@ -338,10 +371,14 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
         <p className="text-sm text-gray-600 mb-3">
           Registra le anomalie trovate con pulizia e ispezione. Gli interventi di ripristino si gestiscono nel piano azioni qui sotto.
         </p>
-        <datalist id={zoneListId}>
-          {zoneOptions.map(value => <option key={value} value={value} />)}
-        </datalist>
-        <button type="button" onClick={addAnomaly} className={addButton}><Plus size={16} /> Aggiungi anomalia</button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={addAnomaly} className={addButton}><Plus size={16} /> Aggiungi anomalia</button>
+          {missingZones.length > 0 && (
+            <button type="button" onClick={addAnomaliesFromAreas} className="rounded-lg border-2 border-primary px-4 py-2 text-sm font-semibold text-primary hover:bg-gray-50">
+              Crea anomalie dalle aree del passo 1 ({missingZones.length})
+            </button>
+          )}
+        </div>
         <div className="mt-4 space-y-4">
           {form.anomalie.length === 0 && <p className="p-6 text-center text-sm text-gray-400">Nessuna anomalia registrata</p>}
           {form.anomalie.map((item, index) => (
@@ -352,7 +389,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <label className="block text-sm">Componente / zona
-                  <input list={zoneListId} className={`${input} mt-1`} value={item.zona} onChange={event => patchAnomaly(item.id, { zona: event.target.value })} />
+                  <div className="mt-1"><OptionSelect label="Componente o zona" value={item.zona} options={zoneOptions} onChange={value => patchAnomaly(item.id, { zona: value })} /></div>
                 </label>
                 <label className="block text-sm md:col-span-2">Anomalia rilevata
                   <textarea rows={2} className={`${input} mt-1`} value={item.descrizione} onChange={event => patchAnomaly(item.id, { descrizione: event.target.value })} />
@@ -367,16 +404,30 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
               </label>
               <div className="mt-4">
                 <span className="block text-sm mb-1">Standard di riferimento (OPL / SOP)</span>
-                <DocumentPicker
-                  value={item.documento_id}
-                  label={labelFor(item)}
-                  documents={documents}
-                  priorityIds={standardDocIds}
-                  major={major}
-                  onSelect={doc => linkDocument('anomaly', item.id, doc)}
-                  onCreate={() => startCreate('anomaly', item.id, item.descrizione)}
-                  onOpen={() => openDocument(item.documento_id)}
-                />
+                <div className="space-y-2">
+                  {item.documenti.map(entry => (
+                    <DocumentPicker
+                      key={entry.id}
+                      value={entry.id}
+                      label={labelFor(entry)}
+                      documents={documents}
+                      major={major}
+                      onSelect={doc => (doc ? addDocument(item.id, doc) : removeDocument(item.id, entry.id))}
+                      onCreate={() => startCreate(item.id, item.descrizione)}
+                      onOpen={() => openDocument(entry.id)}
+                    />
+                  ))}
+                  <DocumentPicker
+                    value=""
+                    label=""
+                    documents={documents.filter(doc => !item.documenti.some(entry => entry.id === doc._id))}
+                    priorityIds={linkedDocIds}
+                    major={major}
+                    onSelect={doc => addDocument(item.id, doc)}
+                    onCreate={() => startCreate(item.id, item.descrizione)}
+                    onOpen={() => {}}
+                  />
+                </div>
               </div>
             </article>
           ))}
@@ -390,48 +441,6 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
           phases={phases}
           defaultStepId={step?.step_id || ''}
         />
-      </section>
-
-      <section className={panel}>
-        <h3 className={heading}>PASSO 4 - STANDARD INIZIALE</h3>
-        <p className="text-sm text-gray-600 mb-3">
-          Dopo i ripristini, indica come mantenere le condizioni: collega un OPL o una SOP esistente, oppure creane uno nuovo.
-        </p>
-        <button type="button" onClick={addStandard} className={addButton}><Plus size={16} /> Aggiungi standard</button>
-        <div className="mt-4">
-          {form.standard_righe.length === 0 ? (
-            <p className="p-6 text-center text-sm text-gray-400">Nessuno standard inserito</p>
-          ) : (
-            <>
-              <div className="hidden lg:grid grid-cols-[1.3fr_1.1fr_2fr_0.7fr_1.2fr_2.5rem] gap-2 border-b pb-2 text-sm font-medium text-gray-600">
-                <span>Attività / controllo</span>
-                <span>Metodo</span>
-                <span>Documento OPL / SOP</span>
-                <span>Frequenza</span>
-                <span>Responsabile</span>
-                <span />
-              </div>
-              {form.standard_righe.map(row => (
-                <div key={row.id} className="grid grid-cols-1 lg:grid-cols-[1.3fr_1.1fr_2fr_0.7fr_1.2fr_2.5rem] gap-2 items-start border-b py-2">
-                  <input aria-label="Attività o controllo" placeholder="Attività / controllo" className={input} value={row.attivita} onChange={event => patchStandard(row.id, { attivita: event.target.value })} />
-                  <input aria-label="Metodo" placeholder="Metodo" className={input} value={row.metodo} onChange={event => patchStandard(row.id, { metodo: event.target.value })} />
-                  <DocumentPicker
-                    value={row.documento_id}
-                    label={labelFor(row)}
-                    documents={documents}
-                    major={major}
-                    onSelect={doc => linkDocument('standard', row.id, doc)}
-                    onCreate={() => startCreate('standard', row.id, row.attivita)}
-                    onOpen={() => openDocument(row.documento_id)}
-                  />
-                  <input aria-label="Frequenza" placeholder="Frequenza" className={input} value={row.frequenza} onChange={event => patchStandard(row.id, { frequenza: event.target.value })} />
-                  <UserPicker mode="single" value={row.responsabile} onChange={value => patchStandard(row.id, { responsabile: value })} placeholder="Responsabile" />
-                  <button type="button" aria-label="Elimina standard" onClick={() => removeStandard(row.id)} className="p-2 text-red-600 hover:bg-red-50 rounded"><Trash2 size={15} /></button>
-                </div>
-              ))}
-            </>
-          )}
-        </div>
       </section>
 
       <div role="status" aria-live="polite" className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4 text-sm">
@@ -539,7 +548,7 @@ function DocumentPicker({ value, label, documents, priorityIds = [], major, onSe
               >
                 <span className="font-semibold">{doc.tipo} {shortNumber(doc.numero)}</span> - {doc.titolo}
                 <span className="block text-xs text-gray-500">
-                  {priority.has(doc._id) ? 'Standard di questa fase' : [doc.reparto, doc.linea].filter(Boolean).join(' / ') || 'Senza reparto'}
+{priority.has(doc._id) ? 'Già usato in questa fase' : [doc.reparto, doc.linea].filter(Boolean).join(' / ') || 'Senza reparto'}
                 </span>
               </button>
             </li>
@@ -547,5 +556,15 @@ function DocumentPicker({ value, label, documents, priorityIds = [], major, onSe
         </ul>
       )}
     </div>
+  )
+}
+
+function OptionSelect({ label, value, options, onChange }) {
+  const values = value && !options.includes(value) ? [value, ...options] : options
+  return (
+    <select aria-label={label} className={input} value={value || ''} onChange={event => onChange(event.target.value)}>
+      <option value="">Seleziona</option>
+      {values.map(option => <option key={option} value={option}>{option}</option>)}
+    </select>
   )
 }
