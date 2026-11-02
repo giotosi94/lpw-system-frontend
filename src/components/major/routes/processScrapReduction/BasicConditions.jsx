@@ -3,9 +3,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import api from '../../../../services/api'
 import ImageUpload from '../../../ImageUpload'
 import UserPicker from '../../../UserPicker'
-import ActionPlanFormShared from '../../../ActionPlanFormShared'
-import ActionPlanDetailPanel from '../../../ActionPlanDetailPanel'
-import { useAllConfigurations } from '../../../../hooks/useConfigurations'
+import KaizenAzioniList from '../../../kaizen/KaizenAzioniList'
 
 const SAVE_DELAY = 800
 
@@ -33,8 +31,8 @@ function newArea() {
   return { id: createId('area'), perdita: '', zona: '', condizione: '', standard: '' }
 }
 
-function newAnomaly(descrizione = '') {
-  return { id: createId('anomaly'), zona: '', descrizione, foto_prima: [], foto_dopo: [], action_plan_id: '', verifica: '' }
+function newAnomaly() {
+  return { id: createId('anomaly'), zona: '', descrizione: '', foto_prima: [], foto_dopo: [], verifica: '' }
 }
 
 function newStandard() {
@@ -65,7 +63,6 @@ function outputs(form) {
   return {
     aree_critiche: form.aree.some(item => item.zona.trim()),
     anomalie_ripristini: form.anomalie.some(item => item.descrizione.trim()),
-    azioni_ripristino: form.anomalie.some(item => item.action_plan_id),
     standard_iniziale: form.standard_righe.some(item => item.attivita.trim()),
   }
 }
@@ -74,18 +71,10 @@ function shortNumber(value) {
   return String(value || '').replace(/^(OPL|SOP)-/i, '')
 }
 
-function formatDate(value) {
-  return value ? new Date(value).toLocaleDateString('it-IT') : 'Senza scadenza'
-}
-
 export default function BasicConditions({ stepData, onChange, major, allStepsData, step }) {
   const [form, setForm] = useState(() => buildForm(stepData?.dati || {}))
   const [status, setStatus] = useState('saved')
-  const [actionPlans, setActionPlans] = useState([])
-  const [plansError, setPlansError] = useState('')
   const [documents, setDocuments] = useState([])
-  const [formAnomalyId, setFormAnomalyId] = useState(null)
-  const [selectedPlan, setSelectedPlan] = useState(null)
 
   const formRef = useRef(form)
   const baseRef = useRef(stepData?.dati || {})
@@ -97,8 +86,6 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
 
   const lossListId = useId()
   const zoneListId = useId()
-  const { configs } = useAllConfigurations()
-  const states = configs.stato_ap || []
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -174,21 +161,6 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     }
   }, [])
 
-  const loadActionPlans = useCallback(async () => {
-    if (!major?._id) return
-    try {
-      const response = await api.get('/action-plans/', { params: { parent_id: major._id } })
-      setActionPlans((response.data || []).filter(plan => plan.parent_type === 'major_kaizen' && plan.parent_id === major._id))
-      setPlansError('')
-    } catch {
-      setPlansError('Impossibile caricare gli Action Plan del progetto')
-    }
-  }, [major?._id])
-
-  useEffect(() => {
-    loadActionPlans()
-  }, [loadActionPlans])
-
   useEffect(() => {
     let cancelled = false
     api.get('/documenti')
@@ -201,13 +173,10 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     return () => { cancelled = true }
   }, [])
 
-  const planById = useMemo(() => new Map(actionPlans.map(plan => [plan._id, plan])), [actionPlans])
-  const isClosed = plan => Boolean(plan?.is_cancelled || states.find(state => state.label === plan?.stato)?.is_terminal)
-
   const lossOptions = useMemo(() => {
     const values = new Set()
-    Object.values(allStepsData || {}).forEach(step => {
-      const data = step?.dati || {}
+    Object.values(allStepsData || {}).forEach(item => {
+      const data = item?.dati || {}
       ;[...list(data.priorita_stain), ...list(data.priorita_manuali)].forEach(value => value && values.add(value))
     })
     return [...values]
@@ -217,6 +186,23 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     () => [...new Set(form.aree.map(item => item.zona.trim()).filter(Boolean))],
     [form.aree],
   )
+
+  const phases = useMemo(
+    () => list(major?.route_snapshot?.steps)
+      .map(item => ({ step_id: item.step_id, ordine: item.ordine, titolo: item.titolo }))
+      .sort((a, b) => a.ordine - b.ordine),
+    [major?.route_snapshot],
+  )
+
+  const planningParent = useMemo(() => ({
+    parent_type: 'major_kaizen',
+    parent_id: major?._id,
+    parent_label: `${major?.numero || ''} - ${major?.titolo || ''}`,
+    pillar_id: major?.pillar_id || null,
+    reparto: major?.reparto || '',
+    linea: major?.linea || '',
+    macchina: major?.macchina || '',
+  }), [major])
 
   const addArea = () => mutate(current => ({ ...current, aree: [...current.aree, newArea()] }))
   const patchArea = (id, patch) => mutate(current => ({
@@ -230,10 +216,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     ...current,
     anomalie: current.anomalie.map(item => (item.id === id ? { ...item, ...patch } : item)),
   }))
-  const removeAnomaly = anomaly => {
-    if (anomaly.action_plan_id && !confirm('Eliminare l\u2019anomalia? L\u2019Action Plan collegato resta disponibile nel progetto.')) return
-    mutate(current => ({ ...current, anomalie: current.anomalie.filter(item => item.id !== anomaly.id) }))
-  }
+  const removeAnomaly = id => mutate(current => ({ ...current, anomalie: current.anomalie.filter(item => item.id !== id) }))
 
   const addStandard = () => mutate(current => ({ ...current, standard_righe: [...current.standard_righe, newStandard()] }))
   const patchStandard = (id, patch) => mutate(current => ({
@@ -249,22 +232,6 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
       documento_label: doc ? `${doc.tipo} ${shortNumber(doc.numero)} - ${doc.titolo}` : '',
     })
   }
-
-  const handleActionPlanSaved = async plan => {
-    const anomalyId = formAnomalyId
-    setFormAnomalyId(null)
-    mutate(current => ({
-      ...current,
-      anomalie: current.anomalie.map(item => (item.id === anomalyId ? { ...item, action_plan_id: plan._id } : item)),
-    }))
-    persist()
-    await loadActionPlans()
-  }
-
-  const formAnomaly = form.anomalie.find(item => item.id === formAnomalyId)
-
-  const linkedPlans = form.anomalie.map(item => planById.get(item.action_plan_id)).filter(Boolean)
-  const closedPlans = linkedPlans.filter(isClosed).length
 
   return (
     <div className="space-y-6">
@@ -308,56 +275,51 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
       <section className={panel}>
         <h3 className={heading}>PASSO 2 - ISPEZIONE E RIPRISTINO</h3>
         <p className="text-sm text-gray-600 mb-3">
-          Registra le anomalie trovate con pulizia e ispezione. L&apos;intervento si gestisce nell&apos;Action Plan: responsabile, scadenza e stato arrivano da lì.
+          Registra le anomalie trovate con pulizia e ispezione. Gli interventi di ripristino si gestiscono nel piano azioni qui sotto.
         </p>
         <datalist id={zoneListId}>
           {zoneOptions.map(value => <option key={value} value={value} />)}
         </datalist>
         <button type="button" onClick={addAnomaly} className={addButton}><Plus size={16} /> Aggiungi anomalia</button>
-        {plansError && <p role="alert" className="mt-3 text-sm text-red-700">{plansError}</p>}
         <div className="mt-4 space-y-4">
           {form.anomalie.length === 0 && <p className="p-6 text-center text-sm text-gray-400">Nessuna anomalia registrata</p>}
-          {form.anomalie.map((item, index) => {
-            const plan = planById.get(item.action_plan_id)
-            return (
-              <article key={item.id} className="border border-gray-300 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-sm font-bold text-gray-700">Anomalia {index + 1}</h4>
-                  <button type="button" aria-label="Elimina anomalia" onClick={() => removeAnomaly(item)} className="p-2 text-red-600 hover:bg-red-50 rounded"><Trash2 size={15} /></button>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <label className="block text-sm">Componente / zona
-                    <input list={zoneListId} className={`${input} mt-1`} value={item.zona} onChange={event => patchAnomaly(item.id, { zona: event.target.value })} />
-                  </label>
-                  <label className="block text-sm md:col-span-2">Anomalia rilevata
-                    <textarea rows={2} className={`${input} mt-1`} value={item.descrizione} onChange={event => patchAnomaly(item.id, { descrizione: event.target.value })} />
-                  </label>
-                </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-                  <ImageUpload images={item.foto_prima} onChange={value => patchAnomaly(item.id, { foto_prima: value })} label="Foto prima" maxImages={4} />
-                  <ImageUpload images={item.foto_dopo} onChange={value => patchAnomaly(item.id, { foto_dopo: value })} label="Foto dopo" maxImages={4} />
-                </div>
-                <div className="mt-4 border-t border-gray-200 pt-3">
-                  <ActionPlanLink
-                    plan={plan}
-                    linkedId={item.action_plan_id}
-                    closed={isClosed(plan)}
-                    onCreate={() => setFormAnomalyId(item.id)}
-                    onOpen={() => setSelectedPlan(plan)}
-                    onUnlink={() => patchAnomaly(item.id, { action_plan_id: '' })}
-                  />
-                </div>
-                <label className="block text-sm mt-3">Verifica del ripristino: come hai controllato (foto, misura, prova funzionale)
-                  <textarea rows={2} className={`${input} mt-1`} value={item.verifica} onChange={event => patchAnomaly(item.id, { verifica: event.target.value })} />
+          {form.anomalie.map((item, index) => (
+            <article key={item.id} className="border border-gray-300 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-bold text-gray-700">Anomalia {index + 1}</h4>
+                <button type="button" aria-label="Elimina anomalia" onClick={() => removeAnomaly(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded"><Trash2 size={15} /></button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <label className="block text-sm">Componente / zona
+                  <input list={zoneListId} className={`${input} mt-1`} value={item.zona} onChange={event => patchAnomaly(item.id, { zona: event.target.value })} />
                 </label>
-              </article>
-            )
-          })}
+                <label className="block text-sm md:col-span-2">Anomalia rilevata
+                  <textarea rows={2} className={`${input} mt-1`} value={item.descrizione} onChange={event => patchAnomaly(item.id, { descrizione: event.target.value })} />
+                </label>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+                <ImageUpload images={item.foto_prima} onChange={value => patchAnomaly(item.id, { foto_prima: value })} label="Foto prima" maxImages={4} />
+                <ImageUpload images={item.foto_dopo} onChange={value => patchAnomaly(item.id, { foto_dopo: value })} label="Foto dopo" maxImages={4} />
+              </div>
+              <label className="block text-sm mt-4">Verifica del ripristino: come hai controllato (foto, misura, prova funzionale)
+                <textarea rows={2} className={`${input} mt-1`} value={item.verifica} onChange={event => patchAnomaly(item.id, { verifica: event.target.value })} />
+              </label>
+            </article>
+          ))}
         </div>
       </section>
 
+      <section className="space-y-3">
+        <h3 className={heading}>PASSO 3 - PIANO AZIONI</h3>
+        <KaizenAzioniList
+          parent={planningParent}
+          phases={phases}
+          defaultStepId={step?.step_id || ''}
+        />
+      </section>
+
       <section className={panel}>
-        <h3 className={heading}>PASSO 3 - STANDARD INIZIALE</h3>
+        <h3 className={heading}>PASSO 4 - STANDARD INIZIALE</h3>
         <p className="text-sm text-gray-600 mb-3">
           Dopo i ripristini, indica come mantenere le condizioni: collega gli OPL e le SOP già presenti.
         </p>
@@ -398,79 +360,9 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
         </div>
       </section>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-4">
-        <p className="text-sm text-gray-600">
-          Aree: {form.aree.length} · Anomalie: {form.anomalie.length} · Action Plan collegati: {linkedPlans.length} · Chiusi: {closedPlans} · Standard: {form.standard_righe.length}
-        </p>
-        <div role="status" aria-live="polite" className="flex items-center gap-3 text-sm">
-          <span className={status === 'error' ? 'text-red-700' : 'text-gray-600'}>{STATUS_LABELS[status]}</span>
-          {status === 'error' && <button type="button" onClick={persist} className={smallButton}>Riprova</button>}
-        </div>
-      </div>
-
-      {formAnomaly && (
-        <ActionPlanFormShared
-          plan={null}
-          prefilledParent={{
-            parent_type: 'major_kaizen',
-            parent_id: major?._id,
-            parent_label: `${major?.numero || ''} - ${major?.titolo || ''}`,
-            pillar_id: major?.pillar_id || null,
-            reparto: major?.reparto || '',
-            linea: major?.linea || '',
-            macchina: major?.macchina || '',
-            titolo: formAnomaly.descrizione.trim().slice(0, 120),
-            gant_step_id: step?.step_id || null,
-          }}
-          prefilledKaizen={null}
-          onClose={() => setFormAnomalyId(null)}
-          onSaved={handleActionPlanSaved}
-        />
-      )}
-
-      {selectedPlan && (
-        <ActionPlanDetailPanel
-          plan={selectedPlan}
-          onClose={() => setSelectedPlan(null)}
-          onUpdated={loadActionPlans}
-        />
-      )}
-    </div>
-  )
-}
-
-function ActionPlanLink({ plan, linkedId, closed, onCreate, onOpen, onUnlink }) {
-  if (!linkedId) {
-    return (
-      <button type="button" onClick={onCreate} className={addButton}>
-        <Plus size={16} /> Crea Action Plan di ripristino
-      </button>
-    )
-  }
-  if (!plan) {
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
-        <span>Action Plan non disponibile (eliminato o non ancora caricato)</span>
-        <button type="button" onClick={onUnlink} className={smallButton}>Scollega</button>
-      </div>
-    )
-  }
-  const late = !closed && plan.stato_visuale === 'In Ritardo'
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="min-w-0 text-sm">
-        <span className="font-mono font-bold text-primary mr-2">{plan.numero}</span>
-        <span className="font-medium">{plan.titolo}</span>
-        <div className="text-xs text-gray-600 mt-1">
-          {plan.responsabile || 'Senza responsabile'} · {formatDate(plan.data_scadenza)} ·{' '}
-          <span className={closed ? 'text-green-700 font-semibold' : late ? 'text-red-700 font-semibold' : ''}>
-            {plan.stato_visuale && plan.stato_visuale !== plan.stato ? `${plan.stato} (${plan.stato_visuale})` : plan.stato || 'Aperto'}
-          </span>
-        </div>
-      </div>
-      <div className="flex gap-2">
-        <button type="button" onClick={onOpen} className={smallButton}>Apri</button>
-        <button type="button" onClick={onUnlink} className={smallButton}>Scollega</button>
+      <div role="status" aria-live="polite" className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4 text-sm">
+        <span className={status === 'error' ? 'text-red-700' : 'text-gray-600'}>{STATUS_LABELS[status]}</span>
+        {status === 'error' && <button type="button" onClick={persist} className={smallButton}>Riprova</button>}
       </div>
     </div>
   )
