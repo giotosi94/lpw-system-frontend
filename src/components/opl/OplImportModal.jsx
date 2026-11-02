@@ -154,7 +154,7 @@ export default function OplImportModal({ onClose, onImported }) {
       const lines = [`Importate ${created.length} OPL su ${importable.length}.`]
       skipped.forEach(entry => lines.push(`${entry.numero || entry.filename}: ${entry.motivo}`))
       alert(lines.join('\n'))
-      onImported?.()
+      onImported?.(created)
     } catch (error) {
       alert('Errore importazione: ' + (error.response?.data?.detail || error.message))
     } finally {
