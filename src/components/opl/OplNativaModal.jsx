@@ -53,7 +53,7 @@ async function compressImage(file, maxSize = 1280, quality = 0.8) {
   })
 }
 
-export default function OplNativaModal({ onClose, onSaved }) {
+export default function OplNativaModal({ onClose, onSaved, initial = {} }) {
   const [saving, setSaving] = useState(false)
   const [step, setStep] = useState(1)
   const areaOptions = AREE_OPL
@@ -78,6 +78,7 @@ export default function OplNativaModal({ onClose, onSaved }) {
     verifica_2: '',
     verifica_3: '',
     immagini: [],
+    ...initial,
   })
 
   useEffect(() => {
@@ -201,7 +202,7 @@ export default function OplNativaModal({ onClose, onSaved }) {
       }
       const res = await api.post('/documenti/opl-nativa', payload)
       alert(`OPL Nativa ${res.data.numero} creata con successo`)
-      onSaved()
+      onSaved(res.data)
       onClose()
     } catch (err) {
       alert('Errore creazione OPL: ' + (err.response?.data?.detail || err.message))
