@@ -61,6 +61,37 @@ const SCRAP_GUIDES = {
   },
 }
 
+function filterStainByProduct(snapshot, products = []) {
+  const detail = snapshot?.dettaglio
+  if (!detail || !products.length) {
+    return { pareto: snapshot?.pareto || [], andamento: snapshot?.andamento || [], total: snapshot?.totale_kg || 0 }
+  }
+  const selected = new Set(products)
+  const groups = new Map()
+  const days = new Map()
+  let total = 0
+  detail.forEach(row => {
+    if (!selected.has(row.prodotto)) return
+    const key = `${row.codice}|${row.causale}`
+    const item = groups.get(key) || { codice: row.codice, causale: row.causale, tipo: row.tipo, kg: 0 }
+    item.kg += row.kg
+    groups.set(key, item)
+    days.set(row.data, (days.get(row.data) || 0) + row.kg)
+    total += row.kg
+  })
+  return {
+    pareto: [...groups.values()].sort((a, b) => b.kg - a.kg),
+    andamento: [...days].sort((a, b) => a[0].localeCompare(b[0])).map(([data, kg]) => ({ data, kg })),
+    total,
+  }
+}
+
+function stainProducts(snapshot) {
+  const totals = new Map()
+  ;(snapshot?.dettaglio || []).forEach(row => totals.set(row.prodotto, (totals.get(row.prodotto) || 0) + row.kg))
+  return [...totals].sort((a, b) => b[1] - a[1]).map(([nome, kg]) => ({ nome, kg }))
+}
+
 const HEADERS = ['Data', 'Prodotto', 'Formato', 'Operazione / fase macchina', 'Scarto / Rework', 'Quantità', 'Note']
 const KEYS = ['periodo', 'prodotto', 'formato', 'operazione', 'tipo', 'quantita', 'note']
 const uid = () => globalThis.crypto?.randomUUID?.() || `r_${Date.now()}_${Math.random().toString(16).slice(2)}`
@@ -86,6 +117,7 @@ function initial(data, major) {
     origine: data.origine || 'manuale',
     stain_linea: data.stain_linea || '',
     stain_snapshot: data.stain_snapshot || null,
+    stain_prodotti: Array.isArray(data.stain_prodotti) ? data.stain_prodotti : [],
     raggruppamento: data.raggruppamento || 'prodotto',
     problema: data.problema || major?.descrizione || '',
     dove: data.dove || data.perimetro || '',
@@ -156,7 +188,7 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
     setStainError('')
     try {
       const res = await api.get('/stain/scarti', { params: { dal: form.periodo_da, al: form.periodo_a, linea: form.stain_linea, tipi: [...form.stain_tipi].sort().join(',') } })
-      change({ stain_snapshot: res.data, priorita_stain: [] })
+      change({ stain_snapshot: res.data, priorita_stain: [], stain_prodotti: [] })
     } catch (error) { setStainError(error.response?.data?.detail || 'Caricamento STAIN non riuscito') }
     finally { setStainBusy(false) }
   }
@@ -165,12 +197,13 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
 function calculate(form, staleStain) {
     if (form.origine === 'stain') {
       const snapshot = form.stain_snapshot
-      const pareto = (snapshot?.pareto || []).map(row => ({ ...row, categoria: `${row.codice} - ${row.causale}`, quantita: row.kg, quantita_calcolata: row.kg }))
+      const filtered = filterStainByProduct(snapshot, form.stain_prodotti)
+      const pareto = filtered.pareto.map(row => ({ ...row, categoria: `${row.codice} - ${row.causale}`, quantita: row.kg, quantita_calcolata: row.kg }))
       const selected = pareto.filter(row => form.priorita.includes(row.categoria)).reduce((sum, row) => sum + row.quantita, 0)
       const issues = [...(snapshot?.warnings || [])]
       if (staleStain) issues.push('Periodo, linea o filtro modificati: clicca Carica da STAIN per aggiornare i risultati.')
-      const baseline = !snapshot || issues.length || (form.perimetro_kpi === 'priorita' && !form.priorita.length) ? null : form.perimetro_kpi === 'priorita' ? selected : snapshot.totale_kg
-      return { pareto, total: snapshot?.totale_kg || 0, selected, timeline: (snapshot?.andamento || []).map(row => ({ periodo: row.data, totale: row.kg })), baseline, issues, production: null }
+      const baseline = !snapshot || issues.length || (form.perimetro_kpi === 'priorita' && !form.priorita.length) ? null : form.perimetro_kpi === 'priorita' ? selected : filtered.total
+      return { pareto, total: filtered.total, selected, timeline: filtered.andamento.map(row => ({ periodo: row.data, totale: row.kg })), baseline, issues, production: null }
     }
     const groups = new Map()
     const periods = new Map()
@@ -297,6 +330,15 @@ function calculate(form, staleStain) {
         <button type="button" className={button} disabled={stainBusy} onClick={loadStain}>{stainBusy ? 'Caricamento...' : 'Carica da STAIN'}</button>
         {stainError && <p role="alert" className="mt-2 text-sm text-red-700">{stainError}</p>}
         {form.stain_snapshot && <p className="mt-3 text-sm text-gray-600">{form.stain_snapshot.linea.trim()} · {form.stain_snapshot.dal} / {form.stain_snapshot.al} · {fmt(form.stain_snapshot.totale_kg)} kg · Caricato {new Date(form.stain_snapshot.caricato_il).toLocaleString('it-IT')}</p>}
+        {form.stain_snapshot && (form.stain_snapshot.dettaglio ? (
+          <fieldset className="mt-4 border-t border-gray-200 pt-3">
+            <legend className="text-sm font-medium">Prodotto</legend>
+            <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 max-h-40 overflow-y-auto">
+              <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={!form.stain_prodotti.length} onChange={() => change({ stain_prodotti: [], priorita_stain: [] })} />Tutti i prodotti</label>
+              {stainProducts(form.stain_snapshot).map(item => <label key={item.nome} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.stain_prodotti.includes(item.nome)} onChange={event => change({ stain_prodotti: event.target.checked ? [...form.stain_prodotti, item.nome] : form.stain_prodotti.filter(value => value !== item.nome), priorita_stain: [] })} />{item.nome} <span className="text-gray-500">({fmt(item.kg)} kg)</span></label>)}
+            </div>
+          </fieldset>
+        ) : <p className="mt-3 text-sm text-gray-500">Per filtrare per prodotto ricarica i dati da STAIN.</p>)}
         <AnalysisPanel analysis={stainAnalysis} unit="kg" priorities={form.priorita_stain} onPriorities={value => change({ priorita_stain: value })} />
       </section>
       <section className="bg-white border-2 border-primary rounded-lg p-4 md:p-5">
