@@ -6,10 +6,19 @@ import ActionPlanFormShared from '../ActionPlanFormShared'
 import ActionPlanDetailPanel from '../ActionPlanDetailPanel'
 import ActionPlanViews from '../ActionPlanViews'
 
-export default function KaizenAzioniList({ kaizen, kaizenId, kaizenNumero, onUpdate }) {
+export default function KaizenAzioniList({
+  kaizen,
+  kaizenId,
+  kaizenNumero,
+  onUpdate,
+  parent = null,
+  phases = [],
+  defaultStepId = '',
+}) {
+  const isMajor = Boolean(parent)
   const [azioni, setAzioni] = useState([])
   const [loading, setLoading] = useState(true)
-  const [filterStep, setFilterStep] = useState('')
+  const [filterStep, setFilterStep] = useState(defaultStepId)
   const [filterStato, setFilterStato] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingAP, setEditingAP] = useState(null)
@@ -18,15 +27,25 @@ export default function KaizenAzioniList({ kaizen, kaizenId, kaizenNumero, onUpd
   const { configs } = useAllConfigurations()
   const statiConfig = configs.stato_ap || []
 
-  const steps = kaizen?.gant_master_plan?.steps || []
+  const steps = useMemo(() => {
+    if (!isMajor) return kaizen?.gant_master_plan?.steps || []
+    return phases.map(phase => ({ id: phase.step_id, num: phase.ordine, label: phase.titolo }))
+  }, [isMajor, kaizen, phases])
 
-  useEffect(() => { loadAzioni() }, [kaizenId])
+  const contextLabel = isMajor ? 'progetto' : 'Kaizen'
+
+  useEffect(() => { loadAzioni() }, [kaizenId, parent?.parent_id])
 
   const loadAzioni = async () => {
     setLoading(true)
     try {
-      const res = await api.get(`/kaizens/${kaizenId}/action-plans`)
-      setAzioni(res.data || [])
+      if (isMajor) {
+        const res = await api.get('/action-plans/', { params: { parent_id: parent.parent_id } })
+        setAzioni((res.data || []).filter(ap => ap.parent_type === parent.parent_type && ap.parent_id === parent.parent_id))
+      } else {
+        const res = await api.get(`/kaizens/${kaizenId}/action-plans`)
+        setAzioni(res.data || [])
+      }
     } catch (err) {
       console.error('Errore caricamento AP:', err)
     } finally {
@@ -121,14 +140,19 @@ export default function KaizenAzioniList({ kaizen, kaizenId, kaizenNumero, onUpd
     })
   }, [azioni, filterStep, filterStato])
 
+  const resetFilters = () => { setFilterStep(''); setFilterStato('') }
+
   return (
     <div className="space-y-4">
-      {/* Header con filtri + bottone Crea */}
       <div className="bg-white rounded-xl shadow p-4">
         <div className="flex justify-between items-center mb-3">
           <div>
-            <h4 className="font-bold text-sm uppercase text-gray-700">Azioni del Kaizen</h4>
-            <p className="text-xs text-gray-500">Azioni concrete, legate o meno a uno step del Gant macro</p>
+            <h4 className="font-bold text-sm uppercase text-gray-700">Azioni del {contextLabel}</h4>
+            <p className="text-xs text-gray-500">
+              {isMajor
+                ? 'Azioni concrete, legate o meno a una fase del progetto'
+                : 'Azioni concrete, legate o meno a uno step del Gant macro'}
+            </p>
           </div>
           <button
             onClick={handleNewAP}
@@ -146,10 +170,10 @@ export default function KaizenAzioniList({ kaizen, kaizenId, kaizenNumero, onUpd
             onChange={(e) => setFilterStep(e.target.value)}
             className="text-xs border rounded px-2 py-1"
           >
-            <option value="">Tutti gli step ({stats.totale})</option>
+            <option value="">{isMajor ? 'Tutte le fasi' : 'Tutti gli step'} ({stats.totale})</option>
             {stats.perStep.map(s => (
               <option key={s.id} value={s.id}>
-                Step {s.num}: {s.label} ({s.count})
+                {isMajor ? 'Fase' : 'Step'} {s.num}: {s.label} ({s.count})
               </option>
             ))}
           </select>
@@ -165,7 +189,7 @@ export default function KaizenAzioniList({ kaizen, kaizenId, kaizenNumero, onUpd
           </select>
           {(filterStep || filterStato) && (
             <button
-              onClick={() => { setFilterStep(''); setFilterStato('') }}
+              onClick={resetFilters}
               className="text-xs px-2 py-1 border rounded text-gray-600 hover:bg-gray-100 flex items-center gap-1"
             >
               <X size={10} /> Reset
@@ -177,7 +201,6 @@ export default function KaizenAzioniList({ kaizen, kaizenId, kaizenNumero, onUpd
         </div>
       </div>
 
-      {/* Tabella o stato vuoto */}
       {loading ? (
         <div className="bg-white rounded-xl shadow p-8 text-center text-gray-400">Caricamento...</div>
       ) : (
@@ -188,7 +211,7 @@ export default function KaizenAzioniList({ kaizen, kaizenId, kaizenNumero, onUpd
           onSelectAP={setSelectedAP}
           onEditAP={(p) => { setEditingAP(p); setShowForm(true) }}
           onDeleteAP={deleteAP}
-          onUnlinkAP={unlinkAP}
+          onUnlinkAP={isMajor ? undefined : unlinkAP}
           onChangeStato={changeStato}
           onChangeStepGant={changeStepAP}
           unlinkLabel="Scollega dal Kaizen"
@@ -199,7 +222,7 @@ export default function KaizenAzioniList({ kaizen, kaizenId, kaizenNumero, onUpd
           defaultView="list"
           emptyMessage={
             azioni.length === 0
-              ? 'Nessuna azione collegata a questo Kaizen'
+              ? `Nessuna azione collegata a questo ${contextLabel}`
               : 'Nessun risultato per i filtri impostati'
           }
           emptyAction={
@@ -210,11 +233,11 @@ export default function KaizenAzioniList({ kaizen, kaizenId, kaizenNumero, onUpd
         />
       )}
 
-      {/* Modal form AP */}
       {showForm && (
         <ActionPlanFormShared
           plan={editingAP}
-          prefilledKaizen={{ kaizen_id: kaizenId, kaizen_numero: kaizenNumero }}
+          prefilledKaizen={isMajor ? null : { kaizen_id: kaizenId, kaizen_numero: kaizenNumero }}
+          prefilledParent={isMajor && !editingAP ? { ...parent, gant_step_id: defaultStepId || null } : null}
           onClose={() => { setShowForm(false); setEditingAP(null) }}
           onSaved={() => {
             setShowForm(false)
@@ -225,7 +248,6 @@ export default function KaizenAzioniList({ kaizen, kaizenId, kaizenNumero, onUpd
         />
       )}
 
-      {/* Pannello dettaglio AP */}
       {selectedAP && (
         <ActionPlanDetailPanel
           plan={selectedAP}
