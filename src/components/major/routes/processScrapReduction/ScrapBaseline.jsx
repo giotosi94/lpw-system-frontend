@@ -4,6 +4,63 @@ import api from '../../../../services/api'
 import * as XLSX from 'xlsx'
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Cell } from 'recharts'
 
+const SCRAP_GUIDES = {
+  che_cosa: {
+    titolo: 'CHE COSA?',
+    domanda: 'Quale scarto o rework osservi?',
+    guida: [
+      'Tipo di difetto e prodotto coinvolto.',
+      'Cosa dovrebbe risultare invece: la specifica attesa.',
+      'Descrivi i fatti, non la causa.',
+    ],
+  },
+  dove: {
+    titolo: 'DOVE?',
+    domanda: 'Dove si genera e dove si rileva lo scarto?',
+    guida: [
+      'In quale operazione o fase macchina viene generato.',
+      'Dove viene rilevato: spesso non coincide con il punto in cui nasce.',
+      'Componente o zona della macchina coinvolti.',
+    ],
+  },
+  quando: {
+    titolo: 'QUANDO?',
+    domanda: 'Quando compare lo scarto?',
+    guida: [
+      'Da quando succede: è nuovo o storico?',
+      'All\'avvio, al cambio formato, dopo un fermo o a regime?',
+      'È continuo o a picchi? In quali turni?',
+    ],
+  },
+  chi: {
+    titolo: 'CHI?',
+    domanda: 'Quali prodotti e chi sono coinvolti?',
+    guida: [
+      'Quali prodotti, formati o ricette sono interessati.',
+      'Chi rileva lo scarto.',
+      'Non chi ha sbagliato.',
+    ],
+  },
+  quale: {
+    titolo: 'QUALE?',
+    domanda: 'Quanto pesa lo scarto?',
+    guida: [
+      'Quantità in kg o pezzi.',
+      'Percentuale sulla produzione e tendenza nel periodo.',
+      'Usa i dati STAIN quando disponibili.',
+    ],
+  },
+  come: {
+    titolo: 'COME?',
+    domanda: 'Come si manifesta e come viene rilevato?',
+    guida: [
+      'Come si presenta il difetto.',
+      'Come viene rilevato: a vista, a peso, con scarto automatico della macchina.',
+      'Dove finisce: scarto (sacco verde) o rework (sacco blu e lilla).',
+    ],
+  },
+}
+
 const HEADERS = ['Data', 'Prodotto', 'Formato', 'Operazione / fase macchina', 'Scarto / Rework', 'Quantità', 'Note']
 const KEYS = ['periodo', 'prodotto', 'formato', 'operazione', 'tipo', 'quantita', 'note']
 const uid = () => globalThis.crypto?.randomUUID?.() || `r_${Date.now()}_${Math.random().toString(16).slice(2)}`
@@ -226,7 +283,7 @@ function calculate(form, staleStain) {
 
   return (
     <div ref={printArea} className="space-y-7">
-      <ProblemDefinition value={form.definizione} onChange={value => change({ definizione: value })} />
+      <ProblemDefinition value={form.definizione} onChange={value => change({ definizione: value })} guides={SCRAP_GUIDES} />
       <section className="bg-white border border-gray-300 rounded-lg p-4 md:p-5">
         <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">PASSO 2 - ANALISI DEI DATI STAIN</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
