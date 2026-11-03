@@ -221,7 +221,7 @@ function calculate(form, staleStain) {
       const numerator = form.perimetro_kpi === 'priorita' ? selected : filtered.total
       const blocked = !snapshot || issues.length || (form.perimetro_kpi === 'priorita' && !form.priorita.length)
       const baseline = blocked ? null : form.stain_kpi === 'percentuale' ? production ? numerator / production * 100 : null : numerator
-      return { pareto, total: filtered.total, selected, numerator, timeline: filtered.andamento.map(row => ({ periodo: row.data, totale: row.kg, produzione: row.produzione })), baseline, issues, production, productionWarning: snapshot?.produzione_warning || null }
+      return { pareto, total: filtered.total, selected, numerator, timeline: filtered.andamento.map(row => ({ periodo: row.data, totale: row.kg, produzione: row.produzione })), baseline, issues, production, productionMachines: snapshot?.produzione_macchine || [], productionWarning: snapshot && !('produzione' in snapshot) ? 'Per calcolare la % sui kg prodotti ricarica i dati da STAIN.' : snapshot?.produzione_warning || null }
     }
     const groups = new Map()
     const periods = new Map()
@@ -428,7 +428,7 @@ function AnalysisPanel({ analysis, unit, priorities, onPriorities }) {
   const stainPct = 'productionWarning' in analysis
   return <div className="mt-4 space-y-3">
     {analysis.issues.length > 0 && <p role="alert" className="text-sm text-amber-800">{analysis.issues.join(' ')}</p>}
-    {stainPct && analysis.production && <p className="text-sm text-gray-700">Scarto <strong>{fmt(analysis.total)} kg</strong> su <strong>{fmt(analysis.production)} kg</strong> prodotti · <strong>{fmt(analysis.total / analysis.production * 100)}%</strong></p>}
+    {stainPct && analysis.production && <p className="text-sm text-gray-700">Scarto <strong>{fmt(analysis.total)} kg</strong> su <strong>{fmt(analysis.production)} kg</strong> prodotti · <strong>{fmt(analysis.total / analysis.production * 100)}%</strong>{analysis.productionMachines?.length > 1 && <span className="text-gray-500"> · produzione {analysis.productionMachines.join(' + ')}</span>}</p>}
     {stainPct && !analysis.production && analysis.productionWarning && <p className="text-sm text-gray-500">{analysis.productionWarning}</p>}
     {unit === '%' ? <p className="text-sm text-gray-600">Le percentuali restano singole rilevazioni: non vengono sommate. Per la baseline complessiva servono i denominatori di produzione.</p> : analysis.pareto.length ? <>
         <div className="overflow-x-auto"><div style={{ height: chartHeight, minWidth: chartMinWidth }}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.pareto} margin={{ top: 10, right: 15, bottom: 15, left: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="categoria" interval={0} height={labelHeight} tick={<VerticalCategoryTick />} /><YAxis yAxisId="quantity" /><Tooltip formatter={(value, name, item) => [item?.payload?.perc_produzione != null ? `${fmt(value)} ${unit} · ${fmt(item.payload.perc_produzione)}% sul prodotto` : `${fmt(value)} ${unit}`, 'Quantità']} /><Legend /><Bar yAxisId="quantity" dataKey="quantita" name={`Quantità (${unit})`} fill="#64748b">{analysis.pareto.map(row => <Cell key={row.categoria} fill={lossColor(row)} />)}</Bar></ComposedChart></ResponsiveContainer></div></div>
