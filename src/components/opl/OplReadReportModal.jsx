@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Download, RefreshCw, X } from 'lucide-react'
 import api from '../../services/api'
+import QuizEditor from './QuizEditor'
 
 export default function OplReadReportModal({ documento, onClose }) {
   const [report, setReport] = useState(null)
@@ -8,6 +9,7 @@ export default function OplReadReportModal({ documento, onClose }) {
   const [error, setError] = useState('')
   const [filterReparto, setFilterReparto] = useState('')
   const [filterStato, setFilterStato] = useState('')
+  const [quizOpen, setQuizOpen] = useState(false)
 
   const loadReport = async () => {
     setLoading(true)
@@ -60,6 +62,9 @@ export default function OplReadReportModal({ documento, onClose }) {
       Stato: riga.status || '',
       Assegnata: formatDate(riga.assigned_at),
       Confermata: formatDate(riga.confirmed_at),
+      Test: riga.test_punteggio == null ? '' : `${riga.test_punteggio}%`,
+      'Verifica in campo': riga.verifica_esito == null ? '' : riga.verifica_esito ? 'Esegue correttamente' : 'Non ancora',
+      'Verificato da': riga.verifica_da || '',
     }))
 
     const headers = Object.keys(rows[0] || {
@@ -69,6 +74,9 @@ export default function OplReadReportModal({ documento, onClose }) {
       Stato: '',
       Assegnata: '',
       Confermata: '',
+      Test: '',
+      'Verifica in campo': '',
+      'Verificato da': '',
     })
 
     const escapeCsv = value => `"${String(value ?? '').replaceAll('"', '""')}"`
@@ -83,7 +91,7 @@ export default function OplReadReportModal({ documento, onClose }) {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `${documento.numero || 'OPL'}_report_letture.csv`
+    link.download = `${documento.numero || documento.tipo || 'OPL'}_report_letture.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -97,7 +105,7 @@ export default function OplReadReportModal({ documento, onClose }) {
       <div className="bg-white rounded-xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
         <div className="bg-primary text-white px-6 py-4 flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <h2 className="text-lg font-bold">Report letture OPL</h2>
+            <h2 className="text-lg font-bold">Report letture {documento.tipo || 'OPL'}</h2>
             <p className="text-xs text-white text-opacity-80 truncate mt-1">
               {documento.numero} · {documento.titolo} · v{documento.versione || 1}
             </p>
@@ -158,12 +166,20 @@ export default function OplReadReportModal({ documento, onClose }) {
                 Aggiorna
               </button>
 
+              <button type="button" onClick={() => setQuizOpen(open => !open)} aria-expanded={quizOpen} className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50">
+                {quizOpen ? 'Chiudi test' : 'Modifica test'}
+              </button>
               <button type="button" onClick={exportExcel} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm flex items-center gap-2 hover:bg-green-700">
                 <Download size={15} />
                 Esporta Excel
               </button>
             </div>
 
+            {quizOpen && (
+              <div className="px-5 py-4 border-b bg-gray-50">
+                <QuizEditor documentoId={documento._id} onSaved={() => { setQuizOpen(false); loadReport() }} />
+              </div>
+            )}
             <div className="flex-1 overflow-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 sticky top-0">
@@ -173,13 +189,15 @@ export default function OplReadReportModal({ documento, onClose }) {
                     <th className="p-3">Ruolo</th>
                     <th className="p-3">Assegnata</th>
                     <th className="p-3">Confermata</th>
+                    <th className="p-3">Test</th>
+                    <th className="p-3">Verifica</th>
                     <th className="p-3">Stato</th>
                   </tr>
                 </thead>
                 <tbody>
                   {righeFiltrate.length === 0 ? (
                     <tr>
-                      <td colSpan="6" className="p-8 text-center text-gray-400">Nessun destinatario trovato.</td>
+                      <td colSpan="8" className="p-8 text-center text-gray-400">Nessun destinatario trovato.</td>
                     </tr>
                   ) : (
                     righeFiltrate.map((riga, index) => (
@@ -189,6 +207,8 @@ export default function OplReadReportModal({ documento, onClose }) {
                         <td className="p-3 capitalize">{riga.role || '-'}</td>
                         <td className="p-3 text-xs">{formatDate(riga.assigned_at)}</td>
                         <td className="p-3 text-xs">{formatDate(riga.confirmed_at)}</td>
+                        <td className="p-3 text-xs">{riga.test_punteggio == null ? '-' : `${riga.test_punteggio}%`}</td>
+                        <td className="p-3 text-xs">{riga.verifica_esito == null ? '-' : riga.verifica_esito ? 'Esegue correttamente' : 'Non ancora'}</td>
                         <td className="p-3"><StatusBadge status={riga.status} /></td>
                       </tr>
                     ))
