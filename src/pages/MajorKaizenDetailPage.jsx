@@ -16,6 +16,15 @@ export default function MajorKaizenDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [dataOpen, setDataOpen] = useState(false)
+  const [ganttOpen, setGanttOpen] = useState(() => {
+    try { return localStorage.getItem('lpw_major_gantt_open') === '1' } catch { return false }
+  })
+
+  const toggleGantt = () => setGanttOpen(current => {
+    const next = !current
+    try { localStorage.setItem('lpw_major_gantt_open', next ? '1' : '0') } catch { return next }
+    return next
+  })
 
   useEffect(() => {
     let cancelled = false
@@ -103,9 +112,22 @@ export default function MajorKaizenDetailPage() {
   return (
     <div>
       <MajorHeader major={major} onOpenData={() => setDataOpen(true)} />
-      <div className="mb-5">
-        <KaizenGantMasterPlan key={major._id} value={ganttValue} onChange={saveGantt} />
-      </div>
+      <section className="mb-5 rounded-lg border border-gray-200 bg-white">
+        <button
+          type="button"
+          onClick={toggleGantt}
+          aria-expanded={ganttOpen}
+          className="flex w-full items-center justify-between px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+        >
+          <span>Master Plan</span>
+          <span className="text-xs font-normal text-gray-500">{ganttOpen ? 'Nascondi ▲' : 'Mostra ▼'}</span>
+        </button>
+        {ganttOpen && (
+          <div className="border-t border-gray-200 p-2">
+            <KaizenGantMasterPlan key={major._id} value={ganttValue} onChange={saveGantt} />
+          </div>
+        )}
+      </section>
       <MajorRouteNavigator steps={steps} stepsData={stepsData} activeKey={activeKey} onSelect={setActiveKey} />
       {activeStep ? (
         <MajorStepContainer key={activeStep.step_id} step={activeStep} stepData={stepsData[activeStep.step_id]}
