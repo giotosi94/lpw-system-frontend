@@ -241,12 +241,6 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     .filter((item, index, all) => all.findIndex(other => sameZone(other, item)) === index)
     .filter(item => !form.anomalie.some(anomaly => sameZone(anomaly, item)))
 
-  const phases = useMemo(
-    () => list(major?.route_snapshot?.steps)
-      .map(item => ({ step_id: item.step_id, ordine: item.ordine, titolo: item.titolo }))
-      .sort((a, b) => a.ordine - b.ordine),
-    [major?.route_snapshot],
-  )
 
   const planningParent = useMemo(() => ({
     parent_type: 'major_kaizen',
@@ -379,7 +373,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
       <section className={panel}>
         <h3 className={heading}>PASSO 2 - ISPEZIONE E RIPRISTINO</h3>
         <p className="text-sm text-gray-600 mb-3">
-          Registra le anomalie trovate con pulizia e ispezione. Gli interventi di ripristino si gestiscono nel piano azioni qui sotto.
+          Registra le anomalie trovate con pulizia e ispezione. Gli interventi di ripristino si gestiscono negli Action Plan della fase qui sotto.
         </p>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={addAnomaly} className={addButton}><Plus size={16} /> Aggiungi anomalia</button>
@@ -448,10 +442,9 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
       </section>
 
       <section className="space-y-3">
-        <h3 className={heading}>PASSO 3 - PIANO AZIONI</h3>
+        <h3 className={heading}>PASSO 3 - ACTION PLAN</h3>
         <KaizenAzioniList
           parent={planningParent}
-          phases={phases}
           defaultStepId={step?.step_id || ''}
         />
       </section>
