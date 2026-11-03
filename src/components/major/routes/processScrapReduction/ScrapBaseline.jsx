@@ -202,9 +202,9 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
     setStainBusy(true)
     setStainError('')
     try {
-      const res = await api.get('/stain/scarti', { params: { dal: form.periodo_da, al: form.periodo_a, linea: form.stain_linea, tipi: [...form.stain_tipi].sort().join(',') } })
+      const res = await api.get('/stain/scarti', { params: { dal: form.periodo_da, al: form.periodo_a, linea: form.stain_linea, tipi: [...form.stain_tipi].sort().join(',') }, timeout: 180000 })
       change({ stain_snapshot: res.data, priorita_stain: [], stain_prodotti: [] })
-    } catch (error) { setStainError(error.response?.data?.detail || 'Caricamento STAIN non riuscito') }
+    } catch (error) { setStainError(error.response?.data?.detail || (error.code === 'ECONNABORTED' ? 'Tempo scaduto: riduci il periodo e riprova' : 'Caricamento STAIN non riuscito')) }
     finally { setStainBusy(false) }
   }
   const staleStain = form.stain_snapshot && (form.stain_snapshot.dal !== form.periodo_da || form.stain_snapshot.al !== form.periodo_a || form.stain_snapshot.linea !== form.stain_linea || JSON.stringify([...(form.stain_snapshot.tipi || ['rework', 'scarto', 'non_classificato'])].sort()) !== JSON.stringify([...form.stain_tipi].sort()))
