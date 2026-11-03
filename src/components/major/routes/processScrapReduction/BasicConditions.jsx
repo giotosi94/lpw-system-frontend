@@ -30,25 +30,37 @@ function createId(prefix) {
 }
 
 function newArea() {
-  return { id: createId('area'), perdita: '', zona: '', condizione: '', standard: '' }
+  return { id: createId('area'), perdita: '', macchina: '', componente: '', standard: '' }
 }
 
 function newAnomaly() {
-  return { id: createId('anomaly'), zona: '', descrizione: '', foto_prima: [], foto_dopo: [], verifica: '', documenti: [] }
+  return { id: createId('anomaly'), macchina: '', componente: '', descrizione: '', foto_prima: [], foto_dopo: [], verifica: '', documenti: [] }
 }
 
 function newStandard() {
   return { id: createId('standard'), attivita: '', metodo: '', documento_id: '', documento_label: '', frequenza: '', responsabile: null }
 }
 
+function splitZone(item) {
+  if (item.macchina !== undefined || item.componente !== undefined) {
+    return { macchina: item.macchina || '', componente: item.componente || '' }
+  }
+  const [macchina = '', ...rest] = String(item.zona ?? item.area_componente ?? '').split(' · ')
+  return { macchina: macchina.trim(), componente: rest.join(' · ').trim() }
+}
+
+function zoneLabel(item) {
+  return [item.macchina, item.componente].filter(Boolean).join(' · ')
+}
+
 function buildForm(data) {
   return {
-    aree: list(data.aree).map(item => ({ ...newArea(), ...item, id: item.id || createId('area') })),
+    aree: list(data.aree).map(item => ({ ...newArea(), ...item, ...splitZone(item), id: item.id || createId('area') })),
     anomalie: list(data.anomalie).map(item => ({
       ...newAnomaly(),
       ...item,
       id: item.id || createId('anomaly'),
-      zona: item.zona ?? item.area_componente ?? '',
+      ...splitZone(item),
       verifica: item.verifica ?? item.note ?? '',
       foto_prima: list(item.foto_prima),
       foto_dopo: list(item.foto_dopo),
@@ -61,12 +73,13 @@ function buildForm(data) {
 }
 
 function toData(form) {
-  return { aree: form.aree, anomalie: form.anomalie, standard_righe: form.standard_righe }
+  const withZone = item => ({ ...item, zona: zoneLabel(item) })
+  return { aree: form.aree.map(withZone), anomalie: form.anomalie.map(withZone), standard_righe: form.standard_righe }
 }
 
 function outputs(form) {
   return {
-    aree_critiche: form.aree.some(item => item.zona.trim()),
+    aree_critiche: form.aree.some(item => item.macchina.trim()),
     anomalie_ripristini: form.anomalie.some(item => item.descrizione.trim()),
 }
 }
@@ -199,17 +212,13 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
         if (cancelled) return
         const reparto = (response.data || []).find(item => item.nome === major?.reparto)
         const linea = list(reparto?.linee).find(item => item.nome === major?.linea)
-        const options = []
-        list(linea?.macchine)
+        setMachines(list(linea?.macchine)
           .filter(item => item.attivo !== false)
           .sort((a, b) => (a.nome === major?.macchina ? -1 : 0) - (b.nome === major?.macchina ? -1 : 0))
-          .forEach(macchina => {
-            options.push(macchina.nome)
-            list(macchina.componenti)
-              .filter(item => item.attivo !== false)
-              .forEach(componente => options.push(`${macchina.nome} · ${componente.nome}`))
-          })
-        setMachines(options)
+          .map(macchina => ({
+            nome: macchina.nome,
+            componenti: list(macchina.componenti).filter(item => item.attivo !== false).map(item => item.nome),
+          })))
       })
       .catch(() => { if (!cancelled) setMachines([]) })
     return () => { cancelled = true }
@@ -224,12 +233,13 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     return [...values]
   }, [allStepsData])
 
-  const areaZones = useMemo(
-    () => [...new Set(form.aree.map(item => item.zona.trim()).filter(Boolean))],
-    [form.aree],
-  )
-  const zoneOptions = useMemo(() => [...new Set([...areaZones, ...machines])], [areaZones, machines])
-  const missingZones = areaZones.filter(zona => !form.anomalie.some(item => item.zona === zona))
+  const machineNames = machines.map(item => item.nome)
+  const componentsOf = name => machines.find(item => item.nome === name)?.componenti || []
+  const sameZone = (a, b) => a.macchina === b.macchina && a.componente.trim().toLowerCase() === b.componente.trim().toLowerCase()
+  const missingZones = form.aree
+    .filter(item => item.macchina)
+    .filter((item, index, all) => all.findIndex(other => sameZone(other, item)) === index)
+    .filter(item => !form.anomalie.some(anomaly => sameZone(anomaly, item)))
 
   const phases = useMemo(
     () => list(major?.route_snapshot?.steps)
@@ -258,7 +268,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
   const addAnomaly = () => mutate(current => ({ ...current, anomalie: [...current.anomalie, newAnomaly()] }))
   const addAnomaliesFromAreas = () => mutate(current => ({
     ...current,
-    anomalie: [...current.anomalie, ...missingZones.map(zona => ({ ...newAnomaly(), zona }))],
+    anomalie: [...current.anomalie, ...missingZones.map(area => ({ ...newAnomaly(), macchina: area.macchina, componente: area.componente }))],
   }))
   const patchAnomaly = (id, patch) => mutate(current => ({
     ...current,
@@ -332,7 +342,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
       <section className={panel}>
         <h3 className={heading}>PASSO 1 - AREE DA CONTROLLARE</h3>
         <p className="text-sm text-gray-600 mb-3">
-          Indica dove verificare le condizioni di base per i difetti prioritari e quale standard ci si aspetta.
+          Indica macchina e componente da verificare per i difetti prioritari e quale standard ci si aspetta.
         </p>
         {lossOptions.length === 0 && (
           <p className="text-sm text-amber-800 mb-3">Nessuna priorità selezionata nella fase 1: spunta le priorità da attaccare sotto il Pareto.</p>
@@ -343,8 +353,8 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
             <thead>
               <tr className="text-left text-gray-600 border-b">
                 <th className="p-2 font-medium">Perdita di riferimento</th>
-                <th className="p-2 font-medium">Componente / zona</th>
-                <th className="p-2 font-medium">Condizione da verificare</th>
+                <th className="p-2 font-medium">Macchina</th>
+                <th className="p-2 font-medium">Componente</th>
                 <th className="p-2 font-medium">Standard atteso</th>
                 <th className="p-2 w-10" />
               </tr>
@@ -355,8 +365,8 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
               ) : form.aree.map(row => (
                 <tr key={row.id} className="border-b align-top">
                   <td className="p-1"><OptionSelect label="Perdita di riferimento" value={row.perdita} options={lossOptions} onChange={value => patchArea(row.id, { perdita: value })} /></td>
-                  <td className="p-1"><OptionSelect label="Componente o zona" value={row.zona} options={machines} onChange={value => patchArea(row.id, { zona: value })} /></td>
-                  <td className="p-1"><input aria-label="Condizione da verificare" className={input} value={row.condizione} onChange={event => patchArea(row.id, { condizione: event.target.value })} /></td>
+                  <td className="p-1"><OptionSelect label="Macchina" value={row.macchina} options={machineNames} onChange={value => patchArea(row.id, { macchina: value, componente: '' })} /></td>
+                  <td className="p-1"><ComponentInput value={row.componente} options={componentsOf(row.macchina)} onChange={value => patchArea(row.id, { componente: value })} /></td>
                   <td className="p-1"><input aria-label="Standard atteso" className={input} value={row.standard} onChange={event => patchArea(row.id, { standard: event.target.value })} /></td>
                   <td className="p-1 text-center"><button type="button" aria-label="Elimina area" onClick={() => removeArea(row.id)} className="p-2 text-red-600 hover:bg-red-50 rounded"><Trash2 size={15} /></button></td>
                 </tr>
@@ -388,10 +398,13 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
                 <button type="button" aria-label="Elimina anomalia" onClick={() => removeAnomaly(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded"><Trash2 size={15} /></button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <label className="block text-sm">Componente / zona
-                  <div className="mt-1"><OptionSelect label="Componente o zona" value={item.zona} options={zoneOptions} onChange={value => patchAnomaly(item.id, { zona: value })} /></div>
+                <label className="block text-sm">Macchina
+                  <div className="mt-1"><OptionSelect label="Macchina" value={item.macchina} options={machineNames} onChange={value => patchAnomaly(item.id, { macchina: value, componente: '' })} /></div>
                 </label>
-                <label className="block text-sm md:col-span-2">Anomalia rilevata
+                <label className="block text-sm">Componente
+                  <div className="mt-1"><ComponentInput value={item.componente} options={componentsOf(item.macchina)} onChange={value => patchAnomaly(item.id, { componente: value })} /></div>
+                </label>
+                <label className="block text-sm">Anomalia rilevata
                   <textarea rows={2} className={`${input} mt-1`} value={item.descrizione} onChange={event => patchAnomaly(item.id, { descrizione: event.target.value })} />
                 </label>
               </div>
@@ -566,5 +579,24 @@ function OptionSelect({ label, value, options, onChange }) {
       <option value="">Seleziona</option>
       {values.map(option => <option key={option} value={option}>{option}</option>)}
     </select>
+  )
+}
+
+function ComponentInput({ value, options, onChange }) {
+  const listId = useId()
+  return (
+    <>
+      <input
+        aria-label="Componente"
+        list={listId}
+        className={input}
+        placeholder={options.length ? 'Scegli o scrivi' : 'Scrivi il componente'}
+        value={value || ''}
+        onChange={event => onChange(event.target.value)}
+      />
+      <datalist id={listId}>
+        {options.map(option => <option key={option} value={option} />)}
+      </datalist>
+    </>
   )
 }
