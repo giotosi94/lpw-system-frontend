@@ -62,15 +62,27 @@ const SCRAP_GUIDES = {
 }
 
 function filterStainByProduct(snapshot, products = []) {
-  const detail = snapshot?.dettaglio
-  if (!detail || !products.length) {
-    return { pareto: snapshot?.pareto || [], andamento: snapshot?.andamento || [], total: snapshot?.totale_kg || 0 }
-  }
   const selected = new Set(products)
+  const useFilter = products.length > 0 && Boolean(snapshot?.dettaglio)
+  const productionDays = new Map()
+  ;(snapshot?.produzione || []).forEach(row => {
+    if (useFilter && !selected.has(row.prodotto)) return
+    productionDays.set(row.data, (productionDays.get(row.data) || 0) + row.kg)
+  })
+  const productionTotal = [...productionDays.values()].reduce((sum, value) => sum + value, 0)
+  const production = productionTotal > 0 ? productionTotal : null
+  const withProduction = andamento => {
+    const days = new Map(andamento.map(row => [row.data, row.kg]))
+    productionDays.forEach((value, day) => { if (!days.has(day)) days.set(day, 0) })
+    return [...days].sort((a, b) => a[0].localeCompare(b[0])).map(([data, kg]) => ({ data, kg, produzione: productionDays.get(data) || 0 }))
+  }
+  if (!useFilter) {
+    return { pareto: snapshot?.pareto || [], andamento: withProduction(snapshot?.andamento || []), total: snapshot?.totale_kg || 0, production }
+  }
   const groups = new Map()
   const days = new Map()
   let total = 0
-  detail.forEach(row => {
+  snapshot.dettaglio.forEach(row => {
     if (!selected.has(row.prodotto)) return
     const key = `${row.codice}|${row.causale}`
     const item = groups.get(key) || { codice: row.codice, causale: row.causale, tipo: row.tipo, kg: 0 }
@@ -81,8 +93,9 @@ function filterStainByProduct(snapshot, products = []) {
   })
   return {
     pareto: [...groups.values()].sort((a, b) => b.kg - a.kg),
-    andamento: [...days].sort((a, b) => a[0].localeCompare(b[0])).map(([data, kg]) => ({ data, kg })),
+    andamento: withProduction([...days].map(([data, kg]) => ({ data, kg }))),
     total,
+    production,
   }
 }
 
@@ -135,6 +148,7 @@ function initial(data, major) {
     priorita: data.priorita || (data.categoria_prioritaria ? [data.categoria_prioritaria] : []),
     metrica: data.metrica || (data.unita_misura === '%' ? 'percentuale' : 'quantita'),
     perimetro_kpi: data.perimetro_kpi || 'totale',
+    stain_kpi: data.stain_kpi || 'kg',
     target: data.target ?? '',
     riduzione_pct: data.riduzione_pct ?? '',
     scadenza: data.scadenza || major?.data_target || '',
@@ -199,12 +213,15 @@ function calculate(form, staleStain) {
     if (form.origine === 'stain') {
       const snapshot = form.stain_snapshot
       const filtered = filterStainByProduct(snapshot, form.stain_prodotti)
-      const pareto = filtered.pareto.map(row => ({ ...row, categoria: `${row.codice} - ${row.causale}`, quantita: row.kg, quantita_calcolata: row.kg }))
+      const production = filtered.production
+      const pareto = filtered.pareto.map(row => ({ ...row, categoria: `${row.codice} - ${row.causale}`, quantita: row.kg, quantita_calcolata: row.kg, perc_produzione: production ? row.kg / production * 100 : null }))
       const selected = pareto.filter(row => form.priorita.includes(row.categoria)).reduce((sum, row) => sum + row.quantita, 0)
       const issues = [...(snapshot?.warnings || [])]
       if (staleStain) issues.push('Periodo, linea o filtro modificati: clicca Carica da STAIN per aggiornare i risultati.')
-      const baseline = !snapshot || issues.length || (form.perimetro_kpi === 'priorita' && !form.priorita.length) ? null : form.perimetro_kpi === 'priorita' ? selected : filtered.total
-      return { pareto, total: filtered.total, selected, timeline: filtered.andamento.map(row => ({ periodo: row.data, totale: row.kg })), baseline, issues, production: null }
+      const numerator = form.perimetro_kpi === 'priorita' ? selected : filtered.total
+      const blocked = !snapshot || issues.length || (form.perimetro_kpi === 'priorita' && !form.priorita.length)
+      const baseline = blocked ? null : form.stain_kpi === 'percentuale' ? production ? numerator / production * 100 : null : numerator
+      return { pareto, total: filtered.total, selected, numerator, timeline: filtered.andamento.map(row => ({ periodo: row.data, totale: row.kg, produzione: row.produzione })), baseline, issues, production, productionWarning: snapshot?.produzione_warning || null }
     }
     const groups = new Map()
     const periods = new Map()
@@ -249,7 +266,7 @@ function calculate(form, staleStain) {
   const stainAnalysis = useMemo(() => calculate({ ...form, origine: 'stain', priorita: form.priorita_stain }, staleStain), [form, staleStain])
   const manualAnalysis = useMemo(() => calculate({ ...form, origine: 'manuale', unita_misura: form.unita_manuale, priorita: form.priorita_manuali, metrica: 'quantita' }, false), [form])
   const analysis = form.baseline_fonte === 'stain' ? stainAnalysis : manualAnalysis
-  const baselineUnit = form.baseline_fonte === 'stain' ? 'kg' : form.unita_manuale
+  const baselineUnit = form.baseline_fonte === 'stain' ? (form.stain_kpi === 'percentuale' ? '%' : 'kg') : form.unita_manuale
   const baselinePriorities = form.baseline_fonte === 'stain' ? form.priorita_stain : form.priorita_manuali
   const save = async () => {
 
@@ -324,6 +341,7 @@ function calculate(form, staleStain) {
     change({ target: value, riduzione_pct: String(round((analysis.baseline - number(value)) / analysis.baseline * 100)) })
   }
   const reductionAmount = analysis.baseline > 0 && valid(form.target) ? analysis.baseline - number(form.target) : null
+  const reductionKg = form.baseline_fonte === 'stain' && form.stain_kpi === 'percentuale' && reductionAmount !== null && analysis.production ? reductionAmount / 100 * analysis.production : null
 
   return (
     <div ref={printArea} className="space-y-7">
@@ -374,16 +392,19 @@ function calculate(form, staleStain) {
       <section>
         <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">PASSO 4 - PRIORITÀ E OBIETTIVO</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <label className="text-sm">Fonte baseline<select className={`${input} mt-1`} value={form.baseline_fonte} onChange={event => change({ baseline_fonte: event.target.value, target: '', riduzione_pct: '' })}><option value="stain">STAIN</option><option value="manuale">Raccolta manuale</option></select></label>
-          <label className="text-sm">KPI<output className={`${input} mt-1 block`}>{baselineUnit === '%' ? 'Percentuale per rilevazione' : 'Quantità di scarto / rework'}</output></label>
+          <label className="text-sm">Fonte baseline<select className={`${input} mt-1`} value={form.baseline_fonte} onChange={event => change({ baseline_fonte: event.target.value, target: '', riduzione_pct: '', stain_kpi: 'kg' })}><option value="stain">STAIN</option><option value="manuale">Raccolta manuale</option></select></label>
+          {form.baseline_fonte === 'stain'
+            ? <label className="text-sm">KPI<select className={`${input} mt-1`} value={form.stain_kpi} onChange={event => change({ stain_kpi: event.target.value, target: '', riduzione_pct: '' })}><option value="kg">kg di scarto</option><option value="percentuale" disabled={!stainAnalysis.production}>% sui kg prodotti</option></select></label>
+            : <label className="text-sm">KPI<output className={`${input} mt-1 block`}>{baselineUnit === '%' ? 'Percentuale per rilevazione' : 'Quantità di scarto / rework'}</output></label>}
           <label className="text-sm">Perimetro<select className={`${input} mt-1`} value={form.perimetro_kpi} onChange={event => change({ perimetro_kpi: event.target.value })}><option value="totale">Tutte le categorie</option><option value="priorita">Categorie prioritarie</option></select></label>
           <label className="text-sm">Baseline calcolata<output className={`${input} mt-1 block bg-gray-50`}>{fmt(analysis.baseline)} {baselineUnit}</output></label>
           <label className="text-sm">Riduzione %<input className={`${input} mt-1`} type="number" min="0" max="100" step="any" value={form.riduzione_pct} disabled={!(analysis.baseline > 0)} onChange={event => setReduction(event.target.value)} /></label>
           <label className="text-sm">Target ({baselineUnit})<input className={`${input} mt-1`} type="number" min="0" step="any" value={form.target} onChange={event => setTarget(event.target.value)} /></label>
-          <label className="text-sm">Riduzione ({baselineUnit})<output className={`${input} mt-1 block bg-gray-50`}>{reductionAmount === null ? '—' : fmt(reductionAmount)}</output></label>
+          <label className="text-sm">Riduzione ({baselineUnit === '%' ? 'punti %' : baselineUnit})<output className={`${input} mt-1 block bg-gray-50`}>{reductionAmount === null ? '—' : fmt(reductionAmount)}</output></label>
+          {reductionKg !== null && <label className="text-sm">Riduzione kg nel periodo<output className={`${input} mt-1 block bg-gray-50`}>{fmt(reductionKg)}</output></label>}
           {field('Scadenza', 'scadenza', 'date')}
         </div>
-        {baselineUnit === '%' && analysis.production === null && <p className="text-sm text-amber-800 mt-2">Baseline complessiva non calcolata: mancano i denominatori di produzione.</p>}
+        {baselineUnit === '%' && form.baseline_fonte === 'manuale' && analysis.production === null && <p className="text-sm text-amber-800 mt-2">Baseline complessiva non calcolata: mancano i denominatori di produzione.</p>}
         {reductionAmount !== null && reductionAmount < 0 && <p className="text-sm text-amber-800 mt-2">Il target è superiore alla baseline.</p>}
       </section>
       <div className="flex flex-wrap justify-end items-center gap-3 border-t pt-4"><span role="status" className="text-sm">{status}</span><button type="button" className="bg-primary text-white px-4 py-2 rounded disabled:opacity-50" disabled={saving} onClick={save}>{saving ? 'Salvataggio...' : 'Salva fase'}</button></div>
@@ -404,14 +425,17 @@ function AnalysisPanel({ analysis, unit, priorities, onPriorities }) {
     const labelHeight = Math.max(170, Math.min(620, Math.max(0, ...analysis.pareto.map(row => String(row.categoria).length)) * 6 + 20))
     const chartHeight = 280 + labelHeight
     const chartMinWidth = Math.max(600, analysis.pareto.length * 70 + 130)
+  const stainPct = 'productionWarning' in analysis
   return <div className="mt-4 space-y-3">
     {analysis.issues.length > 0 && <p role="alert" className="text-sm text-amber-800">{analysis.issues.join(' ')}</p>}
+    {stainPct && analysis.production && <p className="text-sm text-gray-700">Scarto <strong>{fmt(analysis.total)} kg</strong> su <strong>{fmt(analysis.production)} kg</strong> prodotti · <strong>{fmt(analysis.total / analysis.production * 100)}%</strong></p>}
+    {stainPct && !analysis.production && analysis.productionWarning && <p className="text-sm text-gray-500">{analysis.productionWarning}</p>}
     {unit === '%' ? <p className="text-sm text-gray-600">Le percentuali restano singole rilevazioni: non vengono sommate. Per la baseline complessiva servono i denominatori di produzione.</p> : analysis.pareto.length ? <>
-        <div className="overflow-x-auto"><div style={{ height: chartHeight, minWidth: chartMinWidth }}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.pareto} margin={{ top: 10, right: 15, bottom: 15, left: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="categoria" interval={0} height={labelHeight} tick={<VerticalCategoryTick />} /><YAxis yAxisId="quantity" /><Tooltip /><Legend /><Bar yAxisId="quantity" dataKey="quantita" name={`Quantità (${unit})`} fill="#64748b">{analysis.pareto.map(row => <Cell key={row.categoria} fill={lossColor(row)} />)}</Bar></ComposedChart></ResponsiveContainer></div></div>
+        <div className="overflow-x-auto"><div style={{ height: chartHeight, minWidth: chartMinWidth }}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.pareto} margin={{ top: 10, right: 15, bottom: 15, left: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="categoria" interval={0} height={labelHeight} tick={<VerticalCategoryTick />} /><YAxis yAxisId="quantity" /><Tooltip formatter={(value, name, item) => [item?.payload?.perc_produzione != null ? `${fmt(value)} ${unit} · ${fmt(item.payload.perc_produzione)}% sul prodotto` : `${fmt(value)} ${unit}`, 'Quantità']} /><Legend /><Bar yAxisId="quantity" dataKey="quantita" name={`Quantità (${unit})`} fill="#64748b">{analysis.pareto.map(row => <Cell key={row.categoria} fill={lossColor(row)} />)}</Bar></ComposedChart></ResponsiveContainer></div></div>
       <p className="text-sm font-semibold text-gray-700">Seleziona solamente le priorità che vuoi attaccare</p>
       <div className="flex flex-wrap gap-x-5 gap-y-2">{analysis.pareto.map(row => <label key={row.categoria} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={priorities.includes(row.categoria)} onChange={event => onPriorities(event.target.checked ? [...priorities, row.categoria] : priorities.filter(value => value !== row.categoria))} />{row.categoria}</label>)}</div>
     </> : <p className="text-sm text-gray-500">Nessun dato disponibile per il Pareto.</p>}
-    {unit !== '%' && <TrendChart timeline={analysis.timeline} unit={unit} />}
+    {unit !== '%' && <TrendChart timeline={analysis.timeline} unit={unit} withProduction={Boolean(analysis.production)} />}
   </div>
 }
 
@@ -442,23 +466,39 @@ function groupTimeline(timeline, grouping) {
   const totals = new Map()
   timeline.forEach(row => {
     const key = periodKey(row.periodo, grouping)
-    totals.set(key, (totals.get(key) || 0) + row.totale)
+    const item = totals.get(key) || { totale: 0, produzione: 0 }
+    item.totale += row.totale
+    item.produzione += row.produzione || 0
+    totals.set(key, item)
   })
-  return [...totals].sort((a, b) => a[0].localeCompare(b[0])).map(([key, totale]) => ({ periodo: periodLabel(key), totale }))
+  return [...totals].sort((a, b) => a[0].localeCompare(b[0])).map(([key, item]) => ({
+    periodo: periodLabel(key),
+    totale: item.totale,
+    percentuale: item.produzione > 0 ? item.totale / item.produzione * 100 : null,
+  }))
 }
 
-function TrendChart({ timeline, unit }) {
+function TrendChart({ timeline, unit, withProduction = false }) {
   const [grouping, setGrouping] = useState('giorno')
+  const [measure, setMeasure] = useState('kg')
+  const showPercent = withProduction && measure === 'pct'
+  const dataKey = showPercent ? 'percentuale' : 'totale'
+  const valueUnit = showPercent ? '%' : unit
   const data = useMemo(() => groupTimeline(timeline, grouping), [timeline, grouping])
   if (!timeline.length) return null
   return <div className="border border-gray-200 rounded-lg p-3">
     <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
       <h4 className="text-sm font-semibold text-gray-700">Andamento</h4>
+      <div className="flex flex-wrap gap-2">
+      {withProduction && <div role="group" aria-label="Misura andamento" className="flex bg-gray-100 rounded-lg p-1 gap-1">
+        {[['kg', unit], ['pct', '% sul prodotto']].map(([value, label]) => <button key={value} type="button" aria-pressed={measure === value} onClick={() => setMeasure(value)} className={`px-3 py-1 text-xs rounded-md ${measure === value ? 'bg-white text-primary shadow-sm font-semibold' : 'text-gray-600 hover:bg-gray-200'}`}>{label}</button>)}
+      </div>}
       <div role="group" aria-label="Raggruppa andamento" className="flex bg-gray-100 rounded-lg p-1 gap-1">
         {GROUPINGS.map(([value, label]) => <button key={value} type="button" aria-pressed={grouping === value} onClick={() => setGrouping(value)} className={`px-3 py-1 text-xs rounded-md ${grouping === value ? 'bg-white text-primary shadow-sm font-semibold' : 'text-gray-600 hover:bg-gray-200'}`}>{label}</button>)}
       </div>
+      </div>
     </div>
-    <div className="h-40"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={data} margin={{ top: 5, right: 10, bottom: 0, left: 0 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="periodo" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} width={45} /><Tooltip formatter={value => [`${fmt(value)} ${unit}`, 'Quantità']} />{data.length > 1 ? <Line dataKey="totale" name={`Quantità (${unit})`} stroke="#76513b" strokeWidth={2} dot={{ r: 3 }} /> : <Bar dataKey="totale" name={`Quantità (${unit})`} fill="#76513b" barSize={40} />}</ComposedChart></ResponsiveContainer></div>
+    <div className="h-40"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={data} margin={{ top: 5, right: 10, bottom: 0, left: 0 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="periodo" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} width={45} /><Tooltip formatter={value => [`${fmt(value)} ${valueUnit}`, showPercent ? 'Scarto sul prodotto' : 'Quantità']} />{data.length > 1 ? <Line dataKey={dataKey} name={`${showPercent ? 'Scarto' : 'Quantità'} (${valueUnit})`} stroke="#76513b" strokeWidth={2} dot={{ r: 3 }} connectNulls /> : <Bar dataKey={dataKey} name={`${showPercent ? 'Scarto' : 'Quantità'} (${valueUnit})`} fill="#76513b" barSize={40} />}</ComposedChart></ResponsiveContainer></div>
   </div>
 }
 
