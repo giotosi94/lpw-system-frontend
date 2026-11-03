@@ -221,10 +221,23 @@ function calculate(form, staleStain) {
       const numerator = form.perimetro_kpi === 'priorita' ? selected : filtered.total
       const blocked = !snapshot || issues.length || (form.perimetro_kpi === 'priorita' && !form.priorita.length)
       const baseline = blocked ? null : form.stain_kpi === 'percentuale' ? production ? numerator / production * 100 : null : numerator
-      return { pareto, total: filtered.total, selected, numerator, timeline: filtered.andamento.map(row => ({ periodo: row.data, totale: row.kg, produzione: row.produzione })), baseline, issues, production, productionMachines: snapshot?.produzione_macchine || [], productionWarning: snapshot && !('produzione' in snapshot) ? 'Per calcolare la % sui kg prodotti ricarica i dati da STAIN.' : snapshot?.produzione_warning || null }
+      const productionByDay = new Map(filtered.andamento.map(row => [row.data, row.produzione]))
+      const productSet = new Set(form.stain_prodotti)
+      const byCategory = new Map()
+      ;(snapshot?.dettaglio || []).forEach(row => {
+        if (productSet.size && !productSet.has(row.prodotto)) return
+        const key = `${row.codice} - ${row.causale}`
+        const days = byCategory.get(key) || new Map()
+        days.set(row.data, (days.get(row.data) || 0) + row.kg)
+        byCategory.set(key, days)
+      })
+      const categoryTimelines = Object.fromEntries([...byCategory].map(([key, days]) => [key,
+        [...new Set([...productionByDay.keys(), ...days.keys()])].sort().map(day => ({ periodo: day, totale: days.get(day) || 0, produzione: productionByDay.get(day) || 0 }))]))
+      return { pareto, total: filtered.total, selected, numerator, categoryTimelines, timeline: filtered.andamento.map(row => ({ periodo: row.data, totale: row.kg, produzione: row.produzione })), baseline, issues, production, productionMachines: snapshot?.produzione_macchine || [], productionWarning: snapshot && !('produzione' in snapshot) ? 'Per calcolare la % sui kg prodotti ricarica i dati da STAIN.' : snapshot?.produzione_warning || null }
     }
     const groups = new Map()
     const periods = new Map()
+    const categoryDays = new Map()
     const issues = []
     form.categorie_scarto.forEach((original, index) => {
       const row = { ...original, categoria: original[form.raggruppamento] || '', produzione: '' }
@@ -235,6 +248,9 @@ function calculate(form, staleStain) {
       groups.set(category, (groups.get(category) || 0) + quantity)
       const period = row.periodo.trim()
       if (period) {
+        const days = categoryDays.get(category) || new Map()
+        days.set(period, (days.get(period) || 0) + quantity)
+        categoryDays.set(category, days)
         const item = periods.get(period) || { periodo: period, totale: 0, selezionato: 0, produzione: null }
         item.totale += quantity
         if (form.priorita.includes(category)) item.selezionato += quantity
@@ -259,7 +275,9 @@ function calculate(form, staleStain) {
     const production = denominatorValid ? timeline.reduce((sum, row) => sum + row.produzione, 0) : null
     const numerator = form.perimetro_kpi === 'priorita' ? selected : total
     const baseline = form.unita_misura === '%' ? null : issues.length || (form.perimetro_kpi === 'priorita' && !form.priorita.length) ? null : form.metrica === 'percentuale' ? production ? numerator / production * 100 : null : pareto.length ? numerator : null
-    return { pareto, total, selected, timeline, baseline, issues, production }
+    const allPeriods = timeline.map(row => row.periodo)
+    const categoryTimelines = Object.fromEntries([...categoryDays].map(([key, days]) => [key, allPeriods.map(periodo => ({ periodo, totale: days.get(periodo) || 0 }))]))
+    return { pareto, total, selected, timeline, categoryTimelines, baseline, issues, production }
   }
 
 
@@ -422,6 +440,9 @@ function lossColor(row) {
 }
 
 function AnalysisPanel({ analysis, unit, priorities, onPriorities }) {
+  const [focus, setFocus] = useState('')
+  const focused = focus && analysis.categoryTimelines?.[focus] ? focus : ''
+  const toggleFocus = categoria => setFocus(current => (current === categoria || !analysis.categoryTimelines?.[categoria] ? '' : categoria))
     const labelHeight = Math.max(170, Math.min(620, Math.max(0, ...analysis.pareto.map(row => String(row.categoria).length)) * 6 + 20))
     const chartHeight = 280 + labelHeight
     const chartMinWidth = Math.max(600, analysis.pareto.length * 70 + 130)
@@ -431,11 +452,12 @@ function AnalysisPanel({ analysis, unit, priorities, onPriorities }) {
     {stainPct && analysis.production && <p className="text-sm text-gray-700">Scarto <strong>{fmt(analysis.total)} kg</strong> su <strong>{fmt(analysis.production)} kg</strong> prodotti · <strong>{fmt(analysis.total / analysis.production * 100)}%</strong>{analysis.productionMachines?.length > 1 && <span className="text-gray-500"> · produzione {analysis.productionMachines.join(' + ')}</span>}</p>}
     {stainPct && !analysis.production && analysis.productionWarning && <p className="text-sm text-gray-500">{analysis.productionWarning}</p>}
     {unit === '%' ? <p className="text-sm text-gray-600">Le percentuali restano singole rilevazioni: non vengono sommate. Per la baseline complessiva servono i denominatori di produzione.</p> : analysis.pareto.length ? <>
-        <div className="overflow-x-auto"><div style={{ height: chartHeight, minWidth: chartMinWidth }}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.pareto} margin={{ top: 10, right: 15, bottom: 15, left: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="categoria" interval={0} height={labelHeight} tick={<VerticalCategoryTick />} /><YAxis yAxisId="quantity" /><Tooltip formatter={(value, name, item) => [item?.payload?.perc_produzione != null ? `${fmt(value)} ${unit} · ${fmt(item.payload.perc_produzione)}% sul prodotto` : `${fmt(value)} ${unit}`, 'Quantità']} /><Legend /><Bar yAxisId="quantity" dataKey="quantita" name={`Quantità (${unit})`} fill="#64748b">{analysis.pareto.map(row => <Cell key={row.categoria} fill={lossColor(row)} />)}</Bar></ComposedChart></ResponsiveContainer></div></div>
+        <div className="overflow-x-auto"><div style={{ height: chartHeight, minWidth: chartMinWidth }}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.pareto} margin={{ top: 10, right: 15, bottom: 15, left: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="categoria" interval={0} height={labelHeight} tick={<VerticalCategoryTick />} /><YAxis yAxisId="quantity" /><Tooltip formatter={(value, name, item) => [item?.payload?.perc_produzione != null ? `${fmt(value)} ${unit} · ${fmt(item.payload.perc_produzione)}% sul prodotto` : `${fmt(value)} ${unit}`, 'Quantità']} /><Legend /><Bar yAxisId="quantity" dataKey="quantita" name={`Quantità (${unit})`} fill="#64748b" cursor="pointer" onClick={entry => toggleFocus(entry?.payload?.categoria ?? entry?.categoria)}>{analysis.pareto.map(row => <Cell key={row.categoria} fill={lossColor(row)} fillOpacity={focused && focused !== row.categoria ? 0.3 : 1} />)}</Bar></ComposedChart></ResponsiveContainer></div></div>
+      <p className="text-xs text-gray-500">Clicca una colonna per vederne l'andamento qui sotto.</p>
       <p className="text-sm font-semibold text-gray-700">Seleziona solamente le priorità che vuoi attaccare</p>
       <div className="flex flex-wrap gap-x-5 gap-y-2">{analysis.pareto.map(row => <label key={row.categoria} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={priorities.includes(row.categoria)} onChange={event => onPriorities(event.target.checked ? [...priorities, row.categoria] : priorities.filter(value => value !== row.categoria))} />{row.categoria}</label>)}</div>
     </> : <p className="text-sm text-gray-500">Nessun dato disponibile per il Pareto.</p>}
-    {unit !== '%' && <TrendChart timeline={analysis.timeline} unit={unit} withProduction={Boolean(analysis.production)} />}
+    {unit !== '%' && <TrendChart timeline={focused ? analysis.categoryTimelines[focused] : analysis.timeline} unit={unit} withProduction={Boolean(analysis.production)} focus={focused} onClearFocus={() => setFocus('')} />}
   </div>
 }
 
@@ -478,7 +500,7 @@ function groupTimeline(timeline, grouping) {
   }))
 }
 
-function TrendChart({ timeline, unit, withProduction = false }) {
+function TrendChart({ timeline, unit, withProduction = false, focus = '', onClearFocus }) {
   const [grouping, setGrouping] = useState('giorno')
   const [measure, setMeasure] = useState('kg')
   const showPercent = withProduction && measure === 'pct'
@@ -488,7 +510,10 @@ function TrendChart({ timeline, unit, withProduction = false }) {
   if (!timeline.length) return null
   return <div className="border border-gray-200 rounded-lg p-3">
     <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-      <h4 className="text-sm font-semibold text-gray-700">Andamento</h4>
+      <div className="flex items-center gap-2 min-w-0">
+        <h4 className="text-sm font-semibold text-gray-700 truncate">Andamento{focus ? ` · ${focus}` : ' · totale'}</h4>
+        {focus && <button type="button" onClick={onClearFocus} className="shrink-0 rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50">Mostra totale</button>}
+      </div>
       <div className="flex flex-wrap gap-2">
       {withProduction && <div role="group" aria-label="Misura andamento" className="flex bg-gray-100 rounded-lg p-1 gap-1">
         {[['kg', unit], ['pct', '% sul prodotto']].map(([value, label]) => <button key={value} type="button" aria-pressed={measure === value} onClick={() => setMeasure(value)} className={`px-3 py-1 text-xs rounded-md ${measure === value ? 'bg-white text-primary shadow-sm font-semibold' : 'text-gray-600 hover:bg-gray-200'}`}>{label}</button>)}
