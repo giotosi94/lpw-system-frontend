@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Plus, Search, Filter, ChevronDown, Archive, Trash2, RotateCcw } from 'lucide-react'
+import { Plus, Search, Filter, ChevronDown, Archive, Trash2, RotateCcw, History } from 'lucide-react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAllConfigurations } from '../hooks/useConfigurations'
@@ -579,12 +579,20 @@ const majorKaizens =
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Kaizen Sheet</h1>
-        <button
-          onClick={() => setShowModal(true)}
-          className="bg-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-light"
-        >
-          <Plus size={18} /> Nuovo Kaizen
-        </button>
+        <div className="flex gap-2">
+          <Link
+            to="/kaizen/archivio"
+            className="border border-gray-300 bg-white text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
+          >
+            <History size={18} /> Archivio storico
+          </Link>
+          <button
+            onClick={() => setShowModal(true)}
+            className="bg-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-light"
+          >
+            <Plus size={18} /> Nuovo Kaizen
+          </button>
+        </div>
       </div>
 
       {/* SEARCH + FILTRI AVANZATI */}
