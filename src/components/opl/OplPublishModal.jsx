@@ -116,10 +116,9 @@ export default function OplPublishModal({ documento, onClose, onPublished }) {
           return { testo: domanda.testo, risposte: piene, corretta: piene.indexOf(risposte[domanda.corretta]) }
         }),
       })
-      const repartiConLinee = new Set(lineeDisponibili.filter(linea => lineeSelezionate.includes(linea.nome)).map(linea => linea.reparto))
       const response = await api.post(`/opl-letture/${documento._id}/pubblica`, {
         user_ids: persone.map(item => item.id),
-        reparti: repartiSelezionati.filter(nome => !repartiConLinee.has(nome)),
+        reparti: repartiSelezionati,
         linee: lineeSelezionate,
         macchine: [],
         ruoli: [],
@@ -201,7 +200,7 @@ export default function OplPublishModal({ documento, onClose, onPublished }) {
                     Linee
                   </label>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Opzionale. Se scegli una linea, il documento va solo a quella linea e non a tutto il reparto.
+                    Opzionale. Nessuna linea selezionata significa tutti gli utenti dei reparti scelti.
                   </p>
                 </div>
                 <span className="text-xs text-gray-500">
