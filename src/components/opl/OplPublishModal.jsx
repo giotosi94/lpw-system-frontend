@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Send, X } from 'lucide-react'
+import { Plus, Send, Trash2, X } from 'lucide-react'
 import api from '../../services/api'
 
 export default function OplPublishModal({ documento, onClose, onPublished }) {
@@ -9,6 +9,35 @@ export default function OplPublishModal({ documento, onClose, onPublished }) {
   const [scadenza, setScadenza] = useState('')
   const [publishing, setPublishing] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [users, setUsers] = useState([])
+  const [persone, setPersone] = useState([])
+  const [cercaPersona, setCercaPersona] = useState('')
+  const [domande, setDomande] = useState([])
+  const [soglia, setSoglia] = useState(80)
+
+  useEffect(() => {
+    api.get('/users/')
+      .then(response => setUsers((response.data || []).filter(user => user.is_active !== false && user.attivo !== false)))
+      .catch(() => setUsers([]))
+    api.get(`/opl-letture/${documento._id}/quiz/completo`)
+      .then(response => {
+        setDomande((response.data?.domande || []).map(domanda => ({ ...domanda, risposte: [...domanda.risposte, '', '', ''].slice(0, Math.max(3, domanda.risposte.length)) })))
+        setSoglia(response.data?.soglia || 80)
+      })
+      .catch(() => setDomande([]))
+  }, [documento._id])
+
+  const userId = user => String(user._id || user.id)
+  const userName = user => user.full_name || user.name || user.username || user.email
+  const risultatiPersone = cercaPersona.trim().length < 2 ? [] : users
+    .filter(user => !persone.some(item => item.id === userId(user)))
+    .filter(user => `${userName(user)} ${user.email || ''} ${user.reparto || ''}`.toLowerCase().includes(cercaPersona.trim().toLowerCase()))
+    .slice(0, 8)
+
+  const aggiornaDomanda = (index, patch) => setDomande(current => current.map((domanda, i) => (i === index ? { ...domanda, ...patch } : domanda)))
+  const aggiornaRisposta = (index, choice, value) => setDomande(current => current.map((domanda, i) => (
+    i === index ? { ...domanda, risposte: domanda.risposte.map((risposta, c) => (c === choice ? value : risposta)) } : domanda
+  )))
 
   useEffect(() => {
     api
@@ -66,8 +95,8 @@ export default function OplPublishModal({ documento, onClose, onPublished }) {
   }
 
   const pubblica = async () => {
-    if (repartiSelezionati.length === 0) {
-      alert('Seleziona almeno un reparto')
+    if (repartiSelezionati.length === 0 && persone.length === 0) {
+      alert('Seleziona almeno un reparto o una persona')
       return
     }
 
@@ -79,9 +108,18 @@ export default function OplPublishModal({ documento, onClose, onPublished }) {
     setPublishing(true)
 
     try {
+      await api.put(`/opl-letture/${documento._id}/quiz`, {
+        soglia: Number(soglia) || 80,
+        domande: domande.map(domanda => {
+          const risposte = domanda.risposte.map(risposta => risposta.trim())
+          const piene = risposte.filter(Boolean)
+          return { testo: domanda.testo, risposte: piene, corretta: piene.indexOf(risposte[domanda.corretta]) }
+        }),
+      })
+      const repartiConLinee = new Set(lineeDisponibili.filter(linea => lineeSelezionate.includes(linea.nome)).map(linea => linea.reparto))
       const response = await api.post(`/opl-letture/${documento._id}/pubblica`, {
-        user_ids: [],
-        reparti: repartiSelezionati,
+        user_ids: persone.map(item => item.id),
+        reparti: repartiSelezionati.filter(nome => !repartiConLinee.has(nome)),
         linee: lineeSelezionate,
         macchine: [],
         ruoli: [],
@@ -89,7 +127,7 @@ export default function OplPublishModal({ documento, onClose, onPublished }) {
       })
 
       alert(
-        `OPL pubblicata. Assegnazioni create: ${response.data?.assegnazioni_create || 0}`
+        `${documento.tipo || 'OPL'} pubblicata. Assegnazioni create: ${response.data?.assegnazioni_create || 0}`
       )
       onPublished?.()
       onClose()
@@ -123,7 +161,7 @@ export default function OplPublishModal({ documento, onClose, onPublished }) {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-semibold text-gray-700">
-                Reparti destinatari *
+                Reparti
               </label>
               <span className="text-xs text-gray-500">
                 {repartiSelezionati.length} selezionati
@@ -163,7 +201,7 @@ export default function OplPublishModal({ documento, onClose, onPublished }) {
                     Linee
                   </label>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Opzionale. Nessuna linea selezionata significa tutti gli utenti dei reparti scelti.
+                    Opzionale. Se scegli una linea, il documento va solo a quella linea e non a tutto il reparto.
                   </p>
                 </div>
                 <span className="text-xs text-gray-500">
@@ -210,6 +248,98 @@ export default function OplPublishModal({ documento, onClose, onPublished }) {
               </div>
             </div>
           )}
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-semibold text-gray-700">Singole persone</label>
+              <span className="text-xs text-gray-500">{persone.length} selezionate</span>
+            </div>
+            {persone.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {persone.map(persona => (
+                  <span key={persona.id} className="inline-flex items-center gap-1 bg-gray-100 border rounded px-2 py-1 text-xs">
+                    {persona.nome}
+                    <button type="button" aria-label={`Rimuovi ${persona.nome}`} onClick={() => setPersone(current => current.filter(item => item.id !== persona.id))} className="text-gray-500 hover:text-red-600"><X size={12} /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="relative">
+              <input
+                value={cercaPersona}
+                onChange={event => setCercaPersona(event.target.value)}
+                placeholder="Cerca nome o email"
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+              />
+              {risultatiPersone.length > 0 && (
+                <ul className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border bg-white shadow-lg">
+                  {risultatiPersone.map(user => (
+                    <li key={userId(user)}>
+                      <button
+                        type="button"
+                        onClick={() => { setPersone(current => [...current, { id: userId(user), nome: userName(user) }]); setCercaPersona('') }}
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+                      >
+                        {userName(user)} <span className="text-xs text-gray-500">{user.reparto || ''}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <label className="text-sm font-semibold text-gray-700">Test di comprensione</label>
+                <p className="text-xs text-gray-500 mt-0.5">Facoltativo. Se presente, la lettura è confermata solo superando il test.</p>
+              </div>
+              {domande.length > 0 && (
+                <label className="text-xs text-gray-600 flex items-center gap-1">
+                  Soglia
+                  <input type="number" min="1" max="100" value={soglia} onChange={event => setSoglia(event.target.value)} className="w-16 border rounded px-2 py-1" />%
+                </label>
+              )}
+            </div>
+            <div className="space-y-3">
+              {domande.map((domanda, index) => (
+                <div key={index} className="border rounded-lg p-3 space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      value={domanda.testo}
+                      onChange={event => aggiornaDomanda(index, { testo: event.target.value })}
+                      placeholder={`Domanda ${index + 1}`}
+                      className="flex-1 border rounded px-2 py-1.5 text-sm"
+                    />
+                    <button type="button" aria-label="Elimina domanda" onClick={() => setDomande(current => current.filter((_, i) => i !== index))} className="p-1.5 text-red-600 hover:bg-red-50 rounded"><Trash2 size={15} /></button>
+                  </div>
+                  {domanda.risposte.map((risposta, choice) => (
+                    <label key={choice} className="flex items-center gap-2 text-sm">
+                      <input type="radio" name={`corretta-${index}`} checked={domanda.corretta === choice} onChange={() => aggiornaDomanda(index, { corretta: choice })} title="Risposta corretta" />
+                      <input
+                        value={risposta}
+                        onChange={event => aggiornaRisposta(index, choice, event.target.value)}
+                        placeholder={`Risposta ${choice + 1}`}
+                        className="flex-1 border rounded px-2 py-1 text-sm"
+                      />
+                    </label>
+                  ))}
+                  {domanda.risposte.length < 4 && (
+                    <button type="button" onClick={() => aggiornaDomanda(index, { risposte: [...domanda.risposte, ''] })} className="text-xs text-primary hover:underline">+ risposta</button>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setDomande(current => [...current, { testo: '', risposte: ['', '', ''], corretta: 0 }])}
+                className="inline-flex items-center gap-1 rounded-lg border border-primary px-3 py-1.5 text-sm font-semibold text-primary hover:bg-gray-50"
+              >
+                <Plus size={14} /> Aggiungi domanda
+              </button>
+              <p className="text-xs text-gray-500">Seleziona il pallino accanto alla risposta corretta.</p>
+            </div>
+          </div>
 
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">
