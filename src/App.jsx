@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage'
 import HomePage from './pages/HomePage'
 import KaizenListPage from './pages/KaizenListPage'
 import KaizenDetailPage from './pages/KaizenDetailPage'
+import KaizenArchivioPage from './pages/KaizenArchivioPage'
 import MajorKaizenDetailPage from './pages/MajorKaizenDetailPage'
 import ActionPlanPage from './pages/ActionPlanPage'
 import DashboardListPage from './pages/DashboardListPage'
@@ -39,6 +40,7 @@ export default function App() {
         >
           <Route index element={<HomePage />} />
           <Route path="kaizen" element={<KaizenListPage />} />
+          <Route path="kaizen/archivio" element={<KaizenArchivioPage />} />
           <Route path="kaizen/:id" element={<KaizenDetailPage />} />
           <Route path="major-kaizen/:id" element={<MajorKaizenDetailPage />} />
           <Route path="action-plan" element={<ActionPlanPage />} />
