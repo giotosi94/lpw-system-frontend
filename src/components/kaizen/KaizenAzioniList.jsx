@@ -16,6 +16,7 @@ export default function KaizenAzioniList({
   defaultStepId = '',
 }) {
   const isMajor = Boolean(parent)
+  const phaseLocked = isMajor && Boolean(defaultStepId)
   const [azioni, setAzioni] = useState([])
   const [loading, setLoading] = useState(true)
   const [filterStep, setFilterStep] = useState(defaultStepId)
@@ -32,7 +33,7 @@ export default function KaizenAzioniList({
     return phases.map(phase => ({ id: phase.step_id, num: phase.ordine, label: phase.titolo }))
   }, [isMajor, kaizen, phases])
 
-  const contextLabel = isMajor ? 'progetto' : 'Kaizen'
+  const contextLabel = phaseLocked ? 'fase' : isMajor ? 'progetto' : 'Kaizen'
 
   useEffect(() => { loadAzioni() }, [kaizenId, parent?.parent_id])
 
@@ -41,7 +42,7 @@ export default function KaizenAzioniList({
     try {
       if (isMajor) {
         const res = await api.get('/action-plans/', { params: { parent_id: parent.parent_id } })
-        setAzioni((res.data || []).filter(ap => ap.parent_type === parent.parent_type && ap.parent_id === parent.parent_id))
+        setAzioni((res.data || []).filter(ap => ap.parent_type === parent.parent_type && ap.parent_id === parent.parent_id && (!phaseLocked || ap.gant_step_id === defaultStepId)))
       } else {
         const res = await api.get(`/kaizens/${kaizenId}/action-plans`)
         setAzioni(res.data || [])
@@ -140,16 +141,18 @@ export default function KaizenAzioniList({
     })
   }, [azioni, filterStep, filterStato])
 
-  const resetFilters = () => { setFilterStep(''); setFilterStato('') }
+  const resetFilters = () => { setFilterStep(phaseLocked ? defaultStepId : ''); setFilterStato('') }
 
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl shadow p-4">
         <div className="flex justify-between items-center mb-3">
           <div>
-            <h4 className="font-bold text-sm uppercase text-gray-700">Azioni del {contextLabel}</h4>
+            <h4 className="font-bold text-sm uppercase text-gray-700">{phaseLocked ? 'Azioni della fase' : `Azioni del ${contextLabel}`}</h4>
             <p className="text-xs text-gray-500">
-              {isMajor
+              {phaseLocked
+                ? 'Azioni concrete di questa fase'
+                : isMajor
                 ? 'Azioni concrete, legate o meno a una fase del progetto'
                 : 'Azioni concrete, legate o meno a uno step del Gant macro'}
             </p>
@@ -165,7 +168,7 @@ export default function KaizenAzioniList({
         <div className="flex items-center gap-2 flex-wrap mt-2 pt-3 border-t">
           <Filter size={14} className="text-gray-400" />
           <span className="text-xs font-medium text-gray-600">Filtri:</span>
-          <select
+          {!phaseLocked && <select
             value={filterStep}
             onChange={(e) => setFilterStep(e.target.value)}
             className="text-xs border rounded px-2 py-1"
@@ -176,7 +179,7 @@ export default function KaizenAzioniList({
                 {isMajor ? 'Fase' : 'Step'} {s.num}: {s.label} ({s.count})
               </option>
             ))}
-          </select>
+          </select>}
           <select
             value={filterStato}
             onChange={(e) => setFilterStato(e.target.value)}
@@ -187,7 +190,7 @@ export default function KaizenAzioniList({
               <option key={s._id} value={s.label}>{s.label}</option>
             ))}
           </select>
-          {(filterStep || filterStato) && (
+          {((filterStep && !phaseLocked) || filterStato) && (
             <button
               onClick={resetFilters}
               className="text-xs px-2 py-1 border rounded text-gray-600 hover:bg-gray-100 flex items-center gap-1"
@@ -216,13 +219,13 @@ export default function KaizenAzioniList({
           onChangeStepGant={changeStepAP}
           unlinkLabel="Scollega dal Kaizen"
           showCollegato={false}
-          showStepGant={true}
+          showStepGant={!phaseLocked}
           showKanban={true}
           showCalendar={true}
           defaultView="list"
           emptyMessage={
             azioni.length === 0
-              ? `Nessuna azione collegata a questo ${contextLabel}`
+              ? phaseLocked ? 'Nessuna azione collegata a questa fase' : `Nessuna azione collegata a questo ${contextLabel}`
               : 'Nessun risultato per i filtri impostati'
           }
           emptyAction={
