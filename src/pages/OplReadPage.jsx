@@ -139,6 +139,18 @@ export default function OplReadPage() {
 function OplConfirmModal({ documento, onClose, onConfirmed }) {
   const [confirming, setConfirming] = useState(false)
   const [blobUrl, setBlobUrl] = useState(null)
+  const [quiz, setQuiz] = useState(null)
+  const [testOpen, setTestOpen] = useState(false)
+  const [answers, setAnswers] = useState([])
+  const [result, setResult] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    api.get(`/opl-letture/${documento._id}/quiz`)
+      .then(res => { if (!cancelled) setQuiz(res.data?.domande?.length ? res.data : null) })
+      .catch(() => { if (!cancelled) setQuiz(null) })
+    return () => { cancelled = true }
+  }, [documento._id])
 
   useEffect(() => {
     let url = null
@@ -167,12 +179,21 @@ function OplConfirmModal({ documento, onClose, onConfirmed }) {
   }, [documento._id, documento.file_id])
 
   const conferma = async () => {
+    if (quiz && answers.length !== quiz.domande.length) {
+      alert('Rispondi a tutte le domande')
+      return
+    }
     setConfirming(true)
     try {
-      await api.post(`/opl-letture/${documento._id}/conferma`, {
+      const res = await api.post(`/opl-letture/${documento._id}/conferma`, {
         confirmation_text: 'Confermo di aver letto e compreso',
+        risposte: quiz ? answers : [],
       })
-      alert('Lettura confermata.')
+      if (res.data?.confermata === false) {
+        setResult(res.data.test)
+        return
+      }
+      alert(res.data?.test ? `Test superato (${res.data.test.punteggio}%). Lettura confermata.` : 'Lettura confermata.')
       onConfirmed()
     } catch (err) {
       alert('Errore conferma: ' + (err.response?.data?.detail || err.message))
@@ -202,6 +223,37 @@ function OplConfirmModal({ documento, onClose, onConfirmed }) {
           </button>
         </div>
 
+        {testOpen && quiz ? (
+          <div className="flex-1 overflow-auto bg-white p-6">
+            <div className="max-w-2xl mx-auto space-y-5">
+              <p className="text-sm text-gray-600">Rispondi alle domande. Serve almeno il {quiz.soglia}% di risposte corrette.</p>
+              {quiz.domande.map((domanda, index) => (
+                <fieldset key={index} className="border border-gray-200 rounded-lg p-4">
+                  <legend className="px-1 text-sm font-semibold text-gray-800">{index + 1}. {domanda.testo}</legend>
+                  <div className="mt-2 space-y-2">
+                    {domanda.risposte.map((risposta, choice) => (
+                      <label key={choice} className="flex items-start gap-2 text-sm cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`q${index}`}
+                          checked={answers[index] === choice}
+                          onChange={() => { setResult(null); setAnswers(current => { const next = [...current]; next[index] = choice; return next }) }}
+                          className="mt-0.5"
+                        />
+                        {risposta}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              ))}
+              {result && (
+                <div role="alert" className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+                  Test non superato: {result.corrette} risposte corrette su {result.totale} ({result.punteggio}%). Rileggi il documento e riprova.
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
         <div className="flex-1 overflow-auto bg-gray-100 p-6">
           {blobUrl && isPdf && React.createElement('iframe', {
             src: blobUrl,
@@ -248,21 +300,39 @@ function OplConfirmModal({ documento, onClose, onConfirmed }) {
             </div>
           )}
         </div>
+        )}
 
         <div className="border-t bg-white px-6 py-4 flex items-center justify-between gap-4">
           <div className="text-xs text-gray-500">
             La conferma sarà registrata con utente, data, ora e versione.
           </div>
 
-          <button
-            type="button"
-            onClick={conferma}
-            disabled={confirming}
-            className="bg-green-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
-          >
-            <CheckCircle2 size={18} />
-            {confirming ? 'Registrazione...' : 'Confermo di aver letto e compreso'}
-          </button>
+          {quiz && !testOpen ? (
+            <button
+              type="button"
+              onClick={() => { setTestOpen(true); setResult(null) }}
+              className="bg-primary text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-light flex items-center gap-2 whitespace-nowrap"
+            >
+              Vai al test ({quiz.domande.length} domande)
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              {testOpen && (
+                <button type="button" onClick={() => setTestOpen(false)} className="px-4 py-2.5 border rounded-lg text-sm">
+                  Rileggi il documento
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={conferma}
+                disabled={confirming}
+                className="bg-green-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
+              >
+                <CheckCircle2 size={18} />
+                {confirming ? 'Registrazione...' : testOpen ? 'Invia test e conferma' : 'Confermo di aver letto e compreso'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
