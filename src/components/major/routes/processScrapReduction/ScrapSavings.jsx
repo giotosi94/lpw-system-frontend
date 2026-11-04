@@ -73,10 +73,8 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   const beforeTo = form.mode === 'stain' ? form.scope?.to : form.manualBeforeTo
   const today = todayDate()
   const firstAfter = dayAfter(beforeTo)
-  const periodError = !firstAfter ? 'Acquisisci prima una baseline valida.' : firstAfter > today ? 'La baseline termina oggi o nel futuro: non esistono ancora giorni successivi disponibili. Per una prova storica modifica il periodo in Fase 1 e riacquisisci la baseline.' : !form.afterFrom || !form.afterTo ? 'Seleziona le date del periodo dopo.' : form.afterFrom < firstAfter ? `Il periodo dopo deve iniziare dal ${firstAfter} in avanti.` : form.afterTo < form.afterFrom ? 'La fine non puo precedere l’inizio.' : form.afterTo > today ? 'Non puoi selezionare giorni futuri.' : ''
-  const confirmed = form.mode !== 'stain' || form.scope?.lineConfirmedFor === `${major?.reparto || ''}|${major?.linea || ''}|${form.scope?.line || ''}`
+  const periodError = !firstAfter ? 'Acquisisci prima una baseline valida.' : !form.afterFrom || !form.afterTo ? 'Seleziona le date del periodo dopo.' : form.afterFrom < firstAfter ? `Il periodo dopo deve iniziare dal ${firstAfter} in avanti.` : form.afterTo < form.afterFrom ? 'La fine non puo precedere l’inizio.' : form.afterTo > today ? 'Periodo pianificato: STAIN non ha ancora i dati dei giorni futuri. Puoi scegliere le date, ma il caricamento sara disponibile quando il periodo sara trascorso.' : ''
   if (periodError) issues.push(periodError)
-  if (!confirmed) issues.push('Conferma la corrispondenza della linea STAIN con il progetto.')
 
   if (!beforeFrom || !beforeTo || !form.afterFrom || !form.afterTo || beforeFrom > beforeTo || form.afterFrom > form.afterTo || form.afterFrom <= beforeTo) issues.push('Definisci periodi validi, non sovrapposti: il dopo deve iniziare dopo la baseline.')
   if (form.mode === 'stain' && (!form.before || !form.after || form.after.dal !== form.afterFrom || form.after.al !== form.afterTo)) issues.push('Carica il periodo dopo per le date selezionate.')
@@ -92,12 +90,12 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       aggregateSnapshot(baseline.stain_snapshot, scope)
       const first = dayAfter(scope.to)
       const available = first && first <= todayDate()
-      change({ scope, before: JSON.parse(JSON.stringify(baseline.stain_snapshot)), after: null, rows: [], driverSnapshot: null, afterFrom: available ? first : '', afterTo: available ? todayDate() : '' })
-      setPeriodStatus(available ? 'Baseline acquisita. Date proposte automaticamente: verifica linea e periodo.' : 'Baseline acquisita, ma nessun giorno successivo disponibile.')
+      change({ scope, before: JSON.parse(JSON.stringify(baseline.stain_snapshot)), after: null, rows: [], driverSnapshot: null, afterFrom: first, afterTo: available ? todayDate() : first })
+      setPeriodStatus(available ? 'Baseline acquisita. Date proposte automaticamente: verifica linea e periodo.' : 'Date proposte dal giorno successivo alla baseline. Se sono future, puoi pianificare il periodo ma non ancora caricarne i dati.')
     } catch (error) { setPeriodStatus(error.message) }
   }
   const load = async () => {
-    if (periodError || !confirmed) { setPeriodStatus(periodError || 'Conferma la linea STAIN.'); return }
+    if (periodError) { setPeriodStatus(periodError); return }
     setBusy(true)
     setPeriodStatus('Lettura STAIN in corso...')
     try {
@@ -124,12 +122,11 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   const input = (label, key, type = 'text') => {
     const afterDate = type === 'date' && key.startsWith('after')
     const min = type === 'number' ? '0' : key === 'afterFrom' ? firstAfter || undefined : key === 'afterTo' ? (form.afterFrom && form.afterFrom >= firstAfter ? form.afterFrom : firstAfter) || undefined : undefined
-    return <label className="text-sm block">{label}<input className={field} type={type} disabled={busy || (afterDate && (!firstAfter || firstAfter > today))} min={min} max={type === 'date' ? today : undefined} step={type === 'number' ? 'any' : undefined} value={form[key]} onChange={event => {
+    return <label className="text-sm block">{label}<input className={field} type={type} disabled={busy} min={min} max={type === 'date' && !afterDate ? today : undefined} step={type === 'number' ? 'any' : undefined} value={form[key]} onChange={event => {
       let value = event.target.value
       const patch = {}
       if (afterDate) {
         if (value && min && value < min) value = min
-        if (value && value > today) value = today
         patch.after = null
         patch.rows = []
         if (key === 'afterFrom' && value && (!form.afterTo || form.afterTo < value)) patch.afterTo = value
@@ -148,17 +145,11 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
           <button type="button" disabled={busy} className={button} onClick={capture}>Acquisisci baseline salvata della Fase 1</button>
           {form.scope && <div className="text-sm bg-gray-50 p-3 rounded"><p>{form.scope.line} · {form.scope.from} / {form.scope.to}</p><p>Prodotti: {form.scope.products.join(', ') || 'Tutti'} · Causali: {form.scope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Snapshot congelato: gli aggiornamenti della Fase 1 non cambiano questo calcolo.</p></div>}
         </> : <><div className="grid md:grid-cols-2 gap-3">{input('Baseline da', 'manualBeforeFrom', 'date')}{input('Baseline a', 'manualBeforeTo', 'date')}</div>{input('Fonte e perimetro manuale (linea, prodotti, causali, evidenze)', 'source')}</>}
-        {form.mode === 'stain' && form.scope && <div className="border rounded p-3 text-sm space-y-2">
-          <p>Linea progetto: {major?.reparto} / {major?.linea}. Linea STAIN: {form.scope.line}.</p>
-          <p>Se non corrispondono, correggi la selezione nella Fase 1 e riacquisisci la baseline. I nomi diversi non dimostrano da soli una corrispondenza o un errore.</p>
-          <label className="flex gap-2"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => change({ scope: { ...form.scope, lineConfirmedFor: event.target.checked ? `${major?.reparto || ''}|${major?.linea || ''}|${form.scope.line}` : '' }, after: null, rows: [] })} />Confermo che la linea STAIN corrisponde al progetto.</label>
-        </div>}
         <p className="text-sm text-gray-600">Prima: baseline della Fase 1. Dopo: periodo successivo agli interventi, senza sovrapposizioni. Le date automatiche non attestano quando sono avvenuti gli interventi.</p>
-        {form.mode === 'stain' && firstAfter && firstAfter <= today && <button type="button" className={button} disabled={busy} onClick={() => { change({ afterFrom: firstAfter, afterTo: today, after: null, rows: [] }); setPeriodStatus('Date valide proposte: controlla e carica STAIN.') }}>Imposta date valide automaticamente</button>}
+        {form.mode === 'stain' && firstAfter && <button type="button" className={button} disabled={busy} onClick={() => { change({ afterFrom: firstAfter, afterTo: firstAfter > today ? firstAfter : today, after: null, rows: [] }); setPeriodStatus('Date proposte. Il caricamento richiede un periodo gia trascorso.') }}>Imposta date valide automaticamente</button>}
         <div className="grid md:grid-cols-2 gap-3">{input('Periodo dopo da', 'afterFrom', 'date')}{input('Periodo dopo a', 'afterTo', 'date')}</div>
-        {form.mode === 'stain' && <button type="button" disabled={busy || !form.scope || Boolean(periodError) || !confirmed} className={button} onClick={load}>{busy ? 'Caricamento...' : 'Carica periodo dopo da STAIN'}</button>}
+        {form.mode === 'stain' && <button type="button" disabled={busy || !form.scope || Boolean(periodError)} className={button} onClick={load}>{busy ? 'Caricamento...' : 'Carica periodo dopo da STAIN'}</button>}
         {periodError && <p role="alert" className="text-sm text-amber-800">{periodError}</p>}
-        {form.scope && !confirmed && <p className="text-sm text-amber-800">Conferma la linea prima del caricamento.</p>}
         {periodStatus && <p role="status" aria-live="polite" className="text-sm">{periodStatus}</p>}
       </section>
       <section className={section}>
