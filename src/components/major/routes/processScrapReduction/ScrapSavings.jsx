@@ -144,7 +144,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   const input = (label, key, type = 'text') => {
     const beforeDate = key === 'comparisonFrom' || key === 'comparisonTo'
     const value = beforeDate ? (key === 'comparisonFrom' ? beforeFrom : beforeTo) || '' : form[key]
-    return <label className="text-sm block">{label}<input className={field} type={type} disabled={busy} min={type === 'number' ? '0' : undefined} max={type === 'date' ? today : undefined} step={type === 'number' ? 'any' : undefined} value={value} onChange={event => {
+    return <label className="text-sm block">{label}<input className={field} type={type} disabled={busy} min={   type === 'number'     ? '0'     : key === 'afterFrom'       ? dayAfter(beforeTo) || undefined       : key === 'afterTo'         ? form.afterFrom && form.afterFrom > beforeTo           ? form.afterFrom           : dayAfter(beforeTo) || undefined         : undefined } max={type === 'date' ? today : undefined} step={type === 'number' ? 'any' : undefined} value={value} onChange={event => {
       const value = event.target.value
       if (beforeDate) {
         change({ scope: { ...form.scope, [key === 'comparisonFrom' ? 'from' : 'to']: value }, before: null, after: null, rows: [] })
