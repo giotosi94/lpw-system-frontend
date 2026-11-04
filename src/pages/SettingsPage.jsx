@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react'
 import { Settings, Plus, Edit2, Trash2, Eye, EyeOff, X, Save, Search, GripVertical, ChevronRight, ChevronDown, Info, Factory, Cpu, Upload, Copy, CopyPlus } from 'lucide-react'
 import api from '../services/api'
 import UserPicker from '../components/UserPicker'
+import EconomicDriversSettings from '../components/settings/EconomicDriversSettings'
 
 const SECTIONS = [
+  { id: 'economia', label: 'Driver economici', tabs: [{ id: 'economic_drivers', label: 'Driver annuali', color: 'indigo', isEconomicDrivers: true, description: 'Importazione annuale costi scarto e rework con associazione alle linee', usedIn: ['Saving Major Kaizen'] }] },
   {
     id: 'struttura',
     label: 'Struttura Aziendale',
@@ -228,7 +230,9 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {currentTab.isPillar ? (
+          {currentTab.isEconomicDrivers ? (
+              <EconomicDriversSettings />
+            ) : currentTab.isPillar ? (
             <PillarsManager onChange={loadStats} />
           ) : currentTab.isRepartiTree ? (
             <RepartiTreePlaceholder />
