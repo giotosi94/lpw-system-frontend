@@ -454,7 +454,7 @@ function RepartoCard({ reparto, allReparti = [], expanded, onToggle, expandedLin
   }
 
   async function handleDuplicateLinea(linea) {
-    const clonedMacchine = (linea.macchine || []).map(m => ({ ...m, id: genLocalId(), componenti: (m.componenti || []).map(c => ({ ...c, id: genLocalId() })) }))
+    const clonedMacchine = (linea.macchine || []).map(m => ({ ...m, id: genLocalId(), carl_code: '', componenti: (m.componenti || []).map(c => ({ ...c, id: genLocalId() })) }))
     try {
       await api.post(`/reparti/${reparto._id}/linee`, {
         nome: `${linea.nome} (copia)`,
@@ -604,6 +604,7 @@ function LineaCard({ reparto, allReparti = [], linea, expanded, onToggle, onEdit
         id: linea.id,
         nome: linea.nome,
         codice: linea.codice || null,
+        carl_code: linea.carl_code || null,
         descrizione: linea.descrizione || '',
         attivo: linea.attivo !== false,
         macchine: newMacchine,
@@ -633,7 +634,7 @@ function LineaCard({ reparto, allReparti = [], linea, expanded, onToggle, onEdit
   }
 
   async function copyFromLinea(sourceLinea, mode) {
-    const cloned = (sourceLinea.macchine || []).map(m => ({ ...m, id: genLocalId(), componenti: (m.componenti || []).map(c => ({ ...c, id: genLocalId() })) }))
+    const cloned = (sourceLinea.macchine || []).map(m => ({ ...m, id: genLocalId(), carl_code: '', componenti: (m.componenti || []).map(c => ({ ...c, id: genLocalId() })) }))
     const newMacchine = mode === 'replace' ? cloned : [...macchine, ...cloned]
     setShowCopyModal(false)
     await saveMacchine(newMacchine)
@@ -658,6 +659,11 @@ function LineaCard({ reparto, allReparti = [], linea, expanded, onToggle, onEdit
             {linea.codice && (
               <span className="font-mono text-[10px] px-1 py-0.5 bg-blue-200 text-blue-700 rounded">
                 {linea.codice}
+              </span>
+            )}
+            {linea.carl_code && (
+              <span className="font-mono text-[10px] px-1 py-0.5 bg-white border border-blue-200 text-blue-700 rounded" title="Codice CARL">
+                CARL {linea.carl_code}
               </span>
             )}
             <span className="text-[10px] text-gray-500">{macchine.length} macchine</span>
@@ -714,6 +720,11 @@ function LineaCard({ reparto, allReparti = [], linea, expanded, onToggle, onEdit
                   {m.codice && (
                     <span className="font-mono text-[10px] ml-2 px-1 py-0.5 bg-gray-200 text-gray-700 rounded">
                       {m.codice}
+                    </span>
+                  )}
+                  {m.carl_code && (
+                    <span className="font-mono text-[10px] ml-2 px-1 py-0.5 bg-white border text-gray-700 rounded" title="Codice CARL">
+                      CARL {m.carl_code}
                     </span>
                   )}
                   {m.descrizione && (
@@ -924,6 +935,7 @@ function LineaFormModal({ reparto, linea, onClose, onSaved }) {
   const [form, setForm] = useState({
     nome: linea?.nome || '',
     codice: linea?.codice || '',
+    carl_code: linea?.carl_code || '',
     descrizione: linea?.descrizione || '',
     attivo: linea?.attivo !== false,
   })
@@ -966,6 +978,11 @@ function LineaFormModal({ reparto, linea, onClose, onSaved }) {
             <input value={form.codice} onChange={(e) => setForm({ ...form, codice: e.target.value.toUpperCase() })} className="w-full border rounded-lg px-3 py-2 font-mono" />
           </div>
           <div>
+            <label className="block text-sm font-medium mb-1">Codice CARL</label>
+            <input value={form.carl_code} onChange={(e) => setForm({ ...form, carl_code: e.target.value.toUpperCase().trim() })} placeholder="Es. MOD_BINDLER16" className="w-full border rounded-lg px-3 py-2 font-mono" />
+            <p className="text-xs text-gray-500 mt-1">Codice della posizione nell'albero CARL (Punto principale): collega i cartellini della linea.</p>
+          </div>
+          <div>
             <label className="block text-sm font-medium mb-1">Descrizione</label>
             <textarea value={form.descrizione} onChange={(e) => setForm({ ...form, descrizione: e.target.value })} rows={2} className="w-full border rounded-lg px-3 py-2 text-sm" />
           </div>
@@ -990,6 +1007,7 @@ function MacchinaFormModal({ reparto, linea, macchina, onClose, onSaved }) {
   const [form, setForm] = useState({
     nome: macchina?.nome || '',
     codice: macchina?.codice || '',
+    carl_code: macchina?.carl_code || '',
     descrizione: macchina?.descrizione || '',
     attivo: macchina?.attivo !== false,
     componenti: macchina?.componenti || [],
@@ -1047,6 +1065,11 @@ function MacchinaFormModal({ reparto, linea, macchina, onClose, onSaved }) {
           <div>
             <label className="block text-sm font-medium mb-1">Codice</label>
             <input value={form.codice} onChange={(e) => setForm({ ...form, codice: e.target.value.toUpperCase() })} className="w-full border rounded-lg px-3 py-2 font-mono" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Codice CARL</label>
+            <input value={form.carl_code} onChange={(e) => setForm({ ...form, carl_code: e.target.value.toUpperCase().trim() })} placeholder="Es. G039A" className="w-full border rounded-lg px-3 py-2 font-mono" />
+            <p className="text-xs text-gray-500 mt-1">Codice dell'attrezzatura in CARL (Tag di Attrezzatura).</p>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Descrizione</label>
