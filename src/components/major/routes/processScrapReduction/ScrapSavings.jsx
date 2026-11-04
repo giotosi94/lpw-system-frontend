@@ -1,1 +1,114 @@
+import { useEffect, useRef, useState } from 'react'
+import api from '../../../../services/api'
+import { baselineScope, aggregateSnapshot, compareSnapshots, calculateSaving } from './scrapSavingMath'
 
+const field = 'w-full border border-gray-300 rounded px-2 py-2 text-sm bg-white'
+const button = 'border rounded px-3 py-2 text-sm disabled:opacity-50'
+const section = 'border border-gray-200 rounded-lg bg-white p-4 space-y-3'
+const fmt = value => value == null || !Number.isFinite(value) ? 'Non disponibile' : new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 }).format(value)
+const empty = () => ({ mode: 'stain', scope: null, before: null, after: null, afterFrom: '', afterTo: '', manualBeforeFrom: '', manualBeforeTo: '', rows: [], costs: '', costNote: '', annualProduction: '', annualBasis: '', source: '', notes: '', reviewed: false })
+
+export default function ScrapSavings({ stepData, allStepsData, onChange }) {
+  const [form, setForm] = useState(() => ({ ...empty(), ...(stepData?.dati?.saving_economico || {}) }))
+  const [status, setStatus] = useState('')
+  const [busy, setBusy] = useState(false)
+  const dirty = useRef(false)
+  const revision = useRef(0)
+  const baseline = Object.values(allStepsData || {}).map(item => item?.dati).find(data => data?.stain_snapshot || data?.categorie_scarto)
+  useEffect(() => {
+    if (!dirty.current) setForm({ ...empty(), ...(stepData?.dati?.saving_economico || {}) })
+  }, [stepData?.dati])
+  useEffect(() => {
+    const guard = event => { if (dirty.current) { event.preventDefault(); event.returnValue = '' } }
+    window.addEventListener('beforeunload', guard)
+    return () => window.removeEventListener('beforeunload', guard)
+  }, [])
+  const change = patch => {
+    dirty.current = true
+    revision.current += 1
+    setStatus('Modifiche da salvare')
+    setForm(current => ({ ...current, ...patch, reviewed: false }))
+  }
+  const patchRow = (id, key, value) => change({ rows: form.rows.map(row => row.id === id ? { ...row, [key]: value } : row) })
+  const result = calculateSaving(form.rows, form.costs, form.annualProduction)
+  const issues = [...result.issues]
+  const beforeFrom = form.mode === 'stain' ? form.scope?.from : form.manualBeforeFrom
+  const beforeTo = form.mode === 'stain' ? form.scope?.to : form.manualBeforeTo
+  if (!beforeFrom || !beforeTo || !form.afterFrom || !form.afterTo || beforeFrom > beforeTo || form.afterFrom > form.afterTo || form.afterFrom <= beforeTo) issues.push('Definisci periodi validi, non sovrapposti: il dopo deve iniziare dopo la baseline.')
+  if (form.mode === 'stain' && (!form.before || !form.after || form.after.dal !== form.afterFrom || form.after.al !== form.afterTo)) issues.push('Carica il periodo dopo per le date selezionate.')
+  if (form.mode === 'manuale' && !form.source.trim()) issues.push('Documenta fonte, linea, prodotti e causali del confronto manuale.')
+  if (form.costs !== '' && Number(String(form.costs).replace(',', '.')) > 0 && !form.costNote.trim()) issues.push('Descrivi i costi di implementazione.')
+  if (form.annualProduction !== '' && !form.annualBasis.trim()) issues.push('Indica la fonte del volume annuo e l’ipotesi di mix costante.')
+
+  const capture = () => {
+    try {
+      if (!baseline) throw new Error('Salva prima la baseline della Fase 1.')
+      if (form.scope && !window.confirm('Sostituire lo snapshot baseline? Il confronto dopo e i calcoli saranno azzerati.')) return
+      const scope = baselineScope(baseline)
+      aggregateSnapshot(baseline.stain_snapshot, scope)
+      change({ scope, before: JSON.parse(JSON.stringify(baseline.stain_snapshot)), after: null, rows: [], afterFrom: '', afterTo: '' })
+    } catch (error) { setStatus(error.message) }
+  }
+  const load = async () => {
+    if (!form.scope || !form.afterFrom || !form.afterTo || form.afterFrom <= form.scope.to || form.afterFrom > form.afterTo) { setStatus('Seleziona un periodo dopo valido e successivo alla baseline.'); return }
+    setBusy(true)
+    try {
+      const response = await api.get('/stain/scarti', { params: { dal: form.afterFrom, al: form.afterTo, linea: form.scope.line, tipi: form.scope.types.join(',') }, timeout: 180000 })
+      const rows = compareSnapshots(form.before, response.data, form.scope, form.rows)
+      change({ after: response.data, rows })
+    } catch (error) { setStatus(error.response?.data?.detail || error.message || 'Lettura STAIN non riuscita') }
+    finally { setBusy(false) }
+  }
+  const save = async () => {
+    if (issues.length) { setStatus(issues.join(' ')); return }
+    const rev = revision.current
+    setBusy(true)
+    try {
+      const payload = { ...form, formula_version: 'scrap_normalized_v1', saved_at: new Date().toISOString(), result: { gross: result.gross, avoided: result.avoided, net: result.net, annualGross: result.annualGross, rows: result.rows }, validation: form.reviewed ? 'verificato_dal_compilatore' : 'da_validare' }
+      const response = await onChange({ dati: { ...(stepData?.dati || {}), saving_economico: payload }, output_compilati: { confronto_prima_dopo: true, driver_economici: true, saving_calcolato: true, verifica_risultati: form.reviewed } })
+      if (response === false) throw new Error('Salvataggio rifiutato')
+      dirty.current = revision.current !== rev
+      setStatus(dirty.current ? 'Nuove modifiche da salvare' : 'Salvato')
+    } catch { setStatus('Errore di salvataggio: dati conservati nella pagina. Riprova.') }
+    finally { setBusy(false) }
+  }
+  const input = (label, key, type = 'text') => <label className="text-sm block">{label}<input className={field} type={type} min={type === 'number' ? '0' : undefined} step={type === 'number' ? 'any' : undefined} value={form[key]} onChange={event => change({ [key]: event.target.value })} /></label>
+  return (
+    <div className="space-y-5">
+      <section className={section}>
+        <h3 className="font-bold text-primary">1 · Confronto prima e dopo</h3>
+        <p className="text-sm text-gray-600">Kg evitati = produzione dopo × tasso perdita baseline − perdita dopo. Calcolo separato per prodotto e tipo; i peggioramenti restano negativi.</p>
+        <label className="block text-sm">Fonte<select className={field} disabled={busy} value={form.mode} onChange={event => { if (!form.rows.length || window.confirm('Cambiare fonte e azzerare il confronto?')) change({ ...empty(), mode: event.target.value }) }}><option value="stain">STAIN</option><option value="manuale">Confronto manuale in kg</option></select></label>
+        {form.mode === 'stain' ? <>
+          <button type="button" disabled={busy} className={button} onClick={capture}>Acquisisci baseline salvata della Fase 1</button>
+          {form.scope && <div className="text-sm bg-gray-50 p-3 rounded"><p>{form.scope.line} · {form.scope.from} / {form.scope.to}</p><p>Prodotti: {form.scope.products.join(', ') || 'Tutti'} · Causali: {form.scope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Snapshot congelato: gli aggiornamenti della Fase 1 non cambiano questo calcolo.</p></div>}
+        </> : <><div className="grid md:grid-cols-2 gap-3">{input('Baseline da', 'manualBeforeFrom', 'date')}{input('Baseline a', 'manualBeforeTo', 'date')}</div>{input('Fonte e perimetro manuale (linea, prodotti, causali, evidenze)', 'source')}</>}
+        <div className="grid md:grid-cols-2 gap-3">{input('Periodo dopo da', 'afterFrom', 'date')}{input('Periodo dopo a', 'afterTo', 'date')}</div>
+        {form.mode === 'stain' && <button type="button" disabled={busy || !form.scope} className={button} onClick={load}>{busy ? 'Caricamento...' : 'Carica periodo dopo da STAIN'}</button>}
+      </section>
+      <section className={section}>
+        <h3 className="font-bold text-primary">2 · Driver e beneficio economico</h3>
+        <p className="text-xs text-gray-600">Driver €/kg inseriti dalla tabella aziendale. Scarto e rework distinti: non inserire gli stessi kg due volte. Le produzioni per uno stesso prodotto devono coincidere. Nessuna formula manodopera inclusa.</p>
+        {form.mode === 'manuale' && <button type="button" disabled={busy} className={button} onClick={() => change({ rows: [...form.rows, { id: globalThis.crypto?.randomUUID?.() || `r_${Date.now()}`, product: '', type: 'scarto', beforeProduction: '', beforeLoss: '', afterProduction: '', afterLoss: '', driver: '', driverYear: '', driverRef: '' }] })}>Aggiungi prodotto / tipo</button>}
+        <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-xs"><thead><tr>{['Prodotto', 'Tipo', 'Produzione prima kg', 'Perdita prima kg', 'Produzione dopo kg', 'Perdita dopo kg', 'Driver €/kg', 'Anno', 'Riferimento driver', 'Kg evitati', 'Beneficio €', ''].map((label, index) => <th key={index} className="p-2 text-left border-b">{label}</th>)}</tr></thead><tbody>
+          {form.rows.map(row => { const computed = result.rows.find(item => item.id === row.id); return <tr key={row.id}>
+            <td className="p-1"><input aria-label="Prodotto" className={field} disabled={form.mode === 'stain'} value={row.product} onChange={event => patchRow(row.id, 'product', event.target.value)} /></td>
+            <td className="p-1"><select aria-label="Tipo perdita" className={field} disabled={form.mode === 'stain'} value={row.type} onChange={event => patchRow(row.id, 'type', event.target.value)}><option value="scarto">Scarto</option><option value="rework">Rework</option></select></td>
+            {['beforeProduction', 'beforeLoss', 'afterProduction', 'afterLoss', 'driver', 'driverYear', 'driverRef'].map(key => <td key={key} className="p-1"><input aria-label={key} className={field} disabled={form.mode === 'stain' && ['beforeProduction', 'beforeLoss', 'afterProduction', 'afterLoss'].includes(key)} type={key === 'driverRef' ? 'text' : 'number'} min="0" step="any" value={row[key]} onChange={event => patchRow(row.id, key, event.target.value)} /></td>)}
+            <td className="p-2">{fmt(computed?.avoided)}</td><td className="p-2">{fmt(computed?.gross)}</td><td>{form.mode === 'manuale' && <button type="button" onClick={() => change({ rows: form.rows.filter(item => item.id !== row.id) })}>Elimina</button>}</td>
+          </tr> })}
+        </tbody></table></div>
+        <div className="grid md:grid-cols-2 gap-3">{input('Costi implementazione € (anche zero)', 'costs', 'number')}{input('Descrizione e fonte dei costi', 'costNote')}</div>
+      </section>
+      <section className={section}>
+        <h3 className="font-bold text-primary">3 · Risultato e verifica</h3>
+        {issues.length > 0 ? <div className="text-sm text-amber-800">{[...new Set(issues)].map(issue => <p key={issue}>{issue}</p>)}</div> : <div className="grid md:grid-cols-3 gap-3">{[['Kg evitati', result.avoided], ['Beneficio lordo periodo €', result.gross], ['Beneficio netto progetto €', result.net]].map(([label, value]) => <div key={label} className="bg-gray-50 p-3 rounded"><div className="text-xs">{label}</div><strong className="text-xl">{fmt(value)}</strong></div>)}</div>}
+        <details><summary className="text-sm cursor-pointer">Proiezione annuale facoltativa</summary><div className="grid md:grid-cols-2 gap-3 mt-3">{input('Produzione annua del perimetro kg', 'annualProduction', 'number')}{input('Fonte volume annuo e ipotesi mix costante', 'annualBasis')}</div><p className="text-sm mt-2">Beneficio lordo annuo stimato: {issues.length ? 'Non disponibile' : fmt(result.annualGross)} €. Proiezione a mix costante, non beneficio già maturato; costi una tantum non annualizzati.</p></details>
+        <label className="block text-sm">Evidenze e nota di verifica<textarea className={field} rows={3} value={form.notes} onChange={event => change({ notes: event.target.value })} /></label>
+        <label className="flex gap-2 text-sm"><input type="checkbox" checked={form.reviewed} disabled={issues.length > 0 || !form.notes.trim()} onChange={event => { dirty.current = true; revision.current += 1; setForm(current => ({ ...current, reviewed: event.target.checked })); setStatus('Modifiche da salvare') }} />Confronto verificato dal compilatore (non approvazione Finance)</label>
+        <p className="text-xs text-gray-500">Stima dei benefici di progetto, non valutazione di investimento. Nessuna somma automatica con saving di Quick/Standard o altri Major.</p>
+      </section>
+      <div className="flex flex-wrap justify-end items-center gap-3"><span role="status" className="text-sm">{status}</span><button type="button" disabled={busy} className="bg-primary text-white px-4 py-2 rounded disabled:opacity-50" onClick={save}>{busy ? 'Attendere...' : 'Salva risultati e saving'}</button></div>
+    </div>
+  )
+}
