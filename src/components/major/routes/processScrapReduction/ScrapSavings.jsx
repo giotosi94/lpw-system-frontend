@@ -9,6 +9,15 @@ const fmt = value => value == null || !Number.isFinite(value) ? 'Non disponibile
 const empty = () => ({ mode: 'stain', scope: null, before: null, after: null, afterFrom: '', afterTo: '', manualBeforeFrom: '', manualBeforeTo: '', rows: [], costs: '', costNote: '', annualProduction: '', annualBasis: '', source: '', notes: '', reviewed: false })
 
 
+function outcome(value, positive, negative, unit) {
+  if (value == null || !Number.isFinite(value)) return 'Non disponibile'
+  if (Math.abs(value) < 0.000001) return `Nessuna variazione (0 ${unit})`
+  return `${value > 0 ? positive : negative}: ${fmt(Math.abs(value))} ${unit}`
+}
+function rate(loss, production) {
+  const p = Number(production)
+  return p > 0 ? Number(loss) / p * 100 : null
+}
 function dayAfter(value) {
   if (!value) return ''
   const d = new Date(`${value}T12:00:00`)
@@ -122,6 +131,16 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     } catch { setStatus('Errore di salvataggio: dati conservati nella pagina. Riprova.') }
     finally { setBusy(false) }
   }
+  useEffect(() => {
+    if (form.mode !== 'stain' || form.scope || !baseline || dirty.current) return
+    try {
+      const scope = baselineScope(baseline)
+      aggregateSnapshot(baseline.stain_snapshot, scope)
+      setForm(current => current.scope ? current : { ...current, scope, before: JSON.parse(JSON.stringify(baseline.stain_snapshot)) })
+    } catch {
+      setPeriodStatus('Baseline non disponibile: carica e salva i dati nella Fase 1, poi importali qui.')
+    }
+  }, [baseline, form.mode, form.scope])
   const input = (label, key, type = 'text') => {
     const beforeDate = key === 'comparisonFrom' || key === 'comparisonTo'
     const value = beforeDate ? (key === 'comparisonFrom' ? beforeFrom : beforeTo) || '' : form[key]
@@ -141,7 +160,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     <div className="space-y-5">
       <section className={section}>
         <h3 className="font-bold text-primary">1 · Confronto prima e dopo</h3>
-        <p className="text-sm text-gray-600">Kg evitati = produzione dopo × tasso perdita baseline − perdita dopo. Calcolo separato per prodotto e tipo; i peggioramenti restano negativi.</p>
+        <p className="text-sm text-gray-600">Confronto delle percentuali di perdita sulla produzione, per prodotto e tipo. La differenza viene valorizzata in kg e in euro: Saving indica un miglioramento; Maggior costo stimato indica un peggioramento. La variazione in punti percentuali e calcolata come dopo meno prima: positiva significa aumento delle perdite.</p>
         <label className="block text-sm">Fonte<select className={field} disabled={busy} value={form.mode} onChange={event => { if (!form.rows.length || window.confirm('Cambiare fonte e azzerare il confronto?')) change({ ...empty(), mode: event.target.value }) }}><option value="stain">STAIN</option><option value="manuale">Confronto manuale in kg</option></select></label>
         {form.mode === 'stain' ? <>
           <button type="button" disabled={busy} className={button} onClick={capture}>Importa linea, filtri e periodo dalla Fase 1</button>
@@ -167,19 +186,23 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         {driverStatus && <p role="status" className="text-sm">{driverStatus}</p>}
         {form.driverSnapshot && <p className="text-xs text-gray-600">Snapshot driver: {form.driverSnapshot.year} · {form.driverSnapshot.resource.code} · {form.driverSnapshot.filename}. I nuovi caricamenti annuali non aggiornano automaticamente questo progetto. Modifiche manuali restano distinguibili nelle righe salvate.</p>}
         {form.mode === 'manuale' && <button type="button" disabled={busy} className={button} onClick={() => change({ rows: [...form.rows, { id: globalThis.crypto?.randomUUID?.() || `r_${Date.now()}`, product: '', type: 'scarto', beforeProduction: '', beforeLoss: '', afterProduction: '', afterLoss: '', driver: '', driverYear: '', driverRef: '' }] })}>Aggiungi prodotto / tipo</button>}
-        {form.rows.length > 0 && <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-xs"><thead><tr>{['Prodotto', 'Tipo', 'Produzione prima kg', 'Perdita prima kg', 'Produzione dopo kg', 'Perdita dopo kg', 'Driver €/kg', 'Anno', 'Riferimento driver', 'Kg evitati', 'Beneficio €', ''].map((label, index) => <th key={index} className="p-2 text-left border-b">{label}</th>)}</tr></thead><tbody>
+        {form.rows.length > 0 && <div className="overflow-x-auto"><table className="w-full min-w-[1450px] text-xs"><thead><tr>{['Prodotto', 'Tipo', 'Produzione prima kg', 'Perdita prima kg', 'Produzione dopo kg', 'Perdita dopo kg', 'Driver €/kg', 'Anno', 'Riferimento driver', 'Perdita prima %', 'Perdita dopo %', 'Variazione p.p.', 'Esito kg', 'Esito economico', ''].map((label, index) => <th key={index} className="p-2 text-left border-b">{label}</th>)}</tr></thead><tbody>
           {form.rows.map(row => { const computed = result.rows.find(item => item.id === row.id); return <tr key={row.id}>
             <td className="p-1"><input aria-label="Prodotto" className={field} disabled={form.mode === 'stain'} value={row.product} onChange={event => patchRow(row.id, 'product', event.target.value)} /></td>
             <td className="p-1"><select aria-label="Tipo perdita" className={field} disabled={form.mode === 'stain'} value={row.type} onChange={event => patchRow(row.id, 'type', event.target.value)}><option value="scarto">Scarto</option><option value="rework">Rework</option></select></td>
             {['beforeProduction', 'beforeLoss', 'afterProduction', 'afterLoss', 'driver', 'driverYear', 'driverRef'].map(key => <td key={key} className="p-1"><input aria-label={key} className={field} disabled={form.mode === 'stain' && ['beforeProduction', 'beforeLoss', 'afterProduction', 'afterLoss'].includes(key)} type={key === 'driverRef' ? 'text' : 'number'} min="0" step="any" value={row[key]} onChange={event => patchRow(row.id, key, event.target.value)} /></td>)}
-            <td className="p-2">{fmt(computed?.avoided)}</td><td className="p-2">{fmt(computed?.gross)}</td><td>{form.mode === 'manuale' && <button type="button" onClick={() => change({ rows: form.rows.filter(item => item.id !== row.id) })}>Elimina</button>}</td>
+            <td className="p-2">{fmt(rate(row.beforeLoss, row.beforeProduction))}%</td>
+            <td className="p-2">{fmt(rate(row.afterLoss, row.afterProduction))}%</td>
+            <td className="p-2">{fmt(rate(row.afterLoss, row.afterProduction) - rate(row.beforeLoss, row.beforeProduction))} p.p.</td>
+            <td className={`p-2 ${computed?.avoided < 0 ? 'text-red-700' : 'text-green-800'}`}>{outcome(computed?.avoided, 'Risparmiati', 'Aggiuntivi', 'kg')}</td>
+            <td className={`p-2 ${computed?.gross < 0 ? 'text-red-700' : 'text-green-800'}`}>{outcome(computed?.gross, 'Saving', 'Maggior costo stimato', '€')}</td><td>{form.mode === 'manuale' && <button type="button" onClick={() => change({ rows: form.rows.filter(item => item.id !== row.id) })}>Elimina</button>}</td>
           </tr> })}
         </tbody></table></div>}
         <div className="grid md:grid-cols-2 gap-3">{input('Costi implementazione € (anche zero)', 'costs', 'number')}{input('Descrizione e fonte dei costi', 'costNote')}</div>
       </section>
       <section className={section}>
         <h3 className="font-bold text-primary">3 · Risultato e verifica</h3>
-        {!form.rows.length ? <p className="text-sm">Completa prima il confronto e i driver per vedere il risultato.</p> : issues.length > 0 ? <div className="text-sm text-amber-800">{[...new Set(issues)].map(issue => <p key={issue}>{issue}</p>)}</div> : <div className="grid md:grid-cols-3 gap-3">{[['Kg evitati', result.avoided], ['Beneficio lordo periodo €', result.gross], ['Beneficio netto progetto €', result.net]].map(([label, value]) => <div key={label} className="bg-gray-50 p-3 rounded"><div className="text-xs">{label}</div><strong className="text-xl">{fmt(value)}</strong></div>)}</div>}
+        {!form.rows.length ? <p className="text-sm">Completa prima il confronto e i driver per vedere il risultato.</p> : issues.length > 0 ? <div className="text-sm text-amber-800">{[...new Set(issues)].map(issue => <p key={issue}>{issue}</p>)}</div> : <div className="grid md:grid-cols-3 gap-3">{[[result.avoided < 0 ? 'Kg aggiuntivi rispetto all’atteso' : 'Kg risparmiati', Math.abs(result.avoided)], [result.gross < 0 ? 'Maggior costo stimato del periodo €' : 'Saving lordo del periodo €', Math.abs(result.gross)], [result.net < 0 ? 'Saldo netto negativo, inclusi costi €' : 'Beneficio netto progetto €', Math.abs(result.net)]].map(([label, value]) => <div key={label} className="bg-gray-50 p-3 rounded"><div className="text-xs">{label}</div><strong className="text-xl">{fmt(value)}</strong></div>)}</div>}
         <details><summary className="text-sm cursor-pointer">Proiezione annuale facoltativa</summary><div className="grid md:grid-cols-2 gap-3 mt-3">{input('Produzione annua del perimetro kg', 'annualProduction', 'number')}{input('Fonte volume annuo e ipotesi mix costante', 'annualBasis')}</div><p className="text-sm mt-2">Beneficio lordo annuo stimato: {issues.length ? 'Non disponibile' : fmt(result.annualGross)} €. Proiezione a mix costante, non beneficio già maturato; costi una tantum non annualizzati.</p></details>
         <label className="block text-sm">Evidenze e nota di verifica<textarea className={field} rows={3} value={form.notes} onChange={event => change({ notes: event.target.value })} /></label>
         <label className="flex gap-2 text-sm"><input type="checkbox" checked={form.reviewed} disabled={issues.length > 0 || !form.notes.trim()} onChange={event => { dirty.current = true; revision.current += 1; setForm(current => ({ ...current, reviewed: event.target.checked })); setStatus('Modifiche da salvare') }} />Confronto verificato dal compilatore (non approvazione Finance)</label>
