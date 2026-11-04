@@ -73,11 +73,12 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   const beforeTo = form.mode === 'stain' ? form.scope?.to : form.manualBeforeTo
   const today = todayDate()
   const firstAfter = dayAfter(beforeTo)
-  const periodError = !firstAfter ? 'Acquisisci prima una baseline valida.' : !form.afterFrom || !form.afterTo ? 'Seleziona le date del periodo dopo.' : form.afterFrom < firstAfter ? `Il periodo dopo deve iniziare dal ${firstAfter} in avanti.` : form.afterTo < form.afterFrom ? 'La fine non puo precedere l’inizio.' : form.afterTo > today ? 'Periodo pianificato: STAIN non ha ancora i dati dei giorni futuri. Puoi scegliere le date, ma il caricamento sara disponibile quando il periodo sara trascorso.' : ''
+  const periodError = !beforeFrom || !beforeTo || !form.afterFrom || !form.afterTo ? 'Seleziona i quattro estremi dei periodi prima e dopo.' : beforeFrom > beforeTo || form.afterFrom > form.afterTo ? 'Ogni periodo deve avere la fine successiva o uguale all’inizio.' : form.afterFrom <= beforeTo ? 'I periodi si sovrappongono: la fine del prima deve precedere l’inizio del dopo.' : beforeTo > today || form.afterTo > today ? 'Scegli periodi gia trascorsi: non si calcolano dati futuri.' : ''
+
   if (periodError) issues.push(periodError)
 
   if (!beforeFrom || !beforeTo || !form.afterFrom || !form.afterTo || beforeFrom > beforeTo || form.afterFrom > form.afterTo || form.afterFrom <= beforeTo) issues.push('Definisci periodi validi, non sovrapposti: il dopo deve iniziare dopo la baseline.')
-  if (form.mode === 'stain' && (!form.before || !form.after || form.after.dal !== form.afterFrom || form.after.al !== form.afterTo)) issues.push('Carica il periodo dopo per le date selezionate.')
+  if (form.mode === 'stain' && (!form.before || form.before.dal !== beforeFrom || form.before.al !== beforeTo || !form.after || form.after.dal !== form.afterFrom || form.after.al !== form.afterTo)) issues.push('Carica entrambi i periodi per le date selezionate.')
   if (form.mode === 'manuale' && !form.source.trim()) issues.push('Documenta fonte, linea, prodotti e causali del confronto manuale.')
   if (form.costs !== '' && Number(String(form.costs).replace(',', '.')) > 0 && !form.costNote.trim()) issues.push('Descrivi i costi di implementazione.')
   if (form.annualProduction !== '' && !form.annualBasis.trim()) issues.push('Indica la fonte del volume annuo e l’ipotesi di mix costante.')
@@ -88,10 +89,8 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       if (form.scope && !window.confirm('Sostituire lo snapshot baseline? Il confronto dopo e i calcoli saranno azzerati.')) return
       const scope = baselineScope(baseline)
       aggregateSnapshot(baseline.stain_snapshot, scope)
-      const first = dayAfter(scope.to)
-      const available = first && first <= todayDate()
-      change({ scope, before: JSON.parse(JSON.stringify(baseline.stain_snapshot)), after: null, rows: [], driverSnapshot: null, afterFrom: first, afterTo: available ? todayDate() : first })
-      setPeriodStatus(available ? 'Baseline acquisita. Date proposte automaticamente: verifica linea e periodo.' : 'Date proposte dal giorno successivo alla baseline. Se sono future, puoi pianificare il periodo ma non ancora caricarne i dati.')
+      change({ scope, before: JSON.parse(JSON.stringify(baseline.stain_snapshot)), after: null, rows: [], driverSnapshot: null, afterFrom: '', afterTo: '' })
+      setPeriodStatus('Linea e filtri acquisiti. Puoi modificare qui il periodo prima e scegliere un periodo dopo gia trascorso. La Fase 1 non viene modificata.')
     } catch (error) { setPeriodStatus(error.message) }
   }
   const load = async () => {
@@ -99,10 +98,14 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     setBusy(true)
     setPeriodStatus('Lettura STAIN in corso...')
     try {
-      const response = await api.get('/stain/scarti', { params: { dal: form.afterFrom, al: form.afterTo, linea: form.scope.line, tipi: form.scope.types.join(',') }, timeout: 180000 })
-      const rows = compareSnapshots(form.before, response.data, form.scope, form.rows)
-      change({ after: response.data, rows })
-      setPeriodStatus(`Confronto caricato: ${rows.length} righe. Ora applica i driver economici.`)
+      const params = { linea: form.scope.line, tipi: form.scope.types.join(',') }
+      const [beforeResponse, afterResponse] = await Promise.all([
+        api.get('/stain/scarti', { params: { ...params, dal: beforeFrom, al: beforeTo }, timeout: 180000 }),
+        api.get('/stain/scarti', { params: { ...params, dal: form.afterFrom, al: form.afterTo }, timeout: 180000 }),
+      ])
+      const rows = compareSnapshots(beforeResponse.data, afterResponse.data, form.scope, form.rows)
+      change({ before: beforeResponse.data, after: afterResponse.data, rows })
+      setPeriodStatus(`Entrambi i periodi caricati: ${rows.length} righe. Ora applica i driver economici.`)
     } catch (error) { setPeriodStatus(error.response?.data?.detail || error.message || 'Lettura STAIN non riuscita') }
     finally { setBusy(false) }
   }
@@ -120,19 +123,18 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     finally { setBusy(false) }
   }
   const input = (label, key, type = 'text') => {
-    const afterDate = type === 'date' && key.startsWith('after')
-    const min = type === 'number' ? '0' : key === 'afterFrom' ? firstAfter || undefined : key === 'afterTo' ? (form.afterFrom && form.afterFrom >= firstAfter ? form.afterFrom : firstAfter) || undefined : undefined
-    return <label className="text-sm block">{label}<input className={field} type={type} disabled={busy} min={min} max={type === 'date' && !afterDate ? today : undefined} step={type === 'number' ? 'any' : undefined} value={form[key]} onChange={event => {
-      let value = event.target.value
-      const patch = {}
-      if (afterDate) {
-        if (value && min && value < min) value = min
-        patch.after = null
-        patch.rows = []
-        if (key === 'afterFrom' && value && (!form.afterTo || form.afterTo < value)) patch.afterTo = value
-        setPeriodStatus('Date aggiornate: carica nuovamente il periodo dopo.')
+    const beforeDate = key === 'comparisonFrom' || key === 'comparisonTo'
+    const value = beforeDate ? (key === 'comparisonFrom' ? beforeFrom : beforeTo) || '' : form[key]
+    return <label className="text-sm block">{label}<input className={field} type={type} disabled={busy} min={type === 'number' ? '0' : undefined} max={type === 'date' ? today : undefined} step={type === 'number' ? 'any' : undefined} value={value} onChange={event => {
+      const value = event.target.value
+      if (beforeDate) {
+        change({ scope: { ...form.scope, [key === 'comparisonFrom' ? 'from' : 'to']: value }, before: null, after: null, rows: [] })
+      } else if (type === 'date') {
+        change({ [key]: value, after: null, rows: [] })
+      } else {
+        change({ [key]: value })
       }
-      change({ ...patch, [key]: value })
+      if (type === 'date') setPeriodStatus('Date modificate. Premi Carica confronto da STAIN per ricalcolare entrambi i periodi.')
     }} /></label>
   }
   return (
@@ -142,13 +144,13 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         <p className="text-sm text-gray-600">Kg evitati = produzione dopo × tasso perdita baseline − perdita dopo. Calcolo separato per prodotto e tipo; i peggioramenti restano negativi.</p>
         <label className="block text-sm">Fonte<select className={field} disabled={busy} value={form.mode} onChange={event => { if (!form.rows.length || window.confirm('Cambiare fonte e azzerare il confronto?')) change({ ...empty(), mode: event.target.value }) }}><option value="stain">STAIN</option><option value="manuale">Confronto manuale in kg</option></select></label>
         {form.mode === 'stain' ? <>
-          <button type="button" disabled={busy} className={button} onClick={capture}>Acquisisci baseline salvata della Fase 1</button>
-          {form.scope && <div className="text-sm bg-gray-50 p-3 rounded"><p>{form.scope.line} · {form.scope.from} / {form.scope.to}</p><p>Prodotti: {form.scope.products.join(', ') || 'Tutti'} · Causali: {form.scope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Snapshot congelato: gli aggiornamenti della Fase 1 non cambiano questo calcolo.</p></div>}
+          <button type="button" disabled={busy} className={button} onClick={capture}>Importa linea, filtri e periodo dalla Fase 1</button>
+          {form.scope && <div className="text-sm bg-gray-50 p-3 rounded"><p>{form.scope.line} · {form.scope.from} / {form.scope.to}</p><p>Prodotti: {form.scope.products.join(', ') || 'Tutti'} · Causali: {form.scope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Confronto indipendente: modificare queste date non cambia la Fase 1.</p></div>}
         </> : <><div className="grid md:grid-cols-2 gap-3">{input('Baseline da', 'manualBeforeFrom', 'date')}{input('Baseline a', 'manualBeforeTo', 'date')}</div>{input('Fonte e perimetro manuale (linea, prodotti, causali, evidenze)', 'source')}</>}
-        <p className="text-sm text-gray-600">Prima: baseline della Fase 1. Dopo: periodo successivo agli interventi, senza sovrapposizioni. Le date automatiche non attestano quando sono avvenuti gli interventi.</p>
-        {form.mode === 'stain' && firstAfter && <button type="button" className={button} disabled={busy} onClick={() => { change({ afterFrom: firstAfter, afterTo: firstAfter > today ? firstAfter : today, after: null, rows: [] }); setPeriodStatus('Date proposte. Il caricamento richiede un periodo gia trascorso.') }}>Imposta date valide automaticamente</button>}
+        <p className="text-sm text-gray-600">Confronta due periodi storici: prima degli interventi e dopo gli interventi. Puoi cambiare entrambi qui. Le date vengono controllate al caricamento, senza essere riscritte automaticamente.</p>
+        {form.mode === 'stain' && form.scope && <div className="grid md:grid-cols-2 gap-3">{input('Periodo prima da', 'comparisonFrom', 'date')}{input('Periodo prima a', 'comparisonTo', 'date')}</div>}
         <div className="grid md:grid-cols-2 gap-3">{input('Periodo dopo da', 'afterFrom', 'date')}{input('Periodo dopo a', 'afterTo', 'date')}</div>
-        {form.mode === 'stain' && <button type="button" disabled={busy || !form.scope || Boolean(periodError)} className={button} onClick={load}>{busy ? 'Caricamento...' : 'Carica periodo dopo da STAIN'}</button>}
+        {form.mode === 'stain' && <button type="button" disabled={busy || !form.scope || Boolean(periodError)} className={button} onClick={load}>{busy ? 'Caricamento...' : 'Carica confronto da STAIN'}</button>}
         {periodError && <p role="alert" className="text-sm text-amber-800">{periodError}</p>}
         {periodStatus && <p role="status" aria-live="polite" className="text-sm">{periodStatus}</p>}
       </section>
