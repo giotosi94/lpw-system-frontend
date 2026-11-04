@@ -4,6 +4,7 @@ import IshikawaDiagram from '../../../kaizen/IshikawaDiagram'
 import FiveWhysFlowChart from '../../../kaizen/FiveWhysFlowChart'
 import KaizenAzioniList from '../../../kaizen/KaizenAzioniList'
 import ActionPlanFormShared from '../../../ActionPlanFormShared'
+import CarlImprovements from './CarlImprovements'
 
 const SAVE_DELAY = 800
 const panel = 'bg-white border border-gray-200 rounded-lg p-4 md:p-5'
@@ -43,6 +44,7 @@ function phaseAnomalies(allStepsData, stepId) {
 function buildForm(data) {
   return {
     selezionate: list(data.selezionate),
+    miglioramenti: list(data.miglioramenti),
     analisi: data.analisi && typeof data.analisi === 'object' ? data.analisi : {},
     anomalie_extra: list(data.anomalie_extra),
   }
@@ -358,10 +360,24 @@ export default function AnomalyAnalysis({ stepData, onChange, major, allStepsDat
       </section>
 
       <section className="space-y-3">
-        <h3 className={heading}>PASSO 3 - CONTROMISURE</h3>
+        <h3 className={heading}>PASSO 3 - CONTROMISURE E MIGLIORAMENTI</h3>
         <p className="text-sm text-gray-600">
           Per ogni causa radice confermata usa &quot;Crea Action Plan&quot; nei 5 Perché, oppure crea l&apos;azione qui. Cause trovate: {stats.cause} · confermate: {stats.confermate}.
         </p>
+        <CarlImprovements
+          items={form.miglioramenti}
+          anomalies={selected}
+          analyses={form.analisi}
+          major={major}
+          onChange={items => mutate(state => ({ ...state, miglioramenti: items }))}
+          onPersist={async items => {
+            const snapshot = { ...formRef.current, miglioramenti: items }
+            const result = await onChangeRef.current({ dati: { ...baseRef.current, ...snapshot }, output_compilati: outputs(snapshot) })
+            if (result === false) throw new Error('Salvataggio non riuscito')
+            mutate(state => ({ ...state, miglioramenti: items }))
+          }}
+        />
+        <h4 className="text-sm font-semibold text-gray-700">Action Plan LPW</h4>
         <KaizenAzioniList key={listVersion} parent={parent} defaultStepId={step?.step_id || ''} />
       </section>
 
