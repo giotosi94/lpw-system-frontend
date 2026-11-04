@@ -3,6 +3,7 @@ import ScrapBaseline from './routes/processScrapReduction/ScrapBaseline'
 import BasicConditions from './routes/processScrapReduction/BasicConditions'
 import TrainingPlan from './routes/processScrapReduction/TrainingPlan'
 import AnomalyAnalysis from './routes/processScrapReduction/AnomalyAnalysis'
+import ScrapSavings from './routes/processScrapReduction/ScrapSavings'
 import EcrsAnalysis from './routes/processScrapReduction/EcrsAnalysis'
 import SustainmentPlan from './routes/processScrapReduction/SustainmentPlan'
 
@@ -12,6 +13,7 @@ const COMPONENT_REGISTRY = {
   scrap_event_register: TrainingPlan,
   training_plan: TrainingPlan,
   anomaly_analysis: AnomalyAnalysis,
+  scrap_savings: ScrapSavings,
   ecrs_analysis: EcrsAnalysis,
   sustainment_plan: SustainmentPlan,
 }
