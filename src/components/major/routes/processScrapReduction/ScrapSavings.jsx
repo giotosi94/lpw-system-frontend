@@ -8,10 +8,15 @@ const section = 'border border-gray-200 rounded-lg bg-white p-4 space-y-3'
 const fmt = value => value == null || !Number.isFinite(value) ? 'Non disponibile' : new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 }).format(value)
 const empty = () => ({ mode: 'stain', scope: null, before: null, after: null, afterFrom: '', afterTo: '', manualBeforeFrom: '', manualBeforeTo: '', rows: [], costs: '', costNote: '', annualProduction: '', annualBasis: '', source: '', notes: '', reviewed: false })
 
-export default function ScrapSavings({ stepData, allStepsData, onChange }) {
+export default function ScrapSavings({ stepData, allStepsData, onChange, major }) {
   const [form, setForm] = useState(() => ({ ...empty(), ...(stepData?.dati?.saving_economico || {}) }))
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
+  const [driverVersions, setDriverVersions] = useState([])
+  const [driverVersion, setDriverVersion] = useState('')
+  useEffect(() => {
+    api.get('/economic-drivers/versions').then(response => setDriverVersions(response.data)).catch(() => setStatus('Elenco driver non disponibile: verifica il backend.'))
+  }, [])
   const dirty = useRef(false)
   const revision = useRef(0)
   const baseline = Object.values(allStepsData || {}).map(item => item?.dati).find(data => data?.stain_snapshot || data?.categorie_scarto)
@@ -29,7 +34,24 @@ export default function ScrapSavings({ stepData, allStepsData, onChange }) {
     setStatus('Modifiche da salvare')
     setForm(current => ({ ...current, ...patch, reviewed: false }))
   }
-  const patchRow = (id, key, value) => change({ rows: form.rows.map(row => row.id === id ? { ...row, [key]: value } : row) })
+  const patchRow = (id, key, value) => change({ rows: form.rows.map(row => row.id === id ? { ...row, [key]: value, ...(key === 'driver' ? { driverSource: 'manuale' } : {}) } : row) })
+  const applyDrivers = async () => {
+    if (!driverVersion || !form.rows.length) { setStatus('Carica il confronto e seleziona una versione driver.'); return }
+    if (!major?.reparto || !major?.linea) { setStatus('Imposta reparto e linea nel Major.'); return }
+    if (!window.confirm('Applicare i driver selezionati alle righe? I valori precedenti saranno sostituiti.')) return
+    setBusy(true)
+    try {
+      const response = await api.get(`/economic-drivers/${driverVersion}/resolve`, { params: { department: major.reparto, line: major.linea } })
+      const snapshot = response.data
+      change({ driverSnapshot: snapshot, rows: form.rows.map(row => {
+        const value = snapshot.resource[row.type]
+        if (value == null || !Number.isFinite(Number(value))) throw new Error('Driver da configurare per il tipo di perdita')
+        return { ...row, driver: value, driverYear: String(snapshot.year), driverRef: `${snapshot.filename} · ${snapshot.resource.code} · ${snapshot.version_id}`, driverSource: 'settings' }
+      }) })
+      setStatus('Driver applicati. Salva risultati e saving per conservarne lo snapshot.')
+    } catch (error) { setStatus(typeof error.response?.data?.detail === 'string' ? error.response.data.detail : error.message || 'Driver da configurare') }
+    finally { setBusy(false) }
+  }
   const result = calculateSaving(form.rows, form.costs, form.annualProduction)
   const issues = [...result.issues]
   const beforeFrom = form.mode === 'stain' ? form.scope?.from : form.manualBeforeFrom
@@ -88,7 +110,12 @@ export default function ScrapSavings({ stepData, allStepsData, onChange }) {
       </section>
       <section className={section}>
         <h3 className="font-bold text-primary">2 · Driver e beneficio economico</h3>
-        <p className="text-xs text-gray-600">Driver €/kg inseriti dalla tabella aziendale. Scarto e rework distinti: non inserire gli stessi kg due volte. Le produzioni per uno stesso prodotto devono coincidere. Nessuna formula manodopera inclusa.</p>
+        <p className="text-xs text-gray-600">Driver €/kg dalla versione annuale dei Settings, oppure inserimento manuale documentato. Scarto e rework distinti: non inserire gli stessi kg due volte. Le produzioni per uno stesso prodotto devono coincidere. Nessuna formula manodopera inclusa.</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm flex-1">Versione driver economici<select className={field} disabled={busy} value={driverVersion} onChange={event => setDriverVersion(event.target.value)}><option value="">Seleziona anno e versione</option>{driverVersions.map(version => <option key={version.id} value={version.id}>{version.year} · {version.filename} · {new Date(version.created_at).toLocaleString('it-IT')}</option>)}</select></label>
+          <button type="button" className={button} disabled={busy || !driverVersion || !form.rows.length} onClick={applyDrivers}>Applica driver della linea</button>
+        </div>
+        {form.driverSnapshot && <p className="text-xs text-gray-600">Snapshot driver: {form.driverSnapshot.year} · {form.driverSnapshot.resource.code} · {form.driverSnapshot.filename}. I nuovi caricamenti annuali non aggiornano automaticamente questo progetto. Modifiche manuali restano distinguibili nelle righe salvate.</p>}
         {form.mode === 'manuale' && <button type="button" disabled={busy} className={button} onClick={() => change({ rows: [...form.rows, { id: globalThis.crypto?.randomUUID?.() || `r_${Date.now()}`, product: '', type: 'scarto', beforeProduction: '', beforeLoss: '', afterProduction: '', afterLoss: '', driver: '', driverYear: '', driverRef: '' }] })}>Aggiungi prodotto / tipo</button>}
         <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-xs"><thead><tr>{['Prodotto', 'Tipo', 'Produzione prima kg', 'Perdita prima kg', 'Produzione dopo kg', 'Perdita dopo kg', 'Driver €/kg', 'Anno', 'Riferimento driver', 'Kg evitati', 'Beneficio €', ''].map((label, index) => <th key={index} className="p-2 text-left border-b">{label}</th>)}</tr></thead><tbody>
           {form.rows.map(row => { const computed = result.rows.find(item => item.id === row.id); return <tr key={row.id}>
