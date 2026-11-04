@@ -34,7 +34,7 @@ function newArea() {
 }
 
 function newAnomaly() {
-  return { id: createId('anomaly'), macchina: '', componente: '', descrizione: '', foto_prima: [], foto_dopo: [], verifica: '', documenti: [], carl: null }
+  return { id: createId('anomaly'), macchina: '', componente: '', descrizione: '', foto_prima: [], foto_dopo: [], verifica: '', documenti: [], carl: null, manutenzione: false }
 }
 
 function newStandard() {
@@ -65,6 +65,7 @@ function buildForm(data) {
       foto_prima: list(item.foto_prima),
       foto_dopo: list(item.foto_dopo),
       carl: item.carl || null,
+      manutenzione: Boolean(item.manutenzione || item.carl),
       documenti: list(item.documenti).length
         ? list(item.documenti)
         : item.documento_id ? [{ id: item.documento_id, label: item.documento_label || '' }] : [],
@@ -126,7 +127,10 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
   const [previewDoc, setPreviewDoc] = useState(null)
   const [machines, setMachines] = useState([])
   const [carlLine, setCarlLine] = useState('')
-  const [carl, setCarl] = useState({ status: 'idle', items: [], error: '', updated: '' })
+  const [carlOn, setCarlOn] = useState(true)
+  const [carlStates, setCarlStates] = useState({})
+  const [sending, setSending] = useState('')
+  const [carlError, setCarlError] = useState('')
   const [carlDetail, setCarlDetail] = useState(null)
 
   const formRef = useRef(form)
@@ -248,22 +252,6 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     return () => { cancelled = true }
   }, [major?.reparto, major?.linea, major?.macchina])
 
-  const loadCarl = useCallback(async () => {
-    if (!carlLine) return
-    setCarl(current => ({ ...current, status: 'loading', error: '' }))
-    try {
-      const response = await api.get('/carl/cartellini', { params: { linea: carlLine } })
-      setCarl({ status: 'ready', items: response.data?.items || [], error: '', updated: response.data?.aggiornato_il || '' })
-    } catch (err) {
-      if (err.response?.status === 503) setCarl({ status: 'off', items: [], error: '', updated: '' })
-      else setCarl(current => ({ ...current, status: 'error', error: err.response?.data?.detail || 'Lettura CARL non riuscita' }))
-    }
-  }, [carlLine])
-
-  useEffect(() => {
-    loadCarl()
-  }, [loadCarl])
-
   const lossOptions = useMemo(() => {
     const values = new Set()
     Object.values(allStepsData || {}).forEach(item => {
@@ -310,29 +298,48 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
   }))
   const removeAnomaly = id => mutate(current => ({ ...current, anomalie: current.anomalie.filter(item => item.id !== id) }))
 
-  const carlById = useMemo(() => new Map(carl.items.map(item => [item.id, item])), [carl.items])
-  const linkedCarl = useMemo(() => {
-    const result = new Map()
-    form.anomalie.forEach((item, index) => { if (item.carl?.id) result.set(item.carl.id, index + 1) })
-    return result
-  }, [form.anomalie])
+  const maintenance = form.anomalie
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.manutenzione)
+  const carlIds = maintenance.map(({ item }) => item.carl?.id).filter(Boolean)
+  const carlKey = carlIds.join('|')
 
-  const createFromCarl = item => {
-    const machine = machines.find(entry => entry.carl_code && entry.carl_code === String(item.macchina || '').toUpperCase())
-    mutate(current => ({
-      ...current,
-      anomalie: [...current.anomalie, {
-        ...newAnomaly(),
-        macchina: machine?.nome || '',
-        descrizione: item.testo || item.descrizione,
-        carl: carlSnapshot(item),
-      }],
-    }))
-  }
+  const refreshCarl = useCallback(async () => {
+    if (!carlKey) return
+    try {
+      const response = await api.post('/carl/stati', { ids: carlKey.split('|') })
+      setCarlStates(response.data?.items || {})
+      setCarlOn(true)
+    } catch (err) {
+      if (err.response?.status === 503) setCarlOn(false)
+    }
+  }, [carlKey])
 
-  const linkCarl = (anomalyId, carlId) => {
-    const item = carlById.get(carlId)
-    patchAnomaly(anomalyId, { carl: item ? carlSnapshot(item) : null })
+  useEffect(() => {
+    refreshCarl()
+  }, [refreshCarl])
+
+  const sendToCarl = async (item, index, priorita) => {
+    setSending(item.id)
+    setCarlError('')
+    try {
+      const machine = machines.find(entry => entry.nome === item.macchina)
+      const response = await api.post('/carl/cartellini', {
+        titolo: (item.descrizione || '').trim() || `Anomalia ${index + 1}`,
+        descrizione: [item.descrizione, [item.macchina, item.componente].filter(Boolean).join(' · ')].filter(Boolean).join('\n'),
+        priorita,
+        macchina_carl: machine?.carl_code || '',
+        linea_carl: carlLine,
+        riferimento: `${major?.numero || ''} · Anomalia ${index + 1}`,
+      })
+      patchAnomaly(item.id, { carl: carlSnapshot(response.data) })
+      setCarlStates(current => ({ ...current, [response.data.id]: response.data }))
+    } catch (err) {
+      if (err.response?.status === 503) setCarlOn(false)
+      setCarlError(err.response?.data?.detail || 'Invio a CARL non riuscito')
+    } finally {
+      setSending('')
+    }
   }
 
   const linkedDocIds = [...new Set(form.anomalie.flatMap(item => item.documenti.map(doc => doc.id)))]
@@ -448,19 +455,6 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
             </button>
           )}
         </div>
-        {carlLine && carl.status !== 'off' && (
-          <CarlPanel
-            line={carlLine}
-            state={carl}
-            linked={linkedCarl}
-            onRefresh={loadCarl}
-            onCreate={createFromCarl}
-            onOpen={item => setCarlDetail(item)}
-          />
-        )}
-        {!carlLine && (
-          <p className="mt-3 text-xs text-gray-500">Per vedere i cartellini CARL della linea imposta il Codice CARL della linea in Settings.</p>
-        )}
         <div className="mt-4 space-y-4">
           {form.anomalie.length === 0 && <p className="p-6 text-center text-sm text-gray-400">Nessuna anomalia registrata</p>}
           {form.anomalie.map((item, index) => (
@@ -484,26 +478,11 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
                 <ImageUpload images={item.foto_prima} onChange={value => patchAnomaly(item.id, { foto_prima: value })} label="Foto prima" maxImages={4} />
                 <ImageUpload images={item.foto_dopo} onChange={value => patchAnomaly(item.id, { foto_dopo: value })} label="Foto dopo" maxImages={4} />
               </div>
-              {carlLine && carl.status !== 'off' && (
-                <div className="mt-4">
-                  <span className="block text-sm mb-1">Cartellino CARL</span>
-                  {item.carl ? (
-                    <CarlChip
-                      value={carlById.get(item.carl.id) || item.carl}
-                      stillOpen={carl.status !== 'ready' || carlById.has(item.carl.id)}
-                      onOpen={() => setCarlDetail(item.carl)}
-                      onUnlink={() => patchAnomaly(item.id, { carl: null })}
-                    />
-                  ) : (
-                    <select aria-label="Collega cartellino CARL" className={input} value="" onChange={event => linkCarl(item.id, event.target.value)}>
-                      <option value="">Collega un cartellino aperto</option>
-                      {carl.items.filter(entry => !linkedCarl.has(entry.id)).map(entry => (
-                        <option key={entry.id} value={entry.id}>{entry.codice} - {entry.descrizione}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              )}
+              <label className="mt-4 flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={item.manutenzione} disabled={Boolean(item.carl)} onChange={event => patchAnomaly(item.id, { manutenzione: event.target.checked })} />
+                Intervento manutenzione (CARL)
+                {item.carl && <span className="text-xs text-gray-500">· {item.carl.codice}</span>}
+              </label>
               <label className="block text-sm mt-4">Verifica del ripristino: come hai controllato (foto, misura, prova funzionale)
                 <textarea rows={2} className={`${input} mt-1`} value={item.verifica} onChange={event => patchAnomaly(item.id, { verifica: event.target.value })} />
               </label>
@@ -546,6 +525,51 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
           defaultStepId={step?.step_id || ''}
         />
       </section>
+
+      {carlOn && (
+        <section className={panel}>
+          <h3 className={heading}>PASSO 4 - INTERVENTI DI MANUTENZIONE</h3>
+          <p className="text-sm text-gray-600 mb-3">
+            Le anomalie segnate come intervento manutenzione si inviano a CARL. Lo stato si aggiorna da CARL.
+          </p>
+          {carlError && <p role="alert" className="mb-3 text-sm text-red-700">{carlError}</p>}
+          {maintenance.length === 0 ? (
+            <p className="p-4 text-center text-sm text-gray-400">Nessuna anomalia segnata come intervento manutenzione.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-sm">
+                <thead>
+                  <tr className="text-left text-gray-600 border-b">
+                    <th className="p-2 font-medium">Anomalia</th>
+                    <th className="p-2 font-medium">Macchina / componente</th>
+                    <th className="p-2 font-medium">Cartellino CARL</th>
+                    <th className="p-2 font-medium">Stato</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {maintenance.map(({ item, index }) => (
+                    <MaintenanceRow
+                      key={item.id}
+                      item={item}
+                      index={index}
+                      current={item.carl ? carlStates[item.carl.id] || item.carl : null}
+                      sending={sending === item.id}
+                      disabled={Boolean(sending)}
+                      onSend={priorita => sendToCarl(item, index, priorita)}
+                      onOpen={() => setCarlDetail(item.carl)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {carlIds.length > 0 && (
+            <div className="mt-3 flex justify-end">
+              <button type="button" onClick={refreshCarl} className={smallButton}>Aggiorna stati</button>
+            </div>
+          )}
+        </section>
+      )}
 
       <div role="status" aria-live="polite" className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4 text-sm">
         <span className={status === 'error' ? 'text-red-700' : 'text-gray-600'}>{STATUS_LABELS[status]}</span>
@@ -693,58 +717,40 @@ function ComponentInput({ value, options, onChange }) {
   )
 }
 
-function CarlPanel({ line, state, linked, onRefresh, onCreate, onOpen }) {
+function MaintenanceRow({ item, index, current, sending, disabled, onSend, onOpen }) {
+  const [priorita, setPriorita] = useState('media')
   return (
-    <div className="mt-4 rounded-lg border border-gray-300">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-gray-50 px-3 py-2">
-        <span className="text-sm font-semibold text-gray-700">
-          Cartellini CARL aperti · {line}{state.status === 'ready' ? ` (${state.items.length})` : ''}
-        </span>
-        <span className="flex items-center gap-2 text-xs text-gray-500">
-          {state.updated && `Aggiornato ${new Date(state.updated).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`}
-          <button type="button" onClick={onRefresh} disabled={state.status === 'loading'} className={smallButton}>
-            {state.status === 'loading' ? 'Caricamento...' : 'Aggiorna'}
-          </button>
-        </span>
-      </div>
-      {state.status === 'error' && <p role="alert" className="px-3 py-2 text-sm text-red-700">{state.error}</p>}
-      {state.status === 'ready' && state.items.length === 0 && (
-        <p className="px-3 py-3 text-sm text-gray-500">Nessun cartellino aperto negli ultimi 12 mesi.</p>
-      )}
-      {state.items.length > 0 && (
-        <ul className="max-h-72 divide-y overflow-y-auto">
-          {state.items.map(item => {
-            const anomaly = linked.get(item.id)
-            return (
-              <li key={item.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
-                <button type="button" onClick={() => onOpen(item)} className="font-mono text-xs font-semibold text-primary hover:underline">{item.codice}</button>
-                <span className={`rounded px-1.5 py-0.5 text-xs ${CARL_BADGE[item.stato] || 'bg-gray-100 text-gray-700'}`}>{item.stato_label}</span>
-                <span className="text-xs text-gray-500">{formatDay(item.data)}</span>
-                <span className="min-w-0 flex-1 truncate" title={item.testo || item.descrizione}>{item.descrizione}</span>
-                {item.macchina && <span className="font-mono text-xs text-gray-500">{item.macchina}</span>}
-                {anomaly ? (
-                  <span className="text-xs text-gray-500">Anomalia {anomaly}</span>
-                ) : (
-                  <button type="button" onClick={() => onCreate(item)} className={smallButton}>Crea anomalia</button>
-                )}
-              </li>
-            )
-          })}
-        </ul>
-      )}
-    </div>
-  )
-}
-
-function CarlChip({ value, stillOpen, onOpen, onUnlink }) {
-  return (
-    <div className="flex flex-wrap items-center gap-2 rounded border border-gray-300 bg-gray-50 px-2 py-1.5 text-sm">
-      <button type="button" onClick={onOpen} className="font-mono text-xs font-semibold text-primary hover:underline">{value.codice}</button>
-      <span className={`rounded px-1.5 py-0.5 text-xs ${CARL_BADGE[value.stato] || 'bg-gray-100 text-gray-700'}`}>{value.stato_label}</span>
-      {!stillOpen && <span className="text-xs text-gray-500">non più tra gli aperti: apri lo storico</span>}
-      <span className="min-w-0 flex-1 truncate">{value.descrizione}</span>
-      <button type="button" aria-label="Scollega cartellino" onClick={onUnlink} className="rounded p-1 text-gray-500 hover:bg-gray-100"><X size={14} /></button>
-    </div>
+    <tr className="border-b align-middle">
+      <td className="p-2">
+        <span className="text-xs text-gray-500">Anomalia {index + 1}</span>
+        <span className="block font-medium text-gray-800">{item.descrizione || '—'}</span>
+      </td>
+      <td className="p-2 text-xs">{[item.macchina, item.componente].filter(Boolean).join(' · ') || '—'}</td>
+      <td className="p-2">
+        {current ? (
+          <button type="button" onClick={onOpen} className="font-mono text-xs font-semibold text-primary hover:underline">{current.codice}</button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <select aria-label="Priorità" value={priorita} onChange={event => setPriorita(event.target.value)} className="border border-gray-300 rounded px-2 py-1.5 text-xs bg-white">
+              <option value="bassa">Bassa</option>
+              <option value="media">Media</option>
+              <option value="alta">Alta</option>
+              <option value="urgente">Urgente</option>
+            </select>
+            <button type="button" disabled={disabled || !(item.descrizione || '').trim()} onClick={() => onSend(priorita)} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50">
+              {sending ? 'Invio...' : 'Invia a CARL'}
+            </button>
+          </div>
+        )}
+      </td>
+      <td className="p-2">
+        {current ? (
+          <span className={`rounded px-1.5 py-0.5 text-xs ${CARL_BADGE[current.stato] || 'bg-gray-100 text-gray-700'}`}>{current.stato_label}</span>
+        ) : (
+          <span className="text-xs text-amber-700">Da inviare</span>
+        )}
+      </td>
+    </tr>
   )
 }
 
