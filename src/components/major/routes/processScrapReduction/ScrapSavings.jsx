@@ -37,26 +37,39 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   const [periodStatus, setPeriodStatus] = useState('')
   const [driverStatus, setDriverStatus] = useState('')
   const [driverVersions, setDriverVersions] = useState([])
-  const [driverVersion, setDriverVersion] = useState('')
+  const driverVersion = form.selectedDriverVersion || form.driverSnapshot?.version_id || ''
   useEffect(() => {
     api.get('/economic-drivers/versions').then(response => setDriverVersions(response.data)).catch(() => setDriverStatus('Elenco driver non disponibile: verifica il backend.'))
   }, [])
   const dirty = useRef(false)
   const revision = useRef(0)
+  const formRef = useRef(form)
+  const baseRef = useRef(stepData?.dati || {})
+  const onChangeRef = useRef(onChange)
+  const timerRef = useRef(null)
+  const savingRef = useRef(false)
+  const mountedRef = useRef(true)
+  const draftStateRef = useRef(null)
+  const persistRef = useRef(null)
+  const [saveState, setSaveState] = useState('saved')
+  onChangeRef.current = onChange
+  baseRef.current = stepData?.dati || {}
   const baseline = Object.values(allStepsData || {}).map(item => item?.dati).find(data => data?.stain_snapshot || data?.categorie_scarto)
   useEffect(() => {
-    if (!dirty.current) setForm({ ...empty(), ...(stepData?.dati?.saving_economico || {}) })
+    if (!dirty.current && !savingRef.current) {
+      const next = { ...empty(), ...(stepData?.dati?.saving_economico || {}) }
+      formRef.current = next
+      setForm(next)
+    }
   }, [stepData?.dati])
-  useEffect(() => {
-    const guard = event => { if (dirty.current) { event.preventDefault(); event.returnValue = '' } }
-    window.addEventListener('beforeunload', guard)
-    return () => window.removeEventListener('beforeunload', guard)
-  }, [])
-  const change = patch => {
+  const change = (patch, preserveReview = false) => {
+    const next = { ...formRef.current, ...patch, ...(preserveReview ? {} : { reviewed: false }) }
+    formRef.current = next
     dirty.current = true
     revision.current += 1
-    setStatus('Modifiche da salvare')
-    setForm(current => ({ ...current, ...patch, reviewed: false }))
+    setSaveState('dirty')
+    setStatus('Modifiche in attesa di salvataggio automatico')
+    setForm(next)
   }
   const patchRow = (id, key, value) => change({ rows: form.rows.map(row => row.id === id ? { ...row, [key]: value, ...(key === 'driver' ? { driverSource: 'manuale' } : {}) } : row) })
   const applyDrivers = async () => {
@@ -72,7 +85,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         if (value == null || !Number.isFinite(Number(value))) throw new Error('Driver da configurare per il tipo di perdita')
         return { ...row, driver: value, driverYear: String(snapshot.year), driverRef: `${snapshot.filename} · ${snapshot.resource.code} · ${snapshot.version_id}`, driverSource: 'settings' }
       }) })
-      setDriverStatus('Driver applicati. Salva risultati e saving per conservarne lo snapshot.')
+      setDriverStatus('Driver applicati. Salvataggio automatico dello snapshot in corso.')
     } catch (error) { setDriverStatus(typeof error.response?.data?.detail === 'string' ? error.response.data.detail : error.message || 'Driver da configurare') }
     finally { setBusy(false) }
   }
@@ -118,25 +131,106 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     } catch (error) { setPeriodStatus(error.response?.data?.detail || error.message || 'Lettura STAIN non riuscita') }
     finally { setBusy(false) }
   }
-  const save = async () => {
-    if (issues.length) { setStatus(issues.join(' ')); return }
+  draftStateRef.current = { form, result, issues, periodError }
+  persistRef.current = async () => {
+    clearTimeout(timerRef.current)
+    if (!dirty.current || savingRef.current) return
+    const state = draftStateRef.current
+    const snapshot = formRef.current
     const rev = revision.current
-    setBusy(true)
+    const currentCalculation = state && state.form === snapshot
+    const ready = Boolean(currentCalculation && state.issues.length === 0)
+    const comparisonReady = Boolean(currentCalculation && !state.periodError && snapshot.rows.length && (
+      snapshot.mode === 'manuale'
+        ? snapshot.manualBeforeFrom && snapshot.manualBeforeTo && snapshot.afterFrom && snapshot.afterTo
+        : snapshot.before && snapshot.after && snapshot.before.dal === snapshot.scope?.from && snapshot.before.al === snapshot.scope?.to && snapshot.after.dal === snapshot.afterFrom && snapshot.after.al === snapshot.afterTo
+    ))
+    const driversReady = Boolean(snapshot.rows.length && snapshot.rows.every(row =>
+      row.driver !== '' && row.driver != null && Number.isFinite(Number(String(row.driver).replace(',', '.'))) && Number(String(row.driver).replace(',', '.')) >= 0 && /^\d{4}$/.test(String(row.driverYear || '')) && String(row.driverRef || '').trim()
+    ))
+    const reviewed = Boolean(ready && snapshot.reviewed && snapshot.notes.trim())
+    const payload = {
+      ...snapshot,
+      formula_version: 'scrap_normalized_v1',
+      saved_at: new Date().toISOString(),
+      result: ready ? {
+        gross: state.result.gross,
+        avoided: state.result.avoided,
+        net: state.result.net,
+        annualGross: state.result.annualGross,
+        rows: state.result.rows,
+      } : null,
+      validation: reviewed ? 'verificato_dal_compilatore' : ready ? 'da_validare' : 'bozza_incompleta',
+    }
+    savingRef.current = true
+    if (mountedRef.current) {
+      setSaveState('saving')
+      setStatus('Salvataggio automatico...')
+    }
+    let failed = false
     try {
-      const payload = { ...form, formula_version: 'scrap_normalized_v1', saved_at: new Date().toISOString(), result: { gross: result.gross, avoided: result.avoided, net: result.net, annualGross: result.annualGross, rows: result.rows }, validation: form.reviewed ? 'verificato_dal_compilatore' : 'da_validare' }
-      const response = await onChange({ dati: { ...(stepData?.dati || {}), saving_economico: payload }, output_compilati: { confronto_prima_dopo: true, driver_economici: true, saving_calcolato: true, verifica_risultati: form.reviewed } })
+      const response = await onChangeRef.current({
+        dati: { ...baseRef.current, saving_economico: payload },
+        output_compilati: {
+          confronto_prima_dopo: comparisonReady,
+          driver_economici: driversReady,
+          saving_calcolato: ready,
+          verifica_risultati: reviewed,
+        },
+      })
       if (response === false) throw new Error('Salvataggio rifiutato')
-      dirty.current = revision.current !== rev
-      setStatus(dirty.current ? 'Nuove modifiche da salvare' : 'Salvato')
-    } catch { setStatus('Errore di salvataggio: dati conservati nella pagina. Riprova.') }
-    finally { setBusy(false) }
+      if (revision.current === rev) {
+        dirty.current = false
+        if (mountedRef.current) {
+          setSaveState('saved')
+          setStatus(ready ? 'Salvato automaticamente' : 'Bozza salvata automaticamente, anche con dati incompleti')
+        }
+      }
+    } catch {
+      failed = true
+      if (mountedRef.current) {
+        setSaveState('error')
+        setStatus('Errore di salvataggio: modifiche ancora nella pagina. Premi Riprova.')
+      }
+    } finally {
+      savingRef.current = false
+      if (dirty.current && (!failed || revision.current !== rev)) {
+        if (mountedRef.current) {
+          timerRef.current = setTimeout(() => persistRef.current?.(), 800)
+        } else {
+          persistRef.current?.()
+        }
+      }
+    }
   }
+  useEffect(() => {
+    if (!dirty.current) return
+    clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => persistRef.current?.(), 800)
+    return () => clearTimeout(timerRef.current)
+  }, [form])
+  useEffect(() => {
+    mountedRef.current = true
+    const guard = event => {
+      if (dirty.current || savingRef.current) {
+        event.preventDefault()
+        event.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', guard)
+    return () => {
+      mountedRef.current = false
+      window.removeEventListener('beforeunload', guard)
+      clearTimeout(timerRef.current)
+      if (dirty.current && !savingRef.current) persistRef.current?.()
+    }
+  }, [])
   useEffect(() => {
     if (form.mode !== 'stain' || form.scope || !baseline || dirty.current) return
     try {
       const scope = baselineScope(baseline)
       aggregateSnapshot(baseline.stain_snapshot, scope)
-      setForm(current => current.scope ? current : { ...current, scope, before: JSON.parse(JSON.stringify(baseline.stain_snapshot)) })
+      change({ scope, before: JSON.parse(JSON.stringify(baseline.stain_snapshot)) })
     } catch {
       setPeriodStatus('Baseline non disponibile: carica e salva i dati nella Fase 1, poi importali qui.')
     }
@@ -158,6 +252,10 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   }
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
+        <span>Salvataggio automatico attivo, anche per bozze incomplete.</span>
+        <span role="status" aria-live="polite" className={saveState === 'error' ? 'text-red-700' : ''}>{saveState === 'saving' ? 'Salvataggio...' : saveState === 'dirty' ? 'Modifiche da salvare...' : saveState === 'error' ? 'Errore: riprova in fondo alla pagina' : 'Salvato'}</span>
+      </div>
       <section className={section}>
         <h3 className="font-bold text-primary">1 · Confronto prima e dopo</h3>
         <p className="text-sm text-gray-600">Confronto delle percentuali di perdita sulla produzione, per prodotto e tipo. La differenza viene valorizzata in kg e in euro: Saving indica un miglioramento; Maggior costo stimato indica un peggioramento. La variazione in punti percentuali e calcolata come dopo meno prima: positiva significa aumento delle perdite.</p>
@@ -177,7 +275,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         <h3 className="font-bold text-primary">2 · Driver e beneficio economico</h3>
         <p className="text-xs text-gray-600">Driver €/kg dalla versione annuale dei Settings, oppure inserimento manuale documentato. Scarto e rework distinti: non inserire gli stessi kg due volte. Le produzioni per uno stesso prodotto devono coincidere. Nessuna formula manodopera inclusa.</p>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="text-sm flex-1">Versione driver economici<select className={field} disabled={busy} value={driverVersion} onChange={event => setDriverVersion(event.target.value)}><option value="">Seleziona anno e versione</option>{driverVersions.map(version => <option key={version.id} value={version.id}>{version.year} · {version.filename} · {new Date(version.created_at).toLocaleString('it-IT')}</option>)}</select></label>
+          <label className="text-sm flex-1">Versione driver economici<select className={field} disabled={busy} value={driverVersion} onChange={event => change({ selectedDriverVersion: event.target.value })}><option value="">Seleziona anno e versione</option>{driverVersions.map(version => <option key={version.id} value={version.id}>{version.year} · {version.filename} · {new Date(version.created_at).toLocaleString('it-IT')}</option>)}</select></label>
           <button type="button" className={button} disabled={busy || !driverVersion || !form.rows.length} onClick={applyDrivers}>Applica driver della linea</button>
         </div>
         {!form.rows.length && <p className="text-sm text-amber-800">Prima carica il confronto nel punto 1. Solo dopo puoi applicare i costi alle righe.</p>}
@@ -205,10 +303,13 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         {!form.rows.length ? <p className="text-sm">Completa prima il confronto e i driver per vedere il risultato.</p> : issues.length > 0 ? <div className="text-sm text-amber-800">{[...new Set(issues)].map(issue => <p key={issue}>{issue}</p>)}</div> : <div className="grid md:grid-cols-3 gap-3">{[[result.avoided < 0 ? 'Kg aggiuntivi rispetto all’atteso' : 'Kg risparmiati', Math.abs(result.avoided)], [result.gross < 0 ? 'Maggior costo stimato del periodo €' : 'Saving lordo del periodo €', Math.abs(result.gross)], [result.net < 0 ? 'Saldo netto negativo, inclusi costi €' : 'Beneficio netto progetto €', Math.abs(result.net)]].map(([label, value]) => <div key={label} className="bg-gray-50 p-3 rounded"><div className="text-xs">{label}</div><strong className="text-xl">{fmt(value)}</strong></div>)}</div>}
         <details><summary className="text-sm cursor-pointer">Proiezione annuale facoltativa</summary><div className="grid md:grid-cols-2 gap-3 mt-3">{input('Produzione annua del perimetro kg', 'annualProduction', 'number')}{input('Fonte volume annuo e ipotesi mix costante', 'annualBasis')}</div><p className="text-sm mt-2">Beneficio lordo annuo stimato: {issues.length ? 'Non disponibile' : fmt(result.annualGross)} €. Proiezione a mix costante, non beneficio già maturato; costi una tantum non annualizzati.</p></details>
         <label className="block text-sm">Evidenze e nota di verifica<textarea className={field} rows={3} value={form.notes} onChange={event => change({ notes: event.target.value })} /></label>
-        <label className="flex gap-2 text-sm"><input type="checkbox" checked={form.reviewed} disabled={issues.length > 0 || !form.notes.trim()} onChange={event => { dirty.current = true; revision.current += 1; setForm(current => ({ ...current, reviewed: event.target.checked })); setStatus('Modifiche da salvare') }} />Confronto verificato dal compilatore (non approvazione Finance)</label>
+        <label className="flex gap-2 text-sm"><input type="checkbox" checked={form.reviewed} disabled={issues.length > 0 || !form.notes.trim()} onChange={event => change({ reviewed: event.target.checked }, true)} />Confronto verificato dal compilatore (non approvazione Finance)</label>
         <p className="text-xs text-gray-500">Stima dei benefici di progetto, non valutazione di investimento. Nessuna somma automatica con saving di Quick/Standard o altri Major.</p>
       </section>
-      <div className="flex flex-wrap justify-end items-center gap-3"><span role="status" className="text-sm">{status}</span><button type="button" disabled={busy} className="bg-primary text-white px-4 py-2 rounded disabled:opacity-50" onClick={save}>{busy ? 'Attendere...' : 'Salva risultati e saving'}</button></div>
+      <div className="flex flex-wrap justify-end items-center gap-3">
+        <span role="status" aria-live="polite" className={`text-sm ${saveState === 'error' ? 'text-red-700' : 'text-gray-600'}`}>{status || 'Salvataggio automatico attivo'}</span>
+        {saveState === 'error' && <button type="button" className={button} onClick={() => persistRef.current?.()}>Riprova salvataggio</button>}
+      </div>
     </div>
   )
 }
