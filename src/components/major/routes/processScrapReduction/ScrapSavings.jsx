@@ -89,7 +89,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     } catch (error) { setDriverStatus(typeof error.response?.data?.detail === 'string' ? error.response.data.detail : error.message || 'Driver da configurare') }
     finally { setBusy(false) }
   }
-  const result = calculateSaving(form.rows, form.costs, form.annualProduction)
+  const result = calculateSaving(form.rows, form.costs === '' ? 0 : form.costs, '')
   const issues = [...result.issues]
   const beforeFrom = form.mode === 'stain' ? form.scope?.from : form.manualBeforeFrom
   const beforeTo = form.mode === 'stain' ? form.scope?.to : form.manualBeforeTo
@@ -103,7 +103,6 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   if (form.mode === 'stain' && (!form.before || form.before.dal !== beforeFrom || form.before.al !== beforeTo || !form.after || form.after.dal !== form.afterFrom || form.after.al !== form.afterTo)) issues.push('Carica entrambi i periodi per le date selezionate.')
   if (form.mode === 'manuale' && !form.source.trim()) issues.push('Documenta fonte, linea, prodotti e causali del confronto manuale.')
   if (form.costs !== '' && Number(String(form.costs).replace(',', '.')) > 0 && !form.costNote.trim()) issues.push('Descrivi i costi di implementazione.')
-  if (form.annualProduction !== '' && !form.annualBasis.trim()) issues.push('Indica la fonte del volume annuo e l’ipotesi di mix costante.')
 
   const capture = () => {
     try {
@@ -148,7 +147,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     const driversReady = Boolean(snapshot.rows.length && snapshot.rows.every(row =>
       row.driver !== '' && row.driver != null && Number.isFinite(Number(String(row.driver).replace(',', '.'))) && Number(String(row.driver).replace(',', '.')) >= 0 && /^\d{4}$/.test(String(row.driverYear || '')) && String(row.driverRef || '').trim()
     ))
-    const reviewed = Boolean(ready && snapshot.reviewed && snapshot.notes.trim())
+    const reviewed = false
     const payload = {
       ...snapshot,
       formula_version: 'scrap_normalized_v1',
@@ -156,11 +155,11 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       result: ready ? {
         gross: state.result.gross,
         avoided: state.result.avoided,
-        net: state.result.net,
-        annualGross: state.result.annualGross,
+        net: snapshot.costs === '' ? null : state.result.net,
+        annualGross: null,
         rows: state.result.rows,
       } : null,
-      validation: reviewed ? 'verificato_dal_compilatore' : ready ? 'da_validare' : 'bozza_incompleta',
+      validation: ready ? 'calcolato_non_validato' : 'bozza_incompleta',
     }
     savingRef.current = true
     if (mountedRef.current) {
@@ -296,16 +295,14 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
             <td className={`p-2 ${computed?.gross < 0 ? 'text-red-700' : 'text-green-800'}`}>{outcome(computed?.gross, 'Saving', 'Maggior costo stimato', '€')}</td><td>{form.mode === 'manuale' && <button type="button" onClick={() => change({ rows: form.rows.filter(item => item.id !== row.id) })}>Elimina</button>}</td>
           </tr> })}
         </tbody></table></div>}
-        <div className="grid md:grid-cols-2 gap-3">{input('Costi implementazione € (anche zero)', 'costs', 'number')}{input('Descrizione e fonte dei costi', 'costNote')}</div>
+        <div className="grid md:grid-cols-2 gap-3">{input('Costi implementazione € (facoltativi)', 'costs', 'number')}{input('Descrizione e fonte dei costi', 'costNote')}</div>
+        {form.rows.length > 0 && (issues.length ? <div className="text-sm text-amber-800">{[...new Set(issues)].map(issue => <p key={issue}>{issue}</p>)}</div> : <div className="grid md:grid-cols-2 gap-3">
+          <div className="bg-gray-50 rounded p-3"><div className="text-xs">{result.avoided < 0 ? 'Kg aggiuntivi rispetto all’atteso' : 'Kg risparmiati'}</div><strong>{fmt(Math.abs(result.avoided))}</strong></div>
+          <div className="bg-gray-50 rounded p-3"><div className="text-xs">{result.gross < 0 ? 'Maggior costo stimato del periodo €' : 'Saving lordo del periodo €'}</div><strong>{fmt(Math.abs(result.gross))}</strong></div>
+          {form.costs !== '' && <p className="text-sm">{result.net < 0 ? 'Saldo netto negativo, inclusi costi' : 'Beneficio netto'}: {fmt(Math.abs(result.net))} €</p>}
+        </div>)}
       </section>
-      <section className={section}>
-        <h3 className="font-bold text-primary">3 · Risultato e verifica</h3>
-        {!form.rows.length ? <p className="text-sm">Completa prima il confronto e i driver per vedere il risultato.</p> : issues.length > 0 ? <div className="text-sm text-amber-800">{[...new Set(issues)].map(issue => <p key={issue}>{issue}</p>)}</div> : <div className="grid md:grid-cols-3 gap-3">{[[result.avoided < 0 ? 'Kg aggiuntivi rispetto all’atteso' : 'Kg risparmiati', Math.abs(result.avoided)], [result.gross < 0 ? 'Maggior costo stimato del periodo €' : 'Saving lordo del periodo €', Math.abs(result.gross)], [result.net < 0 ? 'Saldo netto negativo, inclusi costi €' : 'Beneficio netto progetto €', Math.abs(result.net)]].map(([label, value]) => <div key={label} className="bg-gray-50 p-3 rounded"><div className="text-xs">{label}</div><strong className="text-xl">{fmt(value)}</strong></div>)}</div>}
-        <details><summary className="text-sm cursor-pointer">Proiezione annuale facoltativa</summary><div className="grid md:grid-cols-2 gap-3 mt-3">{input('Produzione annua del perimetro kg', 'annualProduction', 'number')}{input('Fonte volume annuo e ipotesi mix costante', 'annualBasis')}</div><p className="text-sm mt-2">Beneficio lordo annuo stimato: {issues.length ? 'Non disponibile' : fmt(result.annualGross)} €. Proiezione a mix costante, non beneficio già maturato; costi una tantum non annualizzati.</p></details>
-        <label className="block text-sm">Evidenze e nota di verifica<textarea className={field} rows={3} value={form.notes} onChange={event => change({ notes: event.target.value })} /></label>
-        <label className="flex gap-2 text-sm"><input type="checkbox" checked={form.reviewed} disabled={issues.length > 0 || !form.notes.trim()} onChange={event => change({ reviewed: event.target.checked }, true)} />Confronto verificato dal compilatore (non approvazione Finance)</label>
-        <p className="text-xs text-gray-500">Stima dei benefici di progetto, non valutazione di investimento. Nessuna somma automatica con saving di Quick/Standard o altri Major.</p>
-      </section>
+
       <div className="flex flex-wrap justify-end items-center gap-3">
         <span role="status" aria-live="polite" className={`text-sm ${saveState === 'error' ? 'text-red-700' : 'text-gray-600'}`}>{status || 'Salvataggio automatico attivo'}</span>
         {saveState === 'error' && <button type="button" className={button} onClick={() => persistRef.current?.()}>Riprova salvataggio</button>}
