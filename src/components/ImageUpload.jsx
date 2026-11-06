@@ -11,6 +11,7 @@ export default function ImageUpload({
   onChange,
   label = 'Evidenze fotografiche dal campo',
   maxImages = MAX_IMAGES,
+  showHelp = true,
 }) {
   const [uploading, setUploading] = useState(false)
   const [showCamera, setShowCamera] = useState(false)
@@ -347,9 +348,11 @@ export default function ImageUpload({
         className="hidden"
       />
 
+      {showHelp && (
       <div className="text-xs text-gray-400 mt-2">
         Formati supportati: JPG, PNG, WEBP e immagini del dispositivo. Massimo {maxImages} immagini, 10 MB ciascuna.
       </div>
+      )}
 
       {uploading && (
         <div className="mt-3">
