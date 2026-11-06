@@ -115,6 +115,33 @@ const blank = () => ({ id: uid(), periodo: '', categoria: '', prodotto: '', form
 const button = 'border border-gray-300 rounded px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50'
 const input = 'w-full min-w-0 border border-gray-300 rounded px-2 py-2 text-sm bg-white'
 
+function objectiveRows(data) {
+  if (Array.isArray(data.obiettivi) && data.obiettivi.length) return data.obiettivi.map(row => ({ ...row, id: row.id || uid() }))
+  return [{ id: uid(), fonte: data.baseline_fonte || data.origine || 'stain', kpi: data.stain_kpi || 'kg', perimetro: data.perimetro_kpi || 'totale', riduzione: data.riduzione_pct ?? '', target_precedente: data.target ?? '' }]
+}
+function evaluateObjective(row, form, stainAnalysis, manualAnalysis) {
+  const source = row.fonte === 'manuale' ? manualAnalysis : stainAnalysis
+  const priorities = row.fonte === 'manuale' ? form.priorita_manuali : form.priorita_stain
+  const unit = row.fonte === 'manuale' ? form.unita_manuale : row.kpi === 'percentuale' ? '%' : 'kg'
+  const errors = [...(source.issues || [])]
+  let categories = []
+  if (row.perimetro === 'priorita') categories = priorities
+  else if (row.perimetro !== 'totale') categories = [row.perimetro]
+  if (row.perimetro !== 'totale' && !categories.length) errors.push('Seleziona prima le priorita nel Pareto della fonte scelta.')
+  if (categories.some(category => !priorities.includes(category))) errors.push('Questa perdita non e piu tra le priorita selezionate. Scegli nuovamente il perimetro.')
+  if (categories.some(category => !source.pareto.some(item => item.categoria === category))) errors.push('Perdita non presente nei dati correnti.')
+  const quantity = row.perimetro === 'totale' ? source.total : source.pareto.filter(item => categories.includes(item.categoria)).reduce((sum, item) => sum + item.quantita, 0)
+  if (row.fonte === 'stain' && !form.stain_snapshot) errors.push('Carica prima i dati STAIN.')
+  if (row.fonte === 'manuale' && !source.pareto.length) errors.push('Inserisci prima i dati della raccolta manuale.')
+  if (row.fonte === 'manuale' && unit === '%') errors.push('La raccolta manuale in percentuale non dispone di una produzione verificabile per questo calcolo.')
+  if (unit === '%' && !source.production) errors.push('Produzione mancante: il KPI percentuale non e disponibile.')
+  const baseline = errors.length ? null : unit === '%' ? quantity / source.production * 100 : quantity
+  const reduction = row.riduzione === '' || row.riduzione == null ? baseline > 0 && valid(row.target_precedente) ? (baseline - number(row.target_precedente)) / baseline * 100 : null : number(row.riduzione)
+  if (reduction !== null && (!Number.isFinite(reduction) || reduction < 0 || reduction > 100)) errors.push('La riduzione deve essere tra 0 e 100%.')
+  const target = baseline !== null && reduction !== null && !errors.length ? baseline * (1 - reduction / 100) : null
+  return { baseline, target, reduction, unit, categories, errors: [...new Set(errors)], avoided: target === null ? null : baseline - target, kg: target !== null && unit === '%' ? (baseline - target) / 100 * source.production : target !== null && unit === 'kg' ? baseline - target : null }
+}
+
 function initial(data, major) {
   return {
     ...data,
@@ -151,6 +178,7 @@ function initial(data, major) {
     stain_kpi: data.stain_kpi || 'kg',
     target: data.target ?? '',
     riduzione_pct: data.riduzione_pct ?? '',
+    obiettivi: objectiveRows(data),
     scadenza: data.scadenza || major?.data_target || '',
   }
 }
@@ -286,16 +314,18 @@ function calculate(form, staleStain) {
   const analysis = form.baseline_fonte === 'stain' ? stainAnalysis : manualAnalysis
   const baselineUnit = form.baseline_fonte === 'stain' ? (form.stain_kpi === 'percentuale' ? '%' : 'kg') : form.unita_manuale
   const baselinePriorities = form.baseline_fonte === 'stain' ? form.priorita_stain : form.priorita_manuali
+  const evaluatedObjectives = form.obiettivi.map(row => ({ ...row, ...evaluateObjective(row, form, stainAnalysis, manualAnalysis) }))
+  const updateObjective = (id, patch) => change(current => ({ ...current, obiettivi: current.obiettivi.map(row => row.id === id ? { ...row, ...patch, target_precedente: '' } : row) }))
+
   const save = async () => {
 
-    if (form.target !== '' && (!valid(form.target) || (baselineUnit === '%' && number(form.target) > 100))) { setStatus('Target non valido'); return }
     if (form.manuale_da && form.manuale_a && form.manuale_da > form.manuale_a) { setStatus('Periodo della raccolta manuale non valido'); return }
     if (form.periodo_da && form.periodo_a && form.periodo_da > form.periodo_a) { setStatus('Il periodo finale precede quello iniziale'); return }
     const currentRevision = revision.current
     setSaving(true)
     setStatus('Salvataggio...')
     try {
-      const result = await onChange({ dati: { ...form, origine: form.baseline_fonte, unita_misura: baselineUnit, priorita: baselinePriorities, problema: form.definizione.che_cosa || '', dove: form.definizione.dove || '', baseline: analysis.baseline ?? '', perimetro: form.definizione.dove, quantita_totale: analysis.total, pareto: analysis.pareto, categoria_prioritaria: baselinePriorities[0] || '' }, output_compilati: { problema: !!form.definizione.che_cosa?.trim(), perimetro: !!form.definizione.dove?.trim(), fonte_dati: !!form.fonte_dati.trim(), periodo: !!(form.periodo_da && form.periodo_a), pareto: analysis.pareto.length > 0, categoria_prioritaria: baselinePriorities.length > 0, baseline: analysis.baseline !== null, target: form.target !== '' } })
+      const result = await onChange({ dati: { ...form, obiettivi: evaluatedObjectives, origine: form.baseline_fonte, unita_misura: baselineUnit, priorita: baselinePriorities, problema: form.definizione.che_cosa || '', dove: form.definizione.dove || '', baseline: analysis.baseline ?? '', perimetro: form.definizione.dove, quantita_totale: analysis.total, pareto: analysis.pareto, categoria_prioritaria: baselinePriorities[0] || '' }, output_compilati: { problema: !!form.definizione.che_cosa?.trim(), perimetro: !!form.definizione.dove?.trim(), fonte_dati: !!form.fonte_dati.trim(), periodo: !!(form.periodo_da && form.periodo_a), pareto: analysis.pareto.length > 0, categoria_prioritaria: baselinePriorities.length > 0, baseline: analysis.baseline !== null, target: evaluatedObjectives.length > 0 && evaluatedObjectives.every(row => row.target !== null && !row.errors.length) } })
       if (result === false) throw new Error('Salvataggio non riuscito')
       dirty.current = revision.current !== currentRevision
       setStatus(dirty.current ? 'Nuove modifiche da salvare' : 'Salvato')
@@ -406,30 +436,33 @@ function calculate(form, staleStain) {
       </section>
       <section>
         <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">PASSO 4 - PRIORITÀ E OBIETTIVO</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <label className="text-sm">Fonte baseline<select className={`${input} mt-1`} value={form.baseline_fonte} onChange={event => change({ baseline_fonte: event.target.value, target: '', riduzione_pct: '', stain_kpi: 'kg' })}><option value="stain">STAIN</option><option value="manuale">Raccolta manuale</option></select></label>
-          {form.baseline_fonte === 'stain'
-            ? <label className="text-sm">KPI<select className={`${input} mt-1`} value={form.stain_kpi} onChange={event => change({ stain_kpi: event.target.value, target: '', riduzione_pct: '' })}><option value="kg">kg di scarto</option><option value="percentuale" disabled={!stainAnalysis.production}>% sui kg prodotti</option></select></label>
-            : <label className="text-sm">KPI<output className={`${input} mt-1 block`}>{baselineUnit === '%' ? 'Percentuale per rilevazione' : 'Quantità di scarto / rework'}</output></label>}
-          <label className="text-sm">Perimetro<select className={`${input} mt-1`} value={form.perimetro_kpi} onChange={event => change({ perimetro_kpi: event.target.value })}><option value="totale">Tutte le categorie</option><option value="priorita">Categorie prioritarie</option></select></label>
-          <label className="text-sm">Baseline calcolata<output className={`${input} mt-1 block bg-gray-50`}>{fmt(analysis.baseline)} {baselineUnit}</output></label>
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
+          <p className="text-sm text-gray-600">Un obiettivo per ogni perdita, con fonte e riduzione indipendenti. I perimetri sovrapposti non vengono sommati.</p>
+          <button type="button" className="bg-primary text-white rounded-lg px-4 py-2 font-semibold text-sm" onClick={() => change(current => ({ ...current, obiettivi: [...current.obiettivi, { id: uid(), fonte: 'stain', kpi: 'kg', perimetro: 'totale', riduzione: '', target_precedente: '' }] }))}>+ Obiettivo</button>
         </div>
-        <div className="mt-4 rounded-xl border border-primary/20 bg-white p-4 space-y-3">
-          <label className="block text-sm font-bold text-primary">Di quanto vuoi ridurre la perdita selezionata? (%)
-            <input className={`${input} mt-2 max-w-xs text-lg font-bold border-primary`} type="number" min="0" max="100" step="any" value={targetReduction === null ? '' : Number(targetReduction.toFixed(2))} disabled={!(analysis.baseline > 0)} onChange={event => setReduction(event.target.value)} />
-          </label>
-          <p className="text-sm text-gray-600">Inserisci una riduzione rispetto alla situazione attuale, per esempio 30 per ridurre del 30%. Il target finale viene calcolato automaticamente sul perimetro scelto sopra.</p>
-          <div className="grid md:grid-cols-3 gap-3">
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-600">Situazione attuale (baseline)</p><strong className="text-lg">{fmt(analysis.baseline)} {baselineUnit}</strong></div>
-            <div className="rounded-lg bg-emerald-50 p-3"><p className="text-xs text-gray-600">Obiettivo da raggiungere</p><strong className="text-lg">{valid(form.target) ? `${fmt(number(form.target))} ${baselineUnit}` : 'Inserisci la riduzione'}</strong></div>
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-600">{baselineUnit === '%' ? 'Differenza in punti percentuali' : `Perdita da evitare (${baselineUnit})`}</p><strong className="text-lg">{reductionAmount === null ? '—' : fmt(reductionAmount)}</strong></div>
-          </div>
-          {targetReduction !== null && <p className="text-sm font-semibold">Passare da {fmt(analysis.baseline)} {baselineUnit} a {fmt(number(form.target))} {baselineUnit}: riduzione del {fmt(targetReduction)}% rispetto alla baseline.</p>}
-          {reductionKg !== null && <p className="text-sm">Equivalente a {fmt(reductionKg)} kg da evitare, ipotizzando la stessa produzione del periodo baseline. Non e un saving gia realizzato.</p>}
-
-        </div>
-        {baselineUnit === '%' && form.baseline_fonte === 'manuale' && analysis.production === null && <p className="text-sm text-amber-800 mt-2">Baseline complessiva non calcolata: mancano i denominatori di produzione.</p>}
-        {reductionAmount !== null && reductionAmount < 0 && <p role="alert" className="text-sm text-amber-800 mt-2">Il target salvato e superiore alla baseline attuale. Inserisci una riduzione tra 0 e 100 per ridefinire l’obiettivo.</p>}
+        <div className="space-y-4">{form.obiettivi.map((row, index) => {
+          const result = evaluatedObjectives[index]
+          const priorities = row.fonte === 'manuale' ? form.priorita_manuali : form.priorita_stain
+          const options = ['totale', 'priorita', ...priorities]
+          return <article key={row.id} className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+            <div className="flex justify-between items-center"><h4 className="font-bold text-primary">Obiettivo {index + 1}</h4>{form.obiettivi.length > 1 && <button type="button" className="text-sm border rounded px-3 py-1.5" onClick={() => { if (window.confirm('Rimuovere questo obiettivo?')) change(current => ({ ...current, obiettivi: current.obiettivi.filter(item => item.id !== row.id) })) }}>Rimuovi</button>}</div>
+            <div className="grid md:grid-cols-3 gap-3">
+              <label className="text-sm">Fonte baseline<select className={`${input} mt-1`} value={row.fonte} onChange={event => updateObjective(row.id, { fonte: event.target.value, perimetro: 'totale', riduzione: '' })}><option value="stain">STAIN</option><option value="manuale">Raccolta manuale</option></select></label>
+              <label className="text-sm">KPI{row.fonte === 'stain' ? <select className={`${input} mt-1`} value={row.kpi} onChange={event => updateObjective(row.id, { kpi: event.target.value, riduzione: '' })}><option value="kg">kg di perdita</option><option value="percentuale" disabled={!stainAnalysis.production}>% sui kg prodotti</option></select> : <output className={`${input} mt-1 block bg-gray-50`}>{form.unita_manuale} · raccolta manuale</output>}</label>
+              <label className="text-sm">Perimetro<select className={`${input} mt-1`} value={row.perimetro} onChange={event => updateObjective(row.id, { perimetro: event.target.value, riduzione: '' })}><option value="totale">Tutte le perdite della fonte</option><option value="priorita" disabled={!priorities.length}>Tutte le priorita selezionate</option>{!options.includes(row.perimetro) && <option value={row.perimetro}>{row.perimetro} (non piu selezionata)</option>}{priorities.map(category => <option key={category} value={category}>{category}</option>)}</select></label>
+            </div>
+            <label className="block text-sm font-bold text-primary">Di quanto vuoi ridurre questa perdita? (%)<input className={`${input} mt-2 max-w-xs text-lg font-bold border-primary`} type="number" min="0" max="100" step="any" value={row.riduzione !== '' && row.riduzione != null ? row.riduzione : result.reduction === null ? '' : Number(result.reduction.toFixed(2))} disabled={result.baseline === null} onChange={event => updateObjective(row.id, { riduzione: event.target.value })} /></label>
+            {result.errors.map(error => <p key={error} role="alert" className="text-sm text-amber-800">{error}</p>)}
+            <div className="grid md:grid-cols-3 gap-3">
+              <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs">Situazione attuale</p><strong>{result.baseline === null ? 'Dati da completare' : `${fmt(result.baseline)} ${result.unit}`}</strong></div>
+              <div className="bg-emerald-50 rounded-lg p-3"><p className="text-xs">Obiettivo da raggiungere</p><strong>{result.target === null ? 'Inserisci la riduzione' : `${fmt(result.target)} ${result.unit}`}</strong></div>
+              <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs">{result.unit === '%' ? 'Differenza in punti percentuali' : `Perdita da evitare (${result.unit})`}</p><strong>{result.avoided === null ? '—' : fmt(result.avoided)}</strong></div>
+            </div>
+            {result.target !== null && <p className="text-sm font-semibold">Da {fmt(result.baseline)} {result.unit} a {fmt(result.target)} {result.unit}: riduzione del {fmt(result.reduction)}%.</p>}
+            {result.kg !== null && <p className="text-xs text-gray-600">{fmt(result.kg)} kg da evitare a parita di produzione del periodo baseline. Obiettivo, non saving gia realizzato.</p>}
+          </article>
+        })}</div>
+        <p className="text-xs text-gray-500 mt-3">Le voci manuali usano la raccolta del Passo 2. Le voci STAIN usano linea, periodo e prodotti gia caricati. Salva fase per conservare tutti gli obiettivi. La Fase 5 mantiene il proprio confronto e non somma automaticamente questi target.</p>
       </section>
       <div className="flex flex-wrap justify-end items-center gap-3 border-t pt-4"><span role="status" className="text-sm">{status}</span><button type="button" className="bg-primary text-white px-4 py-2 rounded disabled:opacity-50" disabled={saving} onClick={save}>{saving ? 'Salvataggio...' : 'Salva fase'}</button></div>
     </div>
