@@ -115,22 +115,114 @@ const blank = () => ({ id: uid(), periodo: '', categoria: '', prodotto: '', form
 const button = 'border border-gray-300 rounded px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50'
 const input = 'w-full min-w-0 border border-gray-300 rounded px-2 py-2 text-sm bg-white'
 
-function objectiveRows(data) {
-  if (Array.isArray(data.obiettivi) && data.obiettivi.length) return data.obiettivi.map(row => ({ ...row, id: row.id || uid() }))
-  return [{ id: uid(), fonte: data.baseline_fonte || data.origine || 'stain', kpi: data.stain_kpi || 'kg', perimetro: data.perimetro_kpi || 'totale', riduzione: data.riduzione_pct ?? '', target_precedente: data.target ?? '' }]
+function productOptions(form, source) {
+  const clean = values => [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))].sort()
+  if (source === 'manuale') return clean((form.categorie_scarto || []).map(row => row.prodotto))
+  const snapshot = form.stain_snapshot || {}
+  const available = clean([...(snapshot.dettaglio || []).map(row => row.prodotto), ...(snapshot.produzione || []).map(row => row.prodotto), ...(snapshot.prodotti || []).map(row => typeof row === 'string' ? row : row.codice || row.prodotto)])
+  return form.stain_prodotti?.length ? available.filter(product => form.stain_prodotti.includes(product)) : available
 }
+function objectiveRows(data) {
+  const normalize = row => ({ ...row, id: row.id || uid(), prodotto: row.prodotto || '', perimetro: row.perimetro === 'totale' ? '' : row.perimetro || 'priorita', target_precedente: row.perimetro === 'totale' ? '' : row.target_precedente ?? '' })
+  if (Array.isArray(data.obiettivi) && data.obiettivi.length) return data.obiettivi.map(normalize)
+  return [normalize({ id: uid(), fonte: data.baseline_fonte || data.origine || 'stain', kpi: data.stain_kpi || 'kg', perimetro: data.perimetro_kpi || 'priorita', riduzione: data.riduzione_pct ?? '', target_precedente: data.target ?? '' })]
+}
+function calculate(form, staleStain) {
+    if (form.origine === 'stain') {
+      const snapshot = form.stain_snapshot
+      const filtered = filterStainByProduct(snapshot, form.stain_prodotti)
+      const production = filtered.production
+      const pareto = filtered.pareto.map(row => ({ ...row, categoria: `${row.codice} - ${row.causale}`, quantita: row.kg, quantita_calcolata: row.kg, perc_produzione: production ? row.kg / production * 100 : null }))
+      const selected = pareto.filter(row => form.priorita.includes(row.categoria)).reduce((sum, row) => sum + row.quantita, 0)
+      const issues = [...(snapshot?.warnings || [])]
+      if (staleStain) issues.push('Periodo, linea o filtro modificati: clicca Carica da STAIN per aggiornare i risultati.')
+      const numerator = form.perimetro_kpi === 'priorita' ? selected : filtered.total
+      const blocked = !snapshot || issues.length || (form.perimetro_kpi === 'priorita' && !form.priorita.length)
+      const baseline = blocked ? null : form.stain_kpi === 'percentuale' ? production ? numerator / production * 100 : null : numerator
+      const productionByDay = new Map(filtered.andamento.map(row => [row.data, row.produzione]))
+      const productSet = new Set(form.stain_prodotti)
+      const byCategory = new Map()
+      ;(snapshot?.dettaglio || []).forEach(row => {
+        if (productSet.size && !productSet.has(row.prodotto)) return
+        const key = `${row.codice} - ${row.causale}`
+        const days = byCategory.get(key) || new Map()
+        days.set(row.data, (days.get(row.data) || 0) + row.kg)
+        byCategory.set(key, days)
+      })
+      const categoryTimelines = Object.fromEntries([...byCategory].map(([key, days]) => [key,
+        [...new Set([...productionByDay.keys(), ...days.keys()])].sort().map(day => ({ periodo: day, totale: days.get(day) || 0, produzione: productionByDay.get(day) || 0 }))]))
+      return { pareto, total: filtered.total, selected, numerator, categoryTimelines, timeline: filtered.andamento.map(row => ({ periodo: row.data, totale: row.kg, produzione: row.produzione })), baseline, issues, production, productionMachines: snapshot?.produzione_macchine || [], productionWarning: snapshot && !('produzione' in snapshot) ? 'Per calcolare la % sui kg prodotti ricarica i dati da STAIN.' : snapshot?.produzione_warning || null }
+    }
+    const groups = new Map()
+    const periods = new Map()
+    const categoryDays = new Map()
+    const issues = []
+    form.categorie_scarto.forEach((original, index) => {
+      const row = { ...original, categoria: original[form.raggruppamento] || '', produzione: '' }
+      if (!row.categoria.trim() && row.quantita === '') return
+      if (!row.categoria.trim() || !valid(row.quantita)) { issues.push(`Riga ${index + 1}: indica scarto e quantità non negativa.`); return }
+      const quantity = number(row.quantita)
+      const category = `${row.categoria.trim()} · ${row.tipo === 'Rework' ? 'Rework' : 'Scarto'}`
+      groups.set(category, (groups.get(category) || 0) + quantity)
+      const period = row.periodo.trim()
+      if (period) {
+        const days = categoryDays.get(category) || new Map()
+        days.set(period, (days.get(period) || 0) + quantity)
+        categoryDays.set(category, days)
+        const item = periods.get(period) || { periodo: period, totale: 0, selezionato: 0, produzione: null }
+        item.totale += quantity
+        if (form.priorita.includes(category)) item.selezionato += quantity
+        if (row.produzione !== '') {
+          if (!valid(row.produzione)) issues.push(`Riga ${index + 1}: produzione non valida.`)
+          else if (item.produzione !== null && item.produzione !== number(row.produzione)) issues.push(`Periodo ${period}: produzioni diverse. Usa periodi distinti per lotti o turni differenti.`)
+          else item.produzione = number(row.produzione)
+        }
+        periods.set(period, item)
+      }
+    })
+    const total = [...groups.values()].reduce((a, b) => a + b, 0)
+    let cumulative = 0
+    const pareto = [...groups].sort((a, b) => b[1] - a[1]).map(([categoria, quantita]) => {
+      cumulative += quantita
+      return { categoria, quantita, quantita_calcolata: quantita, percentuale: total ? quantita / total * 100 : 0, cumulata: total ? cumulative / total * 100 : 0 }
+    })
+    const selected = pareto.filter(row => form.priorita.includes(row.categoria)).reduce((sum, row) => sum + row.quantita, 0)
+    const timeline = [...periods.values()].sort((a, b) => a.periodo.localeCompare(b.periodo))
+    const missingPeriods = form.categorie_scarto.some(row => valid(row.quantita) && row.categoria.trim() && !row.periodo.trim())
+    const denominatorValid = timeline.length > 0 && !missingPeriods && timeline.every(row => row.produzione > 0 && row.totale <= row.produzione)
+    const production = denominatorValid ? timeline.reduce((sum, row) => sum + row.produzione, 0) : null
+    const numerator = form.perimetro_kpi === 'priorita' ? selected : total
+    const baseline = form.unita_misura === '%' ? null : issues.length || (form.perimetro_kpi === 'priorita' && !form.priorita.length) ? null : form.metrica === 'percentuale' ? production ? numerator / production * 100 : null : pareto.length ? numerator : null
+    const allPeriods = timeline.map(row => row.periodo)
+    const categoryTimelines = Object.fromEntries([...categoryDays].map(([key, days]) => [key, allPeriods.map(periodo => ({ periodo, totale: days.get(periodo) || 0 }))]))
+    return { pareto, total, selected, timeline, categoryTimelines, baseline, issues, production }
+  }
+
+
+
 function evaluateObjective(row, form, stainAnalysis, manualAnalysis) {
-  const source = row.fonte === 'manuale' ? manualAnalysis : stainAnalysis
+  const globalSource = row.fonte === 'manuale' ? manualAnalysis : stainAnalysis
+  const products = productOptions(form, row.fonte)
+  const productValid = !row.prodotto || products.includes(row.prodotto)
+  let source = globalSource
+  if (row.prodotto && productValid) {
+    const scoped = row.fonte === 'manuale'
+      ? { ...form, origine: 'manuale', categorie_scarto: form.categorie_scarto.filter(item => String(item.prodotto || '').trim() === row.prodotto), unita_misura: form.unita_manuale, priorita: form.priorita_manuali, metrica: 'quantita' }
+      : { ...form, origine: 'stain', stain_prodotti: [row.prodotto], priorita: form.priorita_stain }
+    source = calculate(scoped, false)
+  }
   const priorities = row.fonte === 'manuale' ? form.priorita_manuali : form.priorita_stain
   const unit = row.fonte === 'manuale' ? form.unita_manuale : row.kpi === 'percentuale' ? '%' : 'kg'
-  const errors = [...(source.issues || [])]
+  const errors = [...(globalSource.issues || []), ...(source.issues || [])]
+  if (!productValid) errors.push('Prodotto non piu disponibile nei dati della fonte: seleziona nuovamente il prodotto.')
+  if (!row.perimetro || row.perimetro === 'totale') errors.push('Scegli tutte le priorita selezionate oppure una singola priorita. Il vecchio totale perdite non e piu utilizzato.')
   let categories = []
   if (row.perimetro === 'priorita') categories = priorities
-  else if (row.perimetro !== 'totale') categories = [row.perimetro]
+  else if (row.perimetro && row.perimetro !== 'totale') categories = [row.perimetro]
   if (row.perimetro !== 'totale' && !categories.length) errors.push('Seleziona prima le priorita nel Pareto della fonte scelta.')
   if (categories.some(category => !priorities.includes(category))) errors.push('Questa perdita non e piu tra le priorita selezionate. Scegli nuovamente il perimetro.')
-  if (categories.some(category => !source.pareto.some(item => item.categoria === category))) errors.push('Perdita non presente nei dati correnti.')
-  const quantity = row.perimetro === 'totale' ? source.total : source.pareto.filter(item => categories.includes(item.categoria)).reduce((sum, item) => sum + item.quantita, 0)
+  if (categories.some(category => !globalSource.pareto.some(item => item.categoria === category))) errors.push('Perdita non presente nei dati correnti.')
+  const quantity = source.pareto.filter(item => categories.includes(item.categoria)).reduce((sum, item) => sum + item.quantita, 0)
   if (row.fonte === 'stain' && !form.stain_snapshot) errors.push('Carica prima i dati STAIN.')
   if (row.fonte === 'manuale' && !source.pareto.length) errors.push('Inserisci prima i dati della raccolta manuale.')
   if (row.fonte === 'manuale' && unit === '%') errors.push('La raccolta manuale in percentuale non dispone di una produzione verificabile per questo calcolo.')
@@ -237,83 +329,12 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
   }
   const staleStain = form.stain_snapshot && (form.stain_snapshot.dal !== form.periodo_da || form.stain_snapshot.al !== form.periodo_a || form.stain_snapshot.linea !== form.stain_linea || JSON.stringify([...(form.stain_snapshot.tipi || ['rework', 'scarto', 'non_classificato'])].sort()) !== JSON.stringify([...form.stain_tipi].sort()))
 
-function calculate(form, staleStain) {
-    if (form.origine === 'stain') {
-      const snapshot = form.stain_snapshot
-      const filtered = filterStainByProduct(snapshot, form.stain_prodotti)
-      const production = filtered.production
-      const pareto = filtered.pareto.map(row => ({ ...row, categoria: `${row.codice} - ${row.causale}`, quantita: row.kg, quantita_calcolata: row.kg, perc_produzione: production ? row.kg / production * 100 : null }))
-      const selected = pareto.filter(row => form.priorita.includes(row.categoria)).reduce((sum, row) => sum + row.quantita, 0)
-      const issues = [...(snapshot?.warnings || [])]
-      if (staleStain) issues.push('Periodo, linea o filtro modificati: clicca Carica da STAIN per aggiornare i risultati.')
-      const numerator = form.perimetro_kpi === 'priorita' ? selected : filtered.total
-      const blocked = !snapshot || issues.length || (form.perimetro_kpi === 'priorita' && !form.priorita.length)
-      const baseline = blocked ? null : form.stain_kpi === 'percentuale' ? production ? numerator / production * 100 : null : numerator
-      const productionByDay = new Map(filtered.andamento.map(row => [row.data, row.produzione]))
-      const productSet = new Set(form.stain_prodotti)
-      const byCategory = new Map()
-      ;(snapshot?.dettaglio || []).forEach(row => {
-        if (productSet.size && !productSet.has(row.prodotto)) return
-        const key = `${row.codice} - ${row.causale}`
-        const days = byCategory.get(key) || new Map()
-        days.set(row.data, (days.get(row.data) || 0) + row.kg)
-        byCategory.set(key, days)
-      })
-      const categoryTimelines = Object.fromEntries([...byCategory].map(([key, days]) => [key,
-        [...new Set([...productionByDay.keys(), ...days.keys()])].sort().map(day => ({ periodo: day, totale: days.get(day) || 0, produzione: productionByDay.get(day) || 0 }))]))
-      return { pareto, total: filtered.total, selected, numerator, categoryTimelines, timeline: filtered.andamento.map(row => ({ periodo: row.data, totale: row.kg, produzione: row.produzione })), baseline, issues, production, productionMachines: snapshot?.produzione_macchine || [], productionWarning: snapshot && !('produzione' in snapshot) ? 'Per calcolare la % sui kg prodotti ricarica i dati da STAIN.' : snapshot?.produzione_warning || null }
-    }
-    const groups = new Map()
-    const periods = new Map()
-    const categoryDays = new Map()
-    const issues = []
-    form.categorie_scarto.forEach((original, index) => {
-      const row = { ...original, categoria: original[form.raggruppamento] || '', produzione: '' }
-      if (!row.categoria.trim() && row.quantita === '') return
-      if (!row.categoria.trim() || !valid(row.quantita)) { issues.push(`Riga ${index + 1}: indica scarto e quantità non negativa.`); return }
-      const quantity = number(row.quantita)
-      const category = `${row.categoria.trim()} · ${row.tipo === 'Rework' ? 'Rework' : 'Scarto'}`
-      groups.set(category, (groups.get(category) || 0) + quantity)
-      const period = row.periodo.trim()
-      if (period) {
-        const days = categoryDays.get(category) || new Map()
-        days.set(period, (days.get(period) || 0) + quantity)
-        categoryDays.set(category, days)
-        const item = periods.get(period) || { periodo: period, totale: 0, selezionato: 0, produzione: null }
-        item.totale += quantity
-        if (form.priorita.includes(category)) item.selezionato += quantity
-        if (row.produzione !== '') {
-          if (!valid(row.produzione)) issues.push(`Riga ${index + 1}: produzione non valida.`)
-          else if (item.produzione !== null && item.produzione !== number(row.produzione)) issues.push(`Periodo ${period}: produzioni diverse. Usa periodi distinti per lotti o turni differenti.`)
-          else item.produzione = number(row.produzione)
-        }
-        periods.set(period, item)
-      }
-    })
-    const total = [...groups.values()].reduce((a, b) => a + b, 0)
-    let cumulative = 0
-    const pareto = [...groups].sort((a, b) => b[1] - a[1]).map(([categoria, quantita]) => {
-      cumulative += quantita
-      return { categoria, quantita, quantita_calcolata: quantita, percentuale: total ? quantita / total * 100 : 0, cumulata: total ? cumulative / total * 100 : 0 }
-    })
-    const selected = pareto.filter(row => form.priorita.includes(row.categoria)).reduce((sum, row) => sum + row.quantita, 0)
-    const timeline = [...periods.values()].sort((a, b) => a.periodo.localeCompare(b.periodo))
-    const missingPeriods = form.categorie_scarto.some(row => valid(row.quantita) && row.categoria.trim() && !row.periodo.trim())
-    const denominatorValid = timeline.length > 0 && !missingPeriods && timeline.every(row => row.produzione > 0 && row.totale <= row.produzione)
-    const production = denominatorValid ? timeline.reduce((sum, row) => sum + row.produzione, 0) : null
-    const numerator = form.perimetro_kpi === 'priorita' ? selected : total
-    const baseline = form.unita_misura === '%' ? null : issues.length || (form.perimetro_kpi === 'priorita' && !form.priorita.length) ? null : form.metrica === 'percentuale' ? production ? numerator / production * 100 : null : pareto.length ? numerator : null
-    const allPeriods = timeline.map(row => row.periodo)
-    const categoryTimelines = Object.fromEntries([...categoryDays].map(([key, days]) => [key, allPeriods.map(periodo => ({ periodo, totale: days.get(periodo) || 0 }))]))
-    return { pareto, total, selected, timeline, categoryTimelines, baseline, issues, production }
-  }
-
-
   const stainAnalysis = useMemo(() => calculate({ ...form, origine: 'stain', priorita: form.priorita_stain }, staleStain), [form, staleStain])
   const manualAnalysis = useMemo(() => calculate({ ...form, origine: 'manuale', unita_misura: form.unita_manuale, priorita: form.priorita_manuali, metrica: 'quantita' }, false), [form])
   const analysis = form.baseline_fonte === 'stain' ? stainAnalysis : manualAnalysis
   const baselineUnit = form.baseline_fonte === 'stain' ? (form.stain_kpi === 'percentuale' ? '%' : 'kg') : form.unita_manuale
   const baselinePriorities = form.baseline_fonte === 'stain' ? form.priorita_stain : form.priorita_manuali
+  const stainProductOptions = productOptions(form, 'stain')
   const evaluatedObjectives = form.obiettivi.map(row => ({ ...row, ...evaluateObjective(row, form, stainAnalysis, manualAnalysis) }))
   const updateObjective = (id, patch) => change(current => ({ ...current, obiettivi: current.obiettivi.map(row => row.id === id ? { ...row, ...patch, target_precedente: '' } : row) }))
 
@@ -430,7 +451,7 @@ function calculate(form, staleStain) {
         </div>
         {errors.length > 0 && <div role="alert" className="text-sm text-red-700 mb-3">{errors.slice(0, 20).map((error, index) => <p key={index}>{error}</p>)}{errors.length > 20 && <p>Altri {errors.length - 20} errori. Nessuna riga importata.</p>}</div>}
         {pending && <div className="border p-3 mb-3 text-sm"><p>{pending.length} righe valide. Prime righe: {pending.slice(0, 3).map(row => `${row.prodotto}: ${row.quantita}`).join('; ')}</p><div className="flex gap-2 mt-2"><button type="button" className={button} onClick={() => { change(current => ({ ...current, categorie_scarto: [...current.categorie_scarto, ...pending] })); setPending(null) }}>Aggiungi ai dati</button><button type="button" className={button} onClick={() => { if (confirm('Sostituire tutte le righe attuali?')) { change({ categorie_scarto: pending }); setPending(null) } }}>Sostituisci dati</button><button type="button" className={button} onClick={() => setPending(null)}>Annulla</button></div></div>}
-        <div className="overflow-x-auto"><table className="w-full text-sm min-w-[1100px]"><thead><tr>{HEADERS.map(header => <th key={header} className="text-left p-2 border-b font-medium">{header === 'Quantità' ? `Quantità (${form.unita_manuale})` : header}</th>)}<th className="p-2 border-b">Azioni</th></tr></thead><tbody>{form.categorie_scarto.map(row => <tr key={row.id}>{KEYS.map(key => <td key={key} className="p-1 border-b">{key === 'tipo' ? <select className={input} value={row.tipo} onChange={event => updateRow(row.id, key, event.target.value)}><option>Scarto</option><option>Rework</option></select> : <input aria-label={HEADERS[KEYS.indexOf(key)]} className={input} value={row[key]} type={key === 'periodo' ? 'date' : key === 'quantita' ? 'number' : 'text'} min="0" step="any" onChange={event => updateRow(row.id, key, event.target.value)} />}</td>)}<td className="p-2"><button type="button" className="text-red-700 text-xs" onClick={() => change(current => ({ ...current, categorie_scarto: current.categorie_scarto.filter(item => item.id !== row.id) }))}>Elimina</button></td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="w-full text-sm min-w-[1100px]"><thead><tr>{HEADERS.map(header => <th key={header} className="text-left p-2 border-b font-medium">{header === 'Quantità' ? `Quantità (${form.unita_manuale})` : header}</th>)}<th className="p-2 border-b">Azioni</th></tr></thead><tbody>{form.categorie_scarto.map(row => <tr key={row.id}>{KEYS.map(key => <td key={key} className="p-1 border-b">{key === 'prodotto' && stainProductOptions.length ? <select aria-label="Prodotto" className={input} value={row.prodotto} onChange={event => updateRow(row.id, key, event.target.value)}><option value="">Seleziona prodotto del Passo 2</option>{row.prodotto && !stainProductOptions.includes(row.prodotto) && <option value={row.prodotto}>{row.prodotto} (gia inserito)</option>}{stainProductOptions.map(product => <option key={product} value={product}>{product}</option>)}</select> : key === 'tipo' ? <select className={input} value={row.tipo} onChange={event => updateRow(row.id, key, event.target.value)}><option>Scarto</option><option>Rework</option></select> : <input aria-label={HEADERS[KEYS.indexOf(key)]} className={input} value={row[key]} type={key === 'periodo' ? 'date' : key === 'quantita' ? 'number' : 'text'} min="0" step="any" onChange={event => updateRow(row.id, key, event.target.value)} />}</td>)}<td className="p-2"><button type="button" className="text-red-700 text-xs" onClick={() => change(current => ({ ...current, categorie_scarto: current.categorie_scarto.filter(item => item.id !== row.id) }))}>Elimina</button></td></tr>)}</tbody></table></div>
         <label className="block text-sm mt-4">Raggruppa raccolta manuale per<select className={`${input} mt-1 max-w-sm`} value={form.raggruppamento} onChange={event => change({ raggruppamento: event.target.value, priorita_manuali: [] })}><option value="prodotto">Prodotto</option><option value="formato">Formato</option><option value="operazione">Operazione / fase macchina</option></select></label>
         <AnalysisPanel analysis={manualAnalysis} unit={form.unita_manuale} priorities={form.priorita_manuali} onPriorities={value => change({ priorita_manuali: value })} />
       </section>
@@ -438,18 +459,20 @@ function calculate(form, staleStain) {
         <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">PASSO 4 - PRIORITÀ E OBIETTIVO</h3>
         <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
           <p className="text-sm text-gray-600">Un obiettivo per ogni perdita, con fonte e riduzione indipendenti. I perimetri sovrapposti non vengono sommati.</p>
-          <button type="button" className="bg-primary text-white rounded-lg px-4 py-2 font-semibold text-sm" onClick={() => change(current => ({ ...current, obiettivi: [...current.obiettivi, { id: uid(), fonte: 'stain', kpi: 'kg', perimetro: 'totale', riduzione: '', target_precedente: '' }] }))}>+ Obiettivo</button>
+          <button type="button" className="bg-primary text-white rounded-lg px-4 py-2 font-semibold text-sm" onClick={() => change(current => ({ ...current, obiettivi: [...current.obiettivi, { id: uid(), fonte: 'stain', kpi: 'kg', perimetro: 'priorita', prodotto: '', riduzione: '', target_precedente: '' }] }))}>+ Obiettivo</button>
         </div>
         <div className="space-y-4">{form.obiettivi.map((row, index) => {
           const result = evaluatedObjectives[index]
           const priorities = row.fonte === 'manuale' ? form.priorita_manuali : form.priorita_stain
-          const options = ['totale', 'priorita', ...priorities]
+          const options = ['priorita', ...priorities]
+          const products = productOptions(form, row.fonte)
           return <article key={row.id} className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
             <div className="flex justify-between items-center"><h4 className="font-bold text-primary">Obiettivo {index + 1}</h4>{form.obiettivi.length > 1 && <button type="button" className="text-sm border rounded px-3 py-1.5" onClick={() => { if (window.confirm('Rimuovere questo obiettivo?')) change(current => ({ ...current, obiettivi: current.obiettivi.filter(item => item.id !== row.id) })) }}>Rimuovi</button>}</div>
-            <div className="grid md:grid-cols-3 gap-3">
-              <label className="text-sm">Fonte baseline<select className={`${input} mt-1`} value={row.fonte} onChange={event => updateObjective(row.id, { fonte: event.target.value, perimetro: 'totale', riduzione: '' })}><option value="stain">STAIN</option><option value="manuale">Raccolta manuale</option></select></label>
+            <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
+              <label className="text-sm">Fonte baseline<select className={`${input} mt-1`} value={row.fonte} onChange={event => updateObjective(row.id, { fonte: event.target.value, perimetro: 'priorita', prodotto: '', riduzione: '' })}><option value="stain">STAIN</option><option value="manuale">Raccolta manuale</option></select></label>
+              <label className="text-sm">Prodotto<select className={`${input} mt-1`} value={row.prodotto || ''} onChange={event => updateObjective(row.id, { prodotto: event.target.value, riduzione: '' })}><option value="">Tutti i prodotti della fonte</option>{row.prodotto && !products.includes(row.prodotto) && <option value={row.prodotto}>{row.prodotto} (non piu disponibile)</option>}{products.map(product => <option key={product} value={product}>{product}</option>)}</select></label>
               <label className="text-sm">KPI{row.fonte === 'stain' ? <select className={`${input} mt-1`} value={row.kpi} onChange={event => updateObjective(row.id, { kpi: event.target.value, riduzione: '' })}><option value="kg">kg di perdita</option><option value="percentuale" disabled={!stainAnalysis.production}>% sui kg prodotti</option></select> : <output className={`${input} mt-1 block bg-gray-50`}>{form.unita_manuale} · raccolta manuale</output>}</label>
-              <label className="text-sm">Perimetro<select className={`${input} mt-1`} value={row.perimetro} onChange={event => updateObjective(row.id, { perimetro: event.target.value, riduzione: '' })}><option value="totale">Tutte le perdite della fonte</option><option value="priorita" disabled={!priorities.length}>Tutte le priorita selezionate</option>{!options.includes(row.perimetro) && <option value={row.perimetro}>{row.perimetro} (non piu selezionata)</option>}{priorities.map(category => <option key={category} value={category}>{category}</option>)}</select></label>
+              <label className="text-sm">Perdite da attaccare<select className={`${input} mt-1`} value={row.perimetro} onChange={event => updateObjective(row.id, { perimetro: event.target.value, riduzione: '' })}><option value="">Seleziona le perdite da attaccare</option><option value="priorita" disabled={!priorities.length}>Tutte le priorita selezionate</option>{!options.includes(row.perimetro) && <option value={row.perimetro}>{row.perimetro} (non piu selezionata)</option>}{priorities.map(category => <option key={category} value={category}>{category}</option>)}</select></label>
             </div>
             <label className="block text-sm font-bold text-primary">Di quanto vuoi ridurre questa perdita? (%)<input className={`${input} mt-2 max-w-xs text-lg font-bold border-primary`} type="number" min="0" max="100" step="any" value={row.riduzione !== '' && row.riduzione != null ? row.riduzione : result.reduction === null ? '' : Number(result.reduction.toFixed(2))} disabled={result.baseline === null} onChange={event => updateObjective(row.id, { riduzione: event.target.value })} /></label>
             {result.errors.map(error => <p key={error} role="alert" className="text-sm text-amber-800">{error}</p>)}
@@ -462,7 +485,7 @@ function calculate(form, staleStain) {
             {result.kg !== null && <p className="text-xs text-gray-600">{fmt(result.kg)} kg da evitare a parita di produzione del periodo baseline. Obiettivo, non saving gia realizzato.</p>}
           </article>
         })}</div>
-        <p className="text-xs text-gray-500 mt-3">Le voci manuali usano la raccolta del Passo 2. Le voci STAIN usano linea, periodo e prodotti gia caricati. Salva fase per conservare tutti gli obiettivi. La Fase 5 mantiene il proprio confronto e non somma automaticamente questi target.</p>
+        <p className="text-xs text-gray-500 mt-3">Le voci manuali usano la raccolta del Passo 3; la tendina prodotto della raccolta riprende i prodotti STAIN del Passo 2 quando disponibili. Ogni obiettivo incrocia il prodotto scelto con le sole priorita selezionate. Per i KPI percentuali si usa la produzione del prodotto scelto, non quella totale della linea. Salva fase per conservare tutti gli obiettivi. La Fase 5 mantiene il proprio confronto e non somma automaticamente questi target.</p>
       </section>
       <div className="flex flex-wrap justify-end items-center gap-3 border-t pt-4"><span role="status" className="text-sm">{status}</span><button type="button" className="bg-primary text-white px-4 py-2 rounded disabled:opacity-50" disabled={saving} onClick={save}>{saving ? 'Salvataggio...' : 'Salva fase'}</button></div>
     </div>
