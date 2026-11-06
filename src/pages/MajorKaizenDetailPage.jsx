@@ -17,22 +17,17 @@ export default function MajorKaizenDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [dataOpen, setDataOpen] = useState(false)
-  const [ganttOpen, setGanttOpen] = useState(() => {
-    try { return localStorage.getItem('lpw_major_gantt_open') === '1' } catch { return false }
-  })
+  const [ganttOpen, setGanttOpen] = useState(false)
 
   const activityData = useMajorPlanActivities(major, ganttOpen, activeKey)
-  const toggleGantt = () => setGanttOpen(current => {
-    const next = !current
-    try { localStorage.setItem('lpw_major_gantt_open', next ? '1' : '0') } catch { return next }
-    return next
-  })
+  const toggleGantt = () => setGanttOpen(current => !current)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setError('')
     setDataOpen(false)
+    setGanttOpen(false)
     api.get(`/major-kaizen/${id}`).then(res => {
       if (cancelled) return
       setMajor(res.data)
@@ -64,7 +59,11 @@ export default function MajorKaizenDetailPage() {
     }
   }
 
-  const steps = [...(major?.route_snapshot?.steps || [])].sort((a, b) => a.ordine - b.ordine)
+  const steps = [...(major?.route_snapshot?.steps || [])].sort((a, b) => a.ordine - b.ordine).map(step =>
+    step.componente === 'sustainment_plan' && step.titolo === 'Standardizzare e sostenere'
+      ? { ...step, titolo: 'Standardizzare ed espandere' }
+      : step
+  )
   const stepsData = major?.steps_data || {}
   const activeStep = steps.find(step => step.step_id === activeKey)
 
@@ -119,13 +118,14 @@ export default function MajorKaizenDetailPage() {
           type="button"
           onClick={toggleGantt}
           aria-expanded={ganttOpen}
-          className="flex w-full items-center justify-between px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+          aria-controls="major-master-plan-panel"
+          className="flex min-h-[56px] w-full items-center justify-between gap-3 bg-primary px-4 py-3 text-left text-white transition-colors hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300"
         >
-          <span>Master Plan</span>
-          <span className="text-xs font-normal text-gray-500">{ganttOpen ? 'Nascondi ▲' : 'Mostra ▼'}</span>
+          <span className="flex items-center gap-3"><span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 4v16h16M8 7h8M11 12h9M7 17h7" /></svg></span><span className="text-sm font-bold tracking-wide">Master Plan</span></span>
+          <span className="flex shrink-0 items-center gap-2 rounded-lg border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold"><span>{ganttOpen ? 'Nascondi' : 'Apri pianificazione'}</span><svg aria-hidden="true" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" className={ganttOpen ? 'rotate-180' : ''}><path d="m5 7 5 5 5-5" /></svg></span>
         </button>
         {ganttOpen && (
-          <div className="border-t border-gray-200 p-2">
+          <div id="major-master-plan-panel" className="border-t border-gray-200 p-2">
             <KaizenGantMasterPlan key={major._id} value={ganttValue} onChange={saveGantt}
               activities={activityData.items} activitiesLoading={activityData.loading} activitiesError={activityData.error}
               onRefreshActivities={activityData.refresh} onOpenActivityPhase={setActiveKey} />
