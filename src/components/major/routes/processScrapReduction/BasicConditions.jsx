@@ -475,8 +475,8 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
                 </label>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-                <ImageUpload images={item.foto_prima} onChange={value => patchAnomaly(item.id, { foto_prima: value })} label="Foto prima" maxImages={4} />
-                <ImageUpload images={item.foto_dopo} onChange={value => patchAnomaly(item.id, { foto_dopo: value })} label="Foto dopo" maxImages={4} />
+                <ImageUpload images={item.foto_prima} onChange={value => patchAnomaly(item.id, { foto_prima: value })} label="Foto prima" maxImages={4} showHelp={false} />
+                <ImageUpload images={item.foto_dopo} onChange={value => patchAnomaly(item.id, { foto_dopo: value })} label="Foto dopo" maxImages={4} showHelp={false} />
               </div>
               <label className="mt-4 flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={item.manutenzione} disabled={Boolean(item.carl)} onChange={event => patchAnomaly(item.id, { manutenzione: event.target.checked })} />
