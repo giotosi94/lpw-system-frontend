@@ -1,356 +1,347 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ExternalLink, Plus, Save, Search, Trash2, X } from 'lucide-react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { X } from 'lucide-react'
 import api from '../../../../services/api'
 import UserPicker from '../../../UserPicker'
 import DocumentUpload from '../../../DocumentUpload'
+import OplNativaModal from '../../../opl/OplNativaModal'
+import OplImportModal from '../../../opl/OplImportModal'
+import { OplChoiceModal, SopUploadModal, PreviewModal, readUser } from '../../../../pages/DocumentiPage'
 
+const input = 'w-full min-w-0 border border-gray-300 rounded px-2 py-2 text-sm bg-white'
+const smallButton = 'rounded border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50 disabled:opacity-50'
+const list = value => Array.isArray(value) ? value : []
+const uid = () => globalThis.crypto?.randomUUID?.() || `s6_${Date.now()}_${Math.random().toString(16).slice(2)}`
 const LEVELS = [
-  { value: 1, label: '1 - Non conosce la teoria' },
-  { value: 2, label: '2 - Conosce la teoria' },
-  { value: 3, label: '3 - Applica secondo standard' },
-  { value: 4, label: '4 - Applica in autonomia fuori standard' },
-  { value: 5, label: '5 - Sa insegnare' },
+  '1 - Ripristino delle condizioni di base',
+  '2 - Ripristino degli standard di processo',
+  '3 - Controllo e gestione visiva',
+  '4 - Eliminazione della causa radice',
+  '5 - Miglioramento tecnologico / di processo',
+  '6 - Innovazione / riprogettazione',
 ]
-
-const EMPTY_IMPLEMENTATION = {
-  id: '',
-  source_id: '',
-  azione: '',
-  responsabile: '',
-  scadenza: '',
-  stato: 'Da avviare',
-  risultato: '',
+const EXAMPLES = ['Pulizia, ordine 5S, richiamo al controllo corretto.', 'Ripristino delle procedure, cicli di pulizia e responsabilita.', 'Controlli e gestione visiva.', 'Poka yoke e interventi sulla causa radice.', 'Meccanizzazione o automazione dell’operazione.', 'Nuove tecnologie o riprogettazione del processo.']
+const blankBlock = () => ({ applicable: true, reason: '' })
+function buildForm(data) {
+  const saved = data.standardizzazione_v2
+  const initial = {
+    blocks: Object.fromEntries(['standards', 'expansion', 'mp', 'ladder'].map(key => [key, blankBlock()])),
+    standards: list(data.opl_collegate).map(doc => ({ id: uid(), improvement: '', change: '', documents: [{ id: doc.id || doc._id, label: `${doc.numero || ''} - ${doc.titolo || ''}` }] })),
+    expansion: [], mp: [], ladder: [],
+    sustain: { indicator: '', method: '', frequency: '', owner: null, date: '', reaction: '' },
+  }
+  if (!saved) return initial
+  return { ...initial, ...saved, blocks: Object.fromEntries(Object.keys(initial.blocks).map(key => [key, { ...blankBlock(), ...saved.blocks?.[key] }])), standards: list(saved.standards), expansion: list(saved.expansion), mp: list(saved.mp), ladder: list(saved.ladder), sustain: { ...initial.sustain, ...saved.sustain } }
 }
-
-const EMPTY_SKILL = {
-  id: '',
-  persona_id: '',
-  persona_nome: '',
-  competenza: '',
-  iniziale: '',
-  target: '',
-  finale: '',
-  data_formazione: '',
-  verificato_da: '',
+function outputs(form) {
+  const resolved = (key, complete) => form.blocks[key].applicable ? complete : Boolean(form.blocks[key].reason.trim())
+  return {
+    nuovi_standard: resolved('standards', form.standards.length > 0 && form.standards.every(row => row.documents?.length && row.change?.trim())),
+    espansione_orizzontale: resolved('expansion', form.expansion.length > 0 && form.expansion.every(row => row.improvement?.trim() && row.lineKey && (row.applicability === 'Non applicabile' ? row.reason?.trim() : row.applicability === 'Applicabile' && row.owner && row.date))),
+    mp_info_eem: resolved('mp', form.mp.length > 0 && form.mp.every(row => row.title?.trim() && row.files?.length && row.owner)),
+    scala_contromisure: resolved('ladder', form.ladder.length > 0 && form.ladder.every(row => row.improvement?.trim() && row.level && row.reason?.trim() && row.evidence?.trim())),
+    mantenimento: Boolean(form.sustain.indicator.trim() && form.sustain.frequency.trim() && form.sustain.owner && form.sustain.reaction.trim()),
+  }
 }
+function shortNumber(value) { return String(value || '').replace(/^(OPL|SOP)-/i, '') }
+function documentLabel(doc) { return `${doc.tipo} ${shortNumber(doc.numero)} - ${doc.titolo || ''}` }
+function documentNumber(doc) { return parseInt(shortNumber(doc.numero), 10) || 0 }
 
-const EMPTY_CONTROL = {
-  id: '',
-  elemento: '',
-  metodo_controllo: '',
-  frequenza: '',
-  responsabile: '',
-  limite_reazione: '',
-  azione_reazione: '',
-  stato: 'Da attivare',
-}
-
-const EMPTY_CHECK = {
-  id: '',
-  descrizione: '',
-  obbligatorio: true,
-  completato: false,
-  evidenza: '',
-}
-
-export default function SustainmentPlan({ stepData, onChange, allStepsData = {} }) {
+export default function SustainmentPlan({ stepData, onChange, allStepsData = {}, major }) {
   const [form, setForm] = useState(() => buildForm(stepData?.dati || {}))
+  const [status, setStatus] = useState('saved')
   const [documents, setDocuments] = useState([])
-  const [showOplModal, setShowOplModal] = useState(false)
-  const [oplSearch, setOplSearch] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-
-  const step5Activities = allStepsData?.step_5?.dati?.attivita || []
-
-  useEffect(() => {
-    setForm(buildForm(stepData?.dati || {}))
-  }, [stepData?.dati])
-
-  useEffect(() => {
-    api.get('/documenti', { params: { tipo: 'OPL' } })
-      .then(response => setDocuments((response.data || []).filter(item => item.tipo === 'OPL')))
-      .catch(() => setDocuments([]))
-  }, [])
-
-  useEffect(() => {
-    if (step5Activities.length === 0) return
-    setForm(current => {
-      const existingIds = new Set(current.piano_implementazione.map(item => item.source_id).filter(Boolean))
-      const imported = step5Activities
-        .filter(item => item.descrizione_futura?.trim() && !existingIds.has(item.id))
-        .map(item => ({
-          ...EMPTY_IMPLEMENTATION,
-          id: createId('implementation'),
-          source_id: item.id,
-          azione: item.descrizione_futura,
-          responsabile: item.responsabile || '',
-          stato: mapImplementationStatus(item.stato),
-        }))
-      return imported.length > 0
-        ? { ...current, piano_implementazione: [...current.piano_implementazione, ...imported] }
-        : current
-    })
-  }, [step5Activities])
-
-  const summary = useMemo(() => {
-    const azioniCompletate = form.piano_implementazione.filter(item => item.stato === 'Completata' || item.stato === 'Verificata').length
-    const competenzeTarget = form.skill_matrix.filter(item => Number(item.finale) >= Number(item.target) && Number(item.target) > 0).length
-    const gapAperti = form.skill_matrix.filter(item => Number(item.finale || item.iniziale) < Number(item.target) && Number(item.target) > 0).length
-    const controlliAttivi = form.control_plan.filter(item => item.stato === 'Attivo').length
-    const obbligatori = form.check_chiusura.filter(item => item.obbligatorio)
-    const completati = obbligatori.filter(item => item.completato).length
-    return {
-      azioniCompletate,
-      azioniTotali: form.piano_implementazione.length,
-      competenzeTarget,
-      gapAperti,
-      controlliAttivi,
-      chiusura: obbligatori.length > 0 ? (completati / obbligatori.length) * 100 : 0,
+  const [departments, setDepartments] = useState([])
+  const [loadError, setLoadError] = useState('')
+  const [creating, setCreating] = useState(null)
+  const [previewDoc, setPreviewDoc] = useState(null)
+  const formRef = useRef(form)
+  const baseRef = useRef(stepData?.dati || {})
+  const onChangeRef = useRef(onChange)
+  const dirty = useRef(false)
+  const revision = useRef(0)
+  const saving = useRef(false)
+  const timer = useRef(null)
+  const mounted = useRef(true)
+  const persistRef = useRef(null)
+  onChangeRef.current = onChange
+  baseRef.current = stepData?.dati || {}
+  persistRef.current = async () => {
+    clearTimeout(timer.current)
+    if (!dirty.current || saving.current) return
+    const snapshot = formRef.current
+    const rev = revision.current
+    saving.current = true
+    if (mounted.current) setStatus('saving')
+    let failed = false
+    try {
+      const response = await onChangeRef.current({ dati: { ...baseRef.current, standardizzazione_v2: snapshot }, output_compilati: outputs(snapshot) })
+      if (response === false) throw new Error('Salvataggio rifiutato')
+      if (revision.current === rev) {
+        dirty.current = false
+        if (mounted.current) setStatus('saved')
+      }
+    } catch {
+      failed = true
+      if (mounted.current) setStatus('error')
+    } finally {
+      saving.current = false
+      if (dirty.current && (!failed || revision.current !== rev)) {
+        if (mounted.current) timer.current = setTimeout(() => persistRef.current?.(), 800)
+        else persistRef.current?.()
+      }
     }
-  }, [form])
+  }
+  const mutate = update => {
+    const next = typeof update === 'function' ? update(formRef.current) : { ...formRef.current, ...update }
+    formRef.current = next
+    dirty.current = true
+    revision.current += 1
+    setForm(next)
+    setStatus('dirty')
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => persistRef.current?.(), 800)
+  }
+  useEffect(() => {
+    if (!dirty.current && !saving.current) {
+      const next = buildForm(stepData?.dati || {})
+      formRef.current = next
+      setForm(next)
+    }
+  }, [stepData?.dati])
+  useEffect(() => {
+    mounted.current = true
+    const guard = event => { if (dirty.current || saving.current) { event.preventDefault(); event.returnValue = '' } }
+    window.addEventListener('beforeunload', guard)
+    return () => {
+      mounted.current = false
+      window.removeEventListener('beforeunload', guard)
+      clearTimeout(timer.current)
+      if (dirty.current && !saving.current) persistRef.current?.()
+    }
+  }, [])
+  const loadDocuments = async () => {
+    try {
+      const response = await api.get('/documenti')
+      const loaded = list(response.data).filter(doc => ['OPL', 'SOP'].includes(doc.tipo))
+      setDocuments(loaded)
+      return loaded
+    } catch { setLoadError('Documenti non disponibili: riprova il caricamento.'); return null }
+  }
+  useEffect(() => {
+    loadDocuments()
+    api.get('/reparti/').then(response => setDepartments(list(response.data))).catch(() => setLoadError('Anagrafica linee non disponibile: ricarica la pagina.'))
+  }, [])
+  const lineOptions = departments.filter(dep => dep.attivo !== false).flatMap(dep => list(dep.linee).filter(line => line.attivo !== false).map(line => ({ key: `${dep._id || dep.id || dep.nome}:${line.id || line.nome}`, department: dep.nome, name: line.nome, machines: list(line.macchine).filter(machine => machine.attivo !== false) })))
+  const sources = useMemo(() => {
+    const result = []
+    Object.entries(allStepsData).forEach(([stepId, value]) => {
+      list(value?.dati?.miglioramenti).forEach(row => {
+        if (row.proposta) result.push({ id: `${stepId}:${row.id}`, label: row.proposta, ref: row.carl?.codice || '' })
+      })
+    })
+    return result
+  }, [allStepsData])
+  const patch = (key, id, values) => mutate(current => ({ ...current, [key]: current[key].map(row => row.id === id ? { ...row, ...values } : row) }))
+  const add = (key, values) => mutate(current => ({ ...current, [key]: [...current[key], { id: uid(), ...values }] }))
+  const remove = (key, id) => { if (window.confirm('Rimuovere questa riga dal progetto?')) mutate(current => ({ ...current, [key]: current[key].filter(row => row.id !== id) })) }
+  const blockChange = (key, values) => mutate(current => ({ ...current, blocks: { ...current.blocks, [key]: { ...current.blocks[key], ...values } } }))
+  const addDocument = (rowId, doc) => {
+    if (!doc?._id) return
+    mutate(current => ({ ...current, standards: current.standards.map(row => row.id !== rowId || list(row.documents).some(entry => entry.id === doc._id) ? row : { ...row, documents: [...list(row.documents), { id: doc._id, label: documentLabel(doc), version: doc.versione }] }) }))
+  }
+  const startCreate = row => {
+    const user = readUser()
+    const admin = ['admin', 'administrator', 'amministratore'].includes(String(user.role || user.ruolo || '').toLowerCase())
+    setCreating({ rowId: row.id, titolo: row.change || row.improvement || '', mode: admin ? 'choice' : 'nativa' })
+  }
+  const handleCreated = async id => {
+    const current = creating
+    setCreating(null)
+    const loaded = await loadDocuments()
+    if (!current || !id) return
+    const doc = list(loaded).find(item => item._id === id)
+    if (doc) addDocument(current.rowId, doc)
+    else setLoadError('Documento creato ma non collegato: aggiorna l’elenco e collegalo manualmente.')
+  }
+  const openDocument = async id => {
+    const doc = documents.find(item => item._id === id)
+    if (doc) { setPreviewDoc(doc); return }
+    try { const response = await api.get(`/documenti/${id}`); setPreviewDoc(response.data) }
+    catch { setLoadError('Documento non disponibile.') }
+  }
+  const initial = { titolo: creating?.titolo || '', reparto: major?.reparto || '', linea: major?.linea || '', macchina: major?.macchina || '' }
+  const sourceField = (row, key) => <div className="space-y-2">
+    <Field label="Contromisura / miglioramento" value={row.improvement} onChange={value => patch(key, row.id, { improvement: value, sourceId: '' })} />
+    {sources.length > 0 && <label className="block text-xs">Riprendi un SUG della Fase 4<select className={input} value={row.sourceId || ''} onChange={event => { const source = sources.find(item => item.id === event.target.value); if (source) patch(key, row.id, { sourceId: source.id, improvement: source.label, reference: source.ref }) }}><option value="">Seleziona oppure descrivi sopra</option>{sources.map(source => <option key={source.id} value={source.id}>{source.label}</option>)}</select></label>}
+  </div>
+  const statusText = { saved: 'Salvato', dirty: 'Modifiche da salvare...', saving: 'Salvataggio...', error: 'Errore: modifiche ancora nella pagina' }[status]
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap justify-between gap-2 text-sm"><span>Standardizzare ed espandere · salvataggio automatico delle bozze</span><span role="status" aria-live="polite">{statusText}</span>{status === 'error' && <button type="button" className={smallButton} onClick={() => persistRef.current?.()}>Riprova salvataggio</button>}</div>
+      {loadError && <p role="alert" className="text-sm text-red-700">{loadError} <button type="button" className={smallButton} onClick={loadDocuments}>Aggiorna documenti</button></p>}
+      <Block title="1 · Nuovi standard OPL / SOP" state={form.blocks.standards} onChange={values => blockChange('standards', values)}>
+        <p className="text-sm text-gray-600">Collega o crea gli standard del nuovo metodo. Revisioni, pubblicazione, destinatari e letture si gestiscono nel modulo Documenti: nessun secondo registro di formazione.</p>
+        <button type="button" className={smallButton} onClick={() => add('standards', { improvement: '', change: '', documents: [] })}>Aggiungi standard</button>
+        {form.standards.map(row => <Row key={row.id} onRemove={() => remove('standards', row.id)}>
+          {sourceField(row, 'standards')}
+          <Field label="Standard introdotto o modifica richiesta" multiline value={row.change} onChange={value => patch('standards', row.id, { change: value })} />
+          {list(row.documents).map(entry => <DocumentPicker key={entry.id} value={entry.id} label={entry.label || 'Documento collegato'} documents={documents} major={major} onOpen={() => openDocument(entry.id)} onCreate={() => startCreate(row)} onSelect={doc => { if (!doc) patch('standards', row.id, { documents: row.documents.filter(item => item.id !== entry.id) }) }} />)}
+          <DocumentPicker value="" documents={documents.filter(doc => !list(row.documents).some(entry => entry.id === doc._id))} major={major} onSelect={doc => addDocument(row.id, doc)} onCreate={() => startCreate(row)} onOpen={() => {}} />
+        </Row>)}
+      </Block>
+      <Block title="2 · Espansione orizzontale" state={form.blocks.expansion} onChange={values => blockChange('expansion', values)}>
+        <p className="text-sm text-gray-600">Identifica le altre linee su cui replicare la soluzione. Il riferimento Action Plan/CARL e registrato qui, non crea nuove attivita e non somma saving.</p>
+        <button type="button" className={smallButton} onClick={() => add('expansion', { improvement: '', lineKey: '', department: '', line: '', machine: '', applicability: 'Da valutare', reason: '', owner: null, date: '', status: 'Da valutare', channel: 'LPW', reference: '', outcome: '' })}>Aggiungi linea destinataria</button>
+        {form.expansion.map(row => { const target = lineOptions.find(item => item.key === row.lineKey); return <Row key={row.id} onRemove={() => remove('expansion', row.id)}>
+          {sourceField(row, 'expansion')}
+          <div className="grid md:grid-cols-2 gap-3">
+            <label className="block text-sm">Linea destinataria<select className={input} value={row.lineKey} onChange={event => { const line = lineOptions.find(item => item.key === event.target.value); patch('expansion', row.id, { lineKey: line?.key || '', department: line?.department || '', line: line?.name || '', machine: '' }) }}><option value="">Seleziona linea</option>{row.lineKey && !target && <option value={row.lineKey}>{row.department} / {row.line} (non piu in anagrafica)</option>}{lineOptions.map(line => <option key={line.key} value={line.key}>{line.department} / {line.name}</option>)}</select></label>
+            <Select label="Macchina (facoltativa)" value={row.machine} options={list(target?.machines).map(item => item.nome)} onChange={value => patch('expansion', row.id, { machine: value })} />
+            <Select label="Applicabilita" value={row.applicability} options={['Da valutare', 'Applicabile', 'Non applicabile']} onChange={value => patch('expansion', row.id, { applicability: value })} />
+            <Field label="Motivazione / adattamenti necessari" value={row.reason} onChange={value => patch('expansion', row.id, { reason: value })} />
+            <PersonField label="Responsabile" value={row.owner} onChange={value => patch('expansion', row.id, { owner: value })} />
+            <Field label="Data prevista" type="date" value={row.date} onChange={value => patch('expansion', row.id, { date: value })} />
+            <Select label="Stato replica" value={row.status} options={['Da valutare', 'Pianificata', 'In corso', 'Completata', 'Verificata']} onChange={value => patch('expansion', row.id, { status: value })} />
+            <Select label="Gestione attivita" value={row.channel} options={['LPW', 'CARL']} onChange={value => patch('expansion', row.id, { channel: value })} />
+            <Field label="Numero / riferimento Action Plan o CARL" value={row.reference} onChange={value => patch('expansion', row.id, { reference: value })} />
+            <Field label="Esito ed evidenza della replica" value={row.outcome} onChange={value => patch('expansion', row.id, { outcome: value })} />
+          </div>
+        </Row> })}
+      </Block>
+      <Block title="3 · MP Info / EEM" state={form.blocks.mp} onChange={values => blockChange('mp', values)}>
+        <p className="text-sm text-gray-600">Compila il template aziendale MP Info e allegalo qui. Il referente EEM e lo stato sono registrati nel progetto: non inviano notifiche e non costituiscono approvazione Engineering o COE.</p>
+        <button type="button" className={smallButton} onClick={() => add('mp', { title: '', number: '', improvement: '', owner: null, status: 'Da condividere', replication: 'Locale', note: '', files: [] })}>Aggiungi MP Info</button>
+        {form.mp.map(row => <Row key={row.id} onRemove={() => remove('mp', row.id)}>
+          {sourceField(row, 'mp')}
+          <div className="grid md:grid-cols-2 gap-3">
+            <Field label="Titolo MP Info" value={row.title} onChange={value => patch('mp', row.id, { title: value })} />
+            <Field label="Numero / revisione documento" value={row.number} onChange={value => patch('mp', row.id, { number: value })} />
+            <PersonField label="Referente EEM" value={row.owner} onChange={value => patch('mp', row.id, { owner: value })} />
+            <Select label="Stato condivisione" value={row.status} options={['Da condividere', 'Condivisa', 'Recepita']} onChange={value => patch('mp', row.id, { status: value })} />
+            <Select label="Potenziale di replica" value={row.replication} options={['Locale', 'Piattaforma tecnologica', 'Globale']} onChange={value => patch('mp', row.id, { replication: value })} />
+            <Field label="Requisito trasferito / evidenza recepimento" multiline value={row.note} onChange={value => patch('mp', row.id, { note: value })} />
+          </div>
+          <DocumentUpload documents={list(row.files)} onChange={value => patch('mp', row.id, { files: value })} />
+        </Row>)}
+      </Block>
+      <Block title="4 · Scala delle contromisure" state={form.blocks.ladder} onChange={values => blockChange('ladder', values)}>
+        <p className="text-sm text-gray-600">Classifica la soluzione adottata con la scala FI. Nessun punteggio automatico e nessuna media tra livelli.</p>
+        <button type="button" className={smallButton} onClick={() => add('ladder', { improvement: '', level: '', reason: '', evidence: '' })}>Aggiungi contromisura</button>
+        {form.ladder.map(row => <Row key={row.id} onRemove={() => remove('ladder', row.id)}>
+          {sourceField(row, 'ladder')}
+          <Select label="Livello raggiunto" value={row.level} options={LEVELS} onChange={value => patch('ladder', row.id, { level: value })} />
+          {row.level && <p className="text-xs text-gray-600">{EXAMPLES[LEVELS.indexOf(row.level)]}</p>}
+          <Field label="Motivazione del livello" multiline value={row.reason} onChange={value => patch('ladder', row.id, { reason: value })} />
+          <Field label="Evidenza di applicazione / rischio residuo" multiline value={row.evidence} onChange={value => patch('ladder', row.id, { evidence: value })} />
+        </Row>)}
+      </Block>
+      <section className="bg-white border rounded-lg p-4 space-y-3">
+        <h3 className="font-semibold">Mantenimento del risultato</h3>
+        <div className="grid md:grid-cols-2 gap-3">
+          {['indicator', 'method', 'frequency', 'date', 'reaction'].map((key, index) => <Field key={key} label={['Indicatore da controllare', 'Metodo / fonte', 'Frequenza', 'Prossima verifica', 'Soglia e azione in caso di peggioramento'][index]} type={key === 'date' ? 'date' : 'text'} value={form.sustain[key]} onChange={value => mutate(current => ({ ...current, sustain: { ...current.sustain, [key]: value } }))} />)}
+          <PersonField label="Responsabile controllo" value={form.sustain.owner} onChange={value => mutate(current => ({ ...current, sustain: { ...current.sustain, owner: value } }))} />
+        </div>
+      </section>
+      <div role="status" aria-live="polite" className="flex justify-end gap-3 text-sm"><span>{statusText}</span>{status === 'error' && <button type="button" className={smallButton} onClick={() => persistRef.current?.()}>Riprova salvataggio</button>}</div>
+      {creating?.mode === 'choice' && <OplChoiceModal onClose={() => setCreating(null)} onCreate={() => setCreating(current => ({ ...current, mode: 'nativa' }))} onImport={() => setCreating(current => ({ ...current, mode: 'import' }))} onSop={() => setCreating(current => ({ ...current, mode: 'sop' }))} />}
+      {creating?.mode === 'nativa' && <OplNativaModal initial={initial} onClose={() => setCreating(null)} onSaved={doc => handleCreated(doc?._id)} />}
+      {creating?.mode === 'import' && <OplImportModal onClose={() => setCreating(null)} onImported={created => created?.length ? handleCreated(created[0].id) : loadDocuments()} />}
+      {creating?.mode === 'sop' && <SopUploadModal initial={initial} onClose={() => setCreating(null)} onSaved={doc => handleCreated(doc?.id)} />}
+      {previewDoc && <PreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />}
+    </div>
+  )
+}
+function Block({ title, state, onChange, children }) {
+  return <section className="bg-white border rounded-lg p-4 space-y-3"><div className="flex flex-wrap justify-between gap-2"><h3 className="font-bold text-primary">{title}</h3><label className="text-xs flex gap-2 items-center"><input type="checkbox" checked={!state.applicable} onChange={event => onChange({ applicable: !event.target.checked })} />Non applicabile</label></div>{state.applicable ? children : <Field label="Motivazione non applicabilita" multiline value={state.reason} onChange={value => onChange({ reason: value })} />}</section>
+}
+function Row({ children, onRemove }) { return <article className="border rounded p-3 space-y-3"><div className="flex justify-end"><button type="button" className={smallButton} onClick={onRemove}>Rimuovi riga</button></div>{children}</article> }
+function Field({ label, value, onChange, multiline = false, type = 'text' }) { return <label className="block text-sm">{label}{multiline ? <textarea className={input} rows={2} value={value || ''} onChange={event => onChange(event.target.value)} /> : <input className={input} type={type} value={value || ''} onChange={event => onChange(event.target.value)} />}</label> }
+function Select({ label, value, options, onChange }) { const values = value && !options.includes(value) ? [value, ...options] : options; return <label className="block text-sm">{label}<select className={input} value={value || ''} onChange={event => onChange(event.target.value)}><option value="">Seleziona</option>{values.map(option => <option key={option} value={option}>{option}</option>)}</select></label> }
+function PersonField({ label, value, onChange }) { return <div className="text-sm"><span>{label}</span><UserPicker value={value || null} onChange={onChange} mode="single" placeholder="Seleziona persona" />{value && <button type="button" className={smallButton} onClick={() => onChange(null)}>Rimuovi assegnazione</button>}</div> }
 
-  const updateField = (field, value) => {
-    setSaved(false)
-    setForm(current => ({ ...current, [field]: value }))
+function DocumentPicker({ value, label, documents, priorityIds = [], major, onSelect, onCreate, onOpen }) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const listId = useId()
+  const priorityKey = priorityIds.join('|')
+
+  const results = useMemo(() => {
+    const priority = new Set(priorityKey ? priorityKey.split('|') : [])
+    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    const score = doc => {
+      const place = major?.linea && doc.linea === major.linea ? 0 : major?.reparto && doc.reparto === major.reparto ? 1 : 2
+      return (priority.has(doc._id) ? 0 : 3) + place
+    }
+    return documents
+      .filter(doc => {
+        const text = `${doc.tipo} ${shortNumber(doc.numero)} ${doc.titolo || ''} ${doc.macchina || ''}`.toLowerCase()
+        return terms.every(term => text.includes(term))
+      })
+      .sort((a, b) => score(a) - score(b) || documentNumber(b) - documentNumber(a))
+      .slice(0, 8)
+  }, [query, documents, priorityKey, major?.linea, major?.reparto])
+
+  const choose = doc => {
+    onSelect(doc)
+    setQuery('')
+    setOpen(false)
   }
 
-  const addItem = (field, template, prefix) => {
-    setSaved(false)
-    setForm(current => ({
-      ...current,
-      [field]: [...current[field], { ...template, id: createId(prefix) }],
-    }))
-  }
-
-  const updateItem = (field, id, key, value) => {
-    setSaved(false)
-    setForm(current => ({
-      ...current,
-      [field]: current[field].map(item => item.id === id ? { ...item, [key]: value } : item),
-    }))
-  }
-
-  const removeItem = (field, id) => {
-    setSaved(false)
-    setForm(current => ({
-      ...current,
-      [field]: current[field].filter(item => item.id !== id),
-    }))
-  }
-
-  const addPerson = selected => {
-    if (!selected) return
-    if (form.persone_coinvolte.some(item => item.id === selected.id)) return
-    updateField('persone_coinvolte', [...form.persone_coinvolte, { id: selected.id, nome: selected.name }])
-  }
-
-  const addSkillPerson = selected => {
-    if (!selected) return
-    addSkillRow({ persona_id: selected.id, persona_nome: selected.name })
-  }
-
-  const addSkillRow = values => {
-    setSaved(false)
-    setForm(current => ({
-      ...current,
-      skill_matrix: [...current.skill_matrix, { ...EMPTY_SKILL, ...values, id: createId('skill') }],
-    }))
-  }
-
-  const toggleOpl = document => {
-    const exists = form.opl_collegate.some(item => item.id === document._id)
-    updateField(
-      'opl_collegate',
-      exists
-        ? form.opl_collegate.filter(item => item.id !== document._id)
-        : [...form.opl_collegate, {
-            id: document._id,
-            numero: document.numero,
-            titolo: document.titolo,
-            versione: document.versione,
-            stato: document.stato,
-          }]
+  if (value) {
+    return (
+      <div className="flex items-center gap-1 min-w-0">
+        <span className="min-w-0 flex-1 truncate rounded border border-gray-300 bg-gray-50 px-2 py-2 text-sm" title={label}>{label}</span>
+        <button type="button" onClick={onOpen} className={smallButton}>Apri</button>
+        <button type="button" aria-label="Scollega documento" onClick={() => onSelect(null)} className="rounded p-2 text-gray-500 hover:bg-gray-100"><X size={14} /></button>
+      </div>
     )
   }
 
-  const save = async () => {
-    if (form.piano_implementazione.length === 0) return alert('Inserisci almeno una azione da implementare')
-    if (!form.standard_definitivo.trim()) return alert('Descrivi lo standard definitivo')
-    if (form.control_plan.length === 0) return alert('Inserisci almeno un controllo nel Control Plan')
-    if (!form.periodo_sostenibilita.trim()) return alert('Definisci il periodo di sostenibilità')
-    setSaving(true)
-    try {
-      await onChange({
-        dati: { ...form, riepilogo: summary },
-        output_compilati: {
-          piano_azioni: form.piano_implementazione.length > 0,
-          azioni_implementate: summary.azioniCompletate > 0,
-          opl_collegate: form.opl_collegate.length > 0,
-          standard_definitivo: Boolean(form.standard_definitivo.trim()),
-          visual_management: Boolean(form.visual_management.trim()),
-          tabellone_macchina: Boolean(form.tabellone_macchina.trim()),
-          skill_matrix: form.skill_matrix.length > 0,
-          competenze_verificate: summary.competenzeTarget > 0,
-          control_plan: form.control_plan.length > 0,
-          verifica_sostenibilita: Boolean(form.verifica_sostenibilita.trim()),
-        },
-      })
-      setSaved(true)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const filteredOpl = documents.filter(item => {
-    const search = oplSearch.trim().toLowerCase()
-    return !search || `${item.numero || ''} ${item.titolo || ''} ${item.reparto || ''} ${item.linea || ''}`.toLowerCase().includes(search)
-  })
-
+  const priority = new Set(priorityIds)
   return (
-    <div className="space-y-4">
-      <Section title="Piano di implementazione delle azioni">
-        <SectionHeader text="Le azioni del metodo futuro definite nello Step 5 vengono riportate automaticamente." onAdd={() => addItem('piano_implementazione', EMPTY_IMPLEMENTATION, 'implementation')} addLabel="Aggiungi azione" />
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1200px] text-sm">
-            <thead className="bg-gray-50 text-gray-600"><tr><Th>Azione</Th><Th>Responsabile</Th><Th>Scadenza</Th><Th>Stato</Th><Th>Risultato</Th><th className="w-10" /></tr></thead>
-            <tbody>
-              {form.piano_implementazione.map(item => (
-                <tr key={item.id} className="border-t">
-                  <TableInput value={item.azione} onChange={value => updateItem('piano_implementazione', item.id, 'azione', value)} />
-                  <TableInput value={item.responsabile} onChange={value => updateItem('piano_implementazione', item.id, 'responsabile', value)} />
-                  <TableInput type="date" value={item.scadenza} onChange={value => updateItem('piano_implementazione', item.id, 'scadenza', value)} />
-                  <TableSelect value={item.stato} onChange={value => updateItem('piano_implementazione', item.id, 'stato', value)} options={['Da avviare', 'In corso', 'Completata', 'Verificata', 'Bloccata']} />
-                  <TableInput value={item.risultato} onChange={value => updateItem('piano_implementazione', item.id, 'risultato', value)} />
-                  <DeleteCell onClick={() => removeItem('piano_implementazione', item.id)} />
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Section>
-
-      <Section title="OPL collegate">
-        <div className="flex justify-between items-center gap-3 mb-3">
-          <p className="text-sm text-gray-500">Collega OPL già presenti nel Document Manager.</p>
-          <button type="button" onClick={() => setShowOplModal(true)} className="px-3 py-2 bg-primary text-white rounded-lg text-sm">Collega OPL</button>
-        </div>
-        {form.opl_collegate.length === 0 ? <Empty text="Nessuna OPL collegata" /> : (
-          <div className="divide-y border rounded-lg">
-            {form.opl_collegate.map(item => (
-              <div key={item.id} className="p-3 flex items-center gap-3">
-                <div className="flex-1"><div className="font-mono text-xs font-bold text-primary">{item.numero}</div><div className="text-sm font-medium">{item.titolo}</div></div>
-                <a href={`/documenti?opl=${item.id}`} className="p-2 text-primary" title="Apri"><ExternalLink size={16} /></a>
-                <button type="button" onClick={() => toggleOpl({ _id: item.id })} className="p-2 text-red-600"><X size={16} /></button>
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
-
-      <Section title="Standard e visual management">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <TextAreaField label="Standard definitivo" value={form.standard_definitivo} onChange={value => updateField('standard_definitivo', value)} required />
-          <TextAreaField label="Modifiche introdotte" value={form.modifiche_standard} onChange={value => updateField('modifiche_standard', value)} />
-          <TextAreaField label="Visual management" value={form.visual_management} onChange={value => updateField('visual_management', value)} placeholder="Checklist, etichette, segnali visivi e controlli sul posto" />
-          <TextAreaField label="Tabellone Macchina" value={form.tabellone_macchina} onChange={value => updateField('tabellone_macchina', value)} placeholder="KPI, frequenza aggiornamento, proprietario e posizione" />
-        </div>
-        <div className="mt-4"><DocumentUpload documents={form.documenti_standard} onChange={value => updateField('documenti_standard', value)} /></div>
-      </Section>
-
-      <Section title="Persone coinvolte e formazione">
-        <div className="max-w-xl mb-4"><UserPicker value={null} onChange={addPerson} mode="single" placeholder="Aggiungi persona coinvolta..." /></div>
-        <div className="flex flex-wrap gap-2 mb-4">
-          {form.persone_coinvolte.map(item => <span key={item.id} className="px-3 py-1.5 bg-gray-100 rounded-full text-sm flex items-center gap-2">{item.nome}<button type="button" onClick={() => updateField('persone_coinvolte', form.persone_coinvolte.filter(person => person.id !== item.id))}><X size={13} /></button></span>)}
-        </div>
-        <TextAreaField label="Piano di formazione" value={form.piano_formazione} onChange={value => updateField('piano_formazione', value)} placeholder="Contenuti, modalità, date e responsabilità" />
-      </Section>
-
-      <Section title="Skill Matrix del progetto">
-        <div className="flex justify-between items-center gap-3 mb-3">
-          <p className="text-sm text-gray-500">Scala 1-5 coerente con la Skill Matrix Pillar.</p>
-          <button type="button" onClick={() => addSkillRow({})} className="px-3 py-2 bg-primary text-white rounded-lg text-sm flex items-center gap-2"><Plus size={15} /> Aggiungi riga</button>
-        </div>
-        <div className="max-w-xl mb-4"><UserPicker value={null} onChange={addSkillPerson} mode="single" placeholder="Aggiungi persona alla matrice..." /></div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1200px] text-sm">
-            <thead className="bg-gray-50 text-gray-600"><tr><Th>Persona</Th><Th>Competenza</Th><Th>Iniziale</Th><Th>Target</Th><Th>Finale</Th><Th>Gap</Th><Th>Data formazione</Th><Th>Verificato da</Th><th className="w-10" /></tr></thead>
-            <tbody>
-              {form.skill_matrix.map(item => {
-                const finalValue = Number(item.finale || item.iniziale || 0)
-                const gap = Number(item.target || 0) - finalValue
-                return <tr key={item.id} className="border-t">
-                  <TableInput value={item.persona_nome} onChange={value => updateItem('skill_matrix', item.id, 'persona_nome', value)} />
-                  <TableInput value={item.competenza} onChange={value => updateItem('skill_matrix', item.id, 'competenza', value)} />
-                  <LevelCell value={item.iniziale} onChange={value => updateItem('skill_matrix', item.id, 'iniziale', value)} />
-                  <LevelCell value={item.target} onChange={value => updateItem('skill_matrix', item.id, 'target', value)} />
-                  <LevelCell value={item.finale} onChange={value => updateItem('skill_matrix', item.id, 'finale', value)} />
-                  <td className={`p-2 text-center font-bold ${gap > 0 ? 'text-red-600' : 'text-green-600'}`}>{item.target ? gap : '—'}</td>
-                  <TableInput type="date" value={item.data_formazione} onChange={value => updateItem('skill_matrix', item.id, 'data_formazione', value)} />
-                  <TableInput value={item.verificato_da} onChange={value => updateItem('skill_matrix', item.id, 'verificato_da', value)} />
-                  <DeleteCell onClick={() => removeItem('skill_matrix', item.id)} />
-                </tr>
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Section>
-
-      <Section title="Control Plan">
-        <SectionHeader text="Definisci controlli, soglie e piano di reazione." onAdd={() => addItem('control_plan', EMPTY_CONTROL, 'control')} addLabel="Aggiungi controllo" />
-        <div className="overflow-x-auto"><table className="w-full min-w-[1300px] text-sm"><thead className="bg-gray-50 text-gray-600"><tr><Th>Elemento</Th><Th>Metodo</Th><Th>Frequenza</Th><Th>Responsabile</Th><Th>Limite</Th><Th>Piano di reazione</Th><Th>Stato</Th><th className="w-10" /></tr></thead><tbody>{form.control_plan.map(item => <tr key={item.id} className="border-t"><TableInput value={item.elemento} onChange={value => updateItem('control_plan', item.id, 'elemento', value)} /><TableInput value={item.metodo_controllo} onChange={value => updateItem('control_plan', item.id, 'metodo_controllo', value)} /><TableInput value={item.frequenza} onChange={value => updateItem('control_plan', item.id, 'frequenza', value)} /><TableInput value={item.responsabile} onChange={value => updateItem('control_plan', item.id, 'responsabile', value)} /><TableInput value={item.limite_reazione} onChange={value => updateItem('control_plan', item.id, 'limite_reazione', value)} /><TableInput value={item.azione_reazione} onChange={value => updateItem('control_plan', item.id, 'azione_reazione', value)} /><TableSelect value={item.stato} onChange={value => updateItem('control_plan', item.id, 'stato', value)} options={['Da attivare', 'Attivo', 'Sospeso']} /><DeleteCell onClick={() => removeItem('control_plan', item.id)} /></tr>)}</tbody></table></div>
-      </Section>
-
-      <Section title="Risultati e sostenibilità">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4"><InputField label="KPI finale" type="number" value={form.kpi_finale} onChange={value => updateField('kpi_finale', value)} /><InputField label="Periodo sostenibilità" value={form.periodo_sostenibilita} onChange={value => updateField('periodo_sostenibilita', value)} /><TextAreaField label="Verifica sostenibilità" value={form.verifica_sostenibilita} onChange={value => updateField('verifica_sostenibilita', value)} /></div>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4"><SummaryCard label="Azioni completate" value={`${summary.azioniCompletate}/${summary.azioniTotali}`} /><SummaryCard label="Competenze a target" value={summary.competenzeTarget} /><SummaryCard label="Gap aperti" value={summary.gapAperti} /><SummaryCard label="Controlli attivi" value={summary.controlliAttivi} /><SummaryCard label="Chiusura" value={`${summary.chiusura.toFixed(0)}%`} /></div>
-      </Section>
-
-      <Section title="Checklist di chiusura">
-        <SectionHeader text="Completa i controlli richiesti per la chiusura." onAdd={() => addItem('check_chiusura', EMPTY_CHECK, 'check')} addLabel="Aggiungi controllo" />
-        <div className="space-y-2">{form.check_chiusura.map(item => <div key={item.id} className="grid grid-cols-[auto_1fr_auto_1fr_auto] gap-3 items-center border rounded-lg p-3"><input type="checkbox" checked={item.completato} onChange={event => updateItem('check_chiusura', item.id, 'completato', event.target.checked)} /><input value={item.descrizione} onChange={event => updateItem('check_chiusura', item.id, 'descrizione', event.target.value)} className="border rounded px-3 py-2 text-sm" /><label className="text-xs"><input type="checkbox" checked={item.obbligatorio} onChange={event => updateItem('check_chiusura', item.id, 'obbligatorio', event.target.checked)} /> Obbligatorio</label><input value={item.evidenza} onChange={event => updateItem('check_chiusura', item.id, 'evidenza', event.target.value)} className="border rounded px-3 py-2 text-sm" placeholder="Evidenza" /><button type="button" onClick={() => removeItem('check_chiusura', item.id)} className="text-red-600"><Trash2 size={15} /></button></div>)}</div>
-      </Section>
-
-      <div className="flex justify-end gap-3">{saved && <span className="text-sm text-green-700 self-center">Step salvato</span>}<button type="button" onClick={save} disabled={saving} className="px-5 py-2 bg-primary text-white rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"><Save size={16} /> {saving ? 'Salvataggio...' : 'Salva Implementare e sostenere'}</button></div>
-
-      {showOplModal && <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"><div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col"><div className="bg-primary text-white p-4 rounded-t-xl flex justify-between"><h3 className="font-bold">Collega OPL</h3><button type="button" onClick={() => setShowOplModal(false)}><X size={18} /></button></div><div className="p-4 border-b relative"><Search size={16} className="absolute left-7 top-7 text-gray-400" /><input value={oplSearch} onChange={event => setOplSearch(event.target.value)} className="w-full border rounded-lg pl-9 pr-3 py-2 text-sm" placeholder="Cerca numero, titolo, reparto o linea..." /></div><div className="overflow-y-auto p-4 divide-y">{filteredOpl.map(item => { const selected = form.opl_collegate.some(opl => opl.id === item._id); return <div key={item._id} className="p-3 flex items-center gap-3"><div className="flex-1"><div className="font-mono text-xs font-bold text-primary">{item.numero}</div><div className="text-sm font-medium">{item.titolo}</div><div className="text-xs text-gray-500">{[item.reparto, item.linea, `v${item.versione || 1}`, item.stato].filter(Boolean).join(' · ')}</div></div><button type="button" onClick={() => toggleOpl(item)} className={`px-3 py-2 rounded-lg text-sm ${selected ? 'bg-red-50 text-red-700' : 'bg-primary text-white'}`}>{selected ? 'Scollega' : 'Collega'}</button></div>})}</div></div></div>}
+    <div className="relative">
+      <div className="flex gap-1">
+        <input
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-label="Cerca documento OPL o SOP"
+          className={input}
+          placeholder="Cerca numero o titolo"
+          value={query}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onChange={event => { setQuery(event.target.value); setOpen(true) }}
+          onKeyDown={event => {
+            if (event.key === 'Enter' && results.length) { event.preventDefault(); choose(results[0]) }
+            if (event.key === 'Escape') setOpen(false)
+          }}
+        />
+        <button type="button" onClick={onCreate} className="shrink-0 rounded border border-primary px-2 text-xs font-semibold text-primary hover:bg-gray-50">+ Nuova</button>
+      </div>
+      {open && (
+        <ul id={listId} role="listbox" className="absolute z-30 mt-1 max-h-72 w-full min-w-[280px] overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+          {results.length === 0 ? (
+            <li className="px-3 py-2 text-sm text-gray-500">Nessun documento trovato</li>
+          ) : results.map(doc => (
+            <li key={doc._id} role="option" aria-selected="false">
+              <button
+                type="button"
+                onMouseDown={event => event.preventDefault()}
+                onClick={() => choose(doc)}
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+              >
+                <span className="font-semibold">{doc.tipo} {shortNumber(doc.numero)}</span> - {doc.titolo}
+                <span className="block text-xs text-gray-500">
+{priority.has(doc._id) ? 'Già usato in questa fase' : [doc.reparto, doc.linea].filter(Boolean).join(' / ') || 'Senza reparto'}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
 
-function buildForm(data) {
-  const defaultChecks = ['Azioni di miglioramento implementate', 'OPL collegate', 'Standard aggiornato', 'Visual management predisposto', 'Formazione completata', 'Skill target verificata', 'Tabellone Macchina predisposto', 'Control Plan attivo', 'Risultato sostenuto nel periodo definito']
-  return {
-    piano_implementazione: mapItems(data.piano_implementazione, EMPTY_IMPLEMENTATION, 'implementation'),
-    opl_collegate: Array.isArray(data.opl_collegate) ? data.opl_collegate : [],
-    standard_definitivo: data.standard_definitivo || '',
-    modifiche_standard: data.modifiche_standard || '',
-    visual_management: data.visual_management || '',
-    tabellone_macchina: data.tabellone_macchina || '',
-    documenti_standard: Array.isArray(data.documenti_standard) ? data.documenti_standard : [],
-    persone_coinvolte: Array.isArray(data.persone_coinvolte) ? data.persone_coinvolte : [],
-    piano_formazione: data.piano_formazione || '',
-    skill_matrix: mapItems(data.skill_matrix, EMPTY_SKILL, 'skill'),
-    control_plan: mapItems(data.control_plan, EMPTY_CONTROL, 'control'),
-    kpi_finale: valueOrEmpty(data.kpi_finale),
-    periodo_sostenibilita: data.periodo_sostenibilita || '',
-    verifica_sostenibilita: data.verifica_sostenibilita || '',
-    check_chiusura: Array.isArray(data.check_chiusura) && data.check_chiusura.length > 0 ? mapItems(data.check_chiusura, EMPTY_CHECK, 'check') : defaultChecks.map(descrizione => ({ ...EMPTY_CHECK, id: createId('check'), descrizione })),
-  }
-}
-
-function mapImplementationStatus(value) { return value === 'Verificata' ? 'Verificata' : value === 'Implementata' ? 'Completata' : value === 'Approvata' || value === 'Proposta' ? 'In corso' : 'Da avviare' }
-function mapItems(items, template, prefix) { return Array.isArray(items) ? items.map(item => ({ ...template, ...item, id: item.id || createId(prefix) })) : [] }
-function createId(prefix) { return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}` }
-function valueOrEmpty(value) { return value === null || value === undefined ? '' : value }
-function Section({ title, children }) { return <section className="bg-white rounded-xl border p-4"><h3 className="font-bold text-gray-800 mb-4">{title}</h3>{children}</section> }
-function SectionHeader({ text, onAdd, addLabel }) { return <div className="flex justify-between items-center gap-3 mb-4"><p className="text-sm text-gray-500">{text}</p><button type="button" onClick={onAdd} className="px-3 py-2 bg-primary text-white rounded-lg text-sm flex items-center gap-2"><Plus size={15} /> {addLabel}</button></div> }
-function Empty({ text }) { return <div className="border-2 border-dashed rounded-lg p-6 text-center text-sm text-gray-400">{text}</div> }
-function Th({ children }) { return <th className="p-2 text-left">{children}</th> }
-function InputField({ label, value, onChange, type = 'text' }) { return <div><label className="block text-xs font-semibold text-gray-600 uppercase mb-1">{label}</label><input type={type} value={value} onChange={event => onChange(event.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" /></div> }
-function TextAreaField({ label, value, onChange, placeholder = '', required = false }) { return <div><label className="block text-xs font-semibold text-gray-600 uppercase mb-1">{label}{required && <span className="text-red-500 ml-1">*</span>}</label><textarea rows="4" value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} className="w-full border rounded-lg px-3 py-2 text-sm" /></div> }
-function TableInput({ value, onChange, type = 'text' }) { return <td className="p-2"><input type={type} value={value} onChange={event => onChange(event.target.value)} className="w-full border rounded px-2 py-1.5 text-sm" /></td> }
-function TableSelect({ value, onChange, options }) { return <td className="p-2"><select value={value} onChange={event => onChange(event.target.value)} className="w-full border rounded px-2 py-1.5 text-sm">{options.map(option => <option key={option} value={option}>{option}</option>)}</select></td> }
-function LevelCell({ value, onChange }) { return <td className="p-2"><select value={value} onChange={event => onChange(event.target.value)} className="w-full border rounded px-2 py-1.5 text-sm"><option value="">—</option>{LEVELS.map(level => <option key={level.value} value={level.value}>{level.label}</option>)}</select></td> }
-function DeleteCell({ onClick }) { return <td className="p-2"><button type="button" onClick={onClick} className="text-red-600 p-1"><Trash2 size={15} /></button></td> }
-function SummaryCard({ label, value }) { return <div className="bg-gray-50 rounded-lg p-3"><div className="text-xs uppercase text-gray-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div> }
