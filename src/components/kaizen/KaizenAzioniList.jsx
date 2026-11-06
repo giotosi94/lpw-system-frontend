@@ -47,6 +47,7 @@ export default function KaizenAzioniList({
         const res = await api.get(`/kaizens/${kaizenId}/action-plans`)
         setAzioni(res.data || [])
       }
+    if (isMajor) window.dispatchEvent(new CustomEvent('lpw-major-activities-changed', { detail: { parentId: parent.parent_id } }))
     } catch (err) {
       console.error('Errore caricamento AP:', err)
     } finally {
@@ -242,10 +243,18 @@ export default function KaizenAzioniList({
           prefilledKaizen={isMajor ? null : { kaizen_id: kaizenId, kaizen_numero: kaizenNumero }}
           prefilledParent={isMajor && !editingAP ? { ...parent, gant_step_id: defaultStepId || null } : null}
           onClose={() => { setShowForm(false); setEditingAP(null) }}
-          onSaved={() => {
+          onSaved={async savedPlan => {
+            const mustLinkPhase = isMajor && phaseLocked && !editingAP && savedPlan?._id && savedPlan.gant_step_id !== defaultStepId
             setShowForm(false)
             setEditingAP(null)
-            loadAzioni()
+            if (mustLinkPhase) {
+              try {
+                await api.put(`/action-plans/${savedPlan._id}`, { gant_step_id: defaultStepId })
+              } catch {
+                alert('Action Plan creato, ma collegamento alla fase non riuscito. Non ricrearlo: verifica la fase assegnata nell’Action Plan.')
+              }
+            }
+            await loadAzioni()
             onUpdate?.()
           }}
         />
