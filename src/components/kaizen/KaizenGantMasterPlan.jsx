@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../../services/api'
 import { Plus, Trash2 } from 'lucide-react'
+import { MilestoneMarkers, ActivityInspector, withDeadlines, columnForDate } from './MajorPlanMilestones'
 
 const ROW_TYPES = [
   { id: 'planned', label: 'Pianificato', color: '#2563eb' },
@@ -138,7 +139,7 @@ function groupColsByYear(columns) {
 /**
  * KaizenGantMasterPlan — Gant configurabile (settimana/mese/trimestre)
  */
-export default function KaizenGantMasterPlan({ kaizen, onSaved, value, onChange }) {
+export default function KaizenGantMasterPlan({ kaizen, onSaved, value, onChange, activities = null, onOpenActivityPhase, onRefreshActivities, activitiesLoading = false, activitiesError = '' }) {
   const isControlled = typeof onChange === 'function'
   const savedGant = isControlled ? (value || null) : (kaizen?.gant_master_plan || null)
   const [data, setData] = useState(savedGant || getDefaultGantData())
@@ -148,6 +149,10 @@ export default function KaizenGantMasterPlan({ kaizen, onSaved, value, onChange 
   const [lastSaved, setLastSaved] = useState(null)
   const [dragState, setDragState] = useState(null)
   const [zoom, setZoom] = useState('normal')
+  const [selectedActivityIds, setSelectedActivityIds] = useState(null)
+  const [saveError, setSaveError] = useState('')
+  const saveInFlight = useRef(false)
+  const saveQueued = useRef(false)
   const dataRef = useRef(data)
 
   useEffect(() => { dataRef.current = data }, [data])
@@ -167,30 +172,30 @@ export default function KaizenGantMasterPlan({ kaizen, onSaved, value, onChange 
   }, [dragState])
 
   async function doSave(silent = false) {
-    // Modalità controlled (widget): salva via onChange, no chiamata API
-    if (isControlled) {
-      onChange(dataRef.current)
-      if (!silent) {
-        setLastSaved(new Date())
-        setHasUnsavedChanges(false)
-      }
-      return
-    }
+    if (saveInFlight.current) { saveQueued.current = true; return }
+    saveInFlight.current = true
+    const snapshot = dataRef.current
     if (!silent) setSaving(true)
+    setSaveError('')
     try {
-      await api.put(`/kaizens/${kaizen._id}`, {
-        gant_master_plan: dataRef.current,
-      })
+      if (isControlled) {
+        const result = await onChange(snapshot)
+        if (result === false) throw new Error('Salvataggio rifiutato')
+      } else {
+        await api.put(`/kaizens/${kaizen._id}`, { gant_master_plan: snapshot })
+        onSaved?.()
+      }
       if (!silent) {
         setLastSaved(new Date())
-        setHasUnsavedChanges(false)
+        setHasUnsavedChanges(dataRef.current !== snapshot)
       }
-      onSaved?.()
     } catch (err) {
-      console.error(err)
-      if (!silent) alert('Errore salvataggio: ' + (err.response?.data?.detail || err.message))
+      setHasUnsavedChanges(true)
+      setSaveError(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : err.message || 'Salvataggio non riuscito')
     } finally {
+      saveInFlight.current = false
       if (!silent) setSaving(false)
+      if (saveQueued.current) { saveQueued.current = false; doSave(false) }
     }
   }
 
@@ -716,6 +721,14 @@ function getDurationLabel(interval) {
   const zoomFactor = ZOOM_LEVELS.find(level => level.id === zoom)?.factor || 1
   const CELL_WIDTH = Math.round(baseCellWidth * zoomFactor)
   const today = new Date().toISOString().slice(0, 10)
+  const milestoneItems = withDeadlines(activities || [], data.activity_deadlines || {})
+  const rowIds = new Set(data.steps.map(step => step.id))
+  const withoutDate = milestoneItems.filter(item => !item.due)
+  const withoutPhase = milestoneItems.filter(item => !item.stepId || !rowIds.has(item.stepId))
+  const outside = milestoneItems.filter(item => item.due && columnForDate(item.due, columns, granularity) < 0)
+  const updateDeadline = (id, date) => {
+    setData(current => ({ ...current, activity_deadlines: { ...(current.activity_deadlines || {}), [id]: date } }))
+  }
 
   return (
     <div className="w-full max-w-full min-w-0 overflow-hidden space-y-4">
@@ -847,6 +860,21 @@ function getDurationLabel(interval) {
           <span className="ml-auto text-gray-500 italic">Trascina sul vuoto per creare, al centro per spostare, sui bordi per ridimensionare</span>
         </div>
       </div>
+
+      {saveError && <p role="alert" className="text-sm text-red-700">Master Plan non salvato: {saveError}. Premi Salva ora per riprovare.</p>}
+      {activities !== null && <div className="bg-white border rounded-lg p-3 text-xs space-y-2">
+        <div className="flex flex-wrap gap-3 items-center">
+          <span>Rombi: blu pianificato · verde completato · rosso scaduto · grigio respinto/annullato.</span>
+          <button type="button" className="border rounded px-2 py-1" onClick={() => setSelectedActivityIds(milestoneItems.map(item => item.id))}>Attivita e scadenze ({milestoneItems.length})</button>
+          <button type="button" disabled={activitiesLoading} className="border rounded px-2 py-1 disabled:opacity-50" onClick={onRefreshActivities}>{activitiesLoading ? 'Caricamento...' : 'Aggiorna attivita'}</button>
+          {withoutDate.length > 0 && <button type="button" className="text-amber-800 underline" onClick={() => setSelectedActivityIds(withoutDate.map(item => item.id))}>Senza scadenza ({withoutDate.length})</button>}
+          {outside.length > 0 && <button type="button" className="text-amber-800 underline" onClick={() => setSelectedActivityIds(outside.map(item => item.id))}>Fuori intervallo ({outside.length})</button>}
+          {withoutPhase.length > 0 && <button type="button" className="text-amber-800 underline" onClick={() => setSelectedActivityIds(withoutPhase.map(item => item.id))}>Senza fase corrispondente ({withoutPhase.length})</button>}
+        </div>
+        <p>Ogni rombo indica la fine programmata nel periodo visualizzato. Il numero raggruppa piu attivita nella stessa colonna. Le date LPW non vengono inviate a CARL.</p>
+        {activitiesError && <p role="alert" className="text-red-700">{activitiesError}</p>}
+      </div>}
+      {selectedActivityIds !== null && <ActivityInspector items={milestoneItems.filter(item => selectedActivityIds.includes(item.id))} onClose={() => setSelectedActivityIds(null)} onOpenPhase={onOpenActivityPhase} onDeadlineChange={updateDeadline} />}
 
       {/* Griglia Gant */}
       <div className="w-full max-w-full min-w-0 bg-white rounded-xl shadow overflow-hidden">
@@ -986,7 +1014,8 @@ function getDurationLabel(interval) {
                 </button>
               </div>
 
-              <div className="flex flex-col select-none">
+              <div className="relative flex flex-col select-none">
+                {activities !== null && <MilestoneMarkers items={milestoneItems} stepId={step.id} columns={columns} granularity={granularity} cellWidth={CELL_WIDTH} today={today} onSelect={setSelectedActivityIds} />}
                 {ROW_TYPES.map(row => {
                   const interval = getDisplayInterval(step, row.id)
                   const durationLabel = getDurationLabel(interval)
