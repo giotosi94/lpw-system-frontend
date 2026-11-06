@@ -349,14 +349,11 @@ function calculate(form, staleStain) {
   }
   const field = (label, key, type = 'text') => <label className="block text-sm">{label}<input className={`${input} mt-1`} type={type} value={form[key]} onChange={event => change({ [key]: event.target.value })} /></label>
   const round = value => Math.round(value * 100) / 100
+  const targetReduction = analysis.baseline > 0 && valid(form.target) ? (analysis.baseline - number(form.target)) / analysis.baseline * 100 : null
   const setReduction = value => {
-    if (value === '' || !(analysis.baseline > 0)) { change({ riduzione_pct: value, target: value === '' ? '' : form.target }); return }
-    const pct = Math.min(100, Math.max(0, number(value) ?? 0))
-    change({ riduzione_pct: value, target: String(round(analysis.baseline * (1 - pct / 100))) })
-  }
-  const setTarget = value => {
-    if (value === '' || !(analysis.baseline > 0) || !valid(value)) { change({ target: value, riduzione_pct: '' }); return }
-    change({ target: value, riduzione_pct: String(round((analysis.baseline - number(value)) / analysis.baseline * 100)) })
+    if (value === '' || !(analysis.baseline > 0) || !valid(value)) { change({ riduzione_pct: '', target: '' }); return }
+    const pct = Math.min(100, Math.max(0, number(value)))
+    change({ riduzione_pct: String(pct), target: String(Number((analysis.baseline * (1 - pct / 100)).toFixed(6))) })
   }
   const reductionAmount = analysis.baseline > 0 && valid(form.target) ? analysis.baseline - number(form.target) : null
   const reductionKg = form.baseline_fonte === 'stain' && form.stain_kpi === 'percentuale' && reductionAmount !== null && analysis.production ? reductionAmount / 100 * analysis.production : null
@@ -416,14 +413,23 @@ function calculate(form, staleStain) {
             : <label className="text-sm">KPI<output className={`${input} mt-1 block`}>{baselineUnit === '%' ? 'Percentuale per rilevazione' : 'Quantità di scarto / rework'}</output></label>}
           <label className="text-sm">Perimetro<select className={`${input} mt-1`} value={form.perimetro_kpi} onChange={event => change({ perimetro_kpi: event.target.value })}><option value="totale">Tutte le categorie</option><option value="priorita">Categorie prioritarie</option></select></label>
           <label className="text-sm">Baseline calcolata<output className={`${input} mt-1 block bg-gray-50`}>{fmt(analysis.baseline)} {baselineUnit}</output></label>
-          <label className="text-sm">Riduzione %<input className={`${input} mt-1`} type="number" min="0" max="100" step="any" value={form.riduzione_pct} disabled={!(analysis.baseline > 0)} onChange={event => setReduction(event.target.value)} /></label>
-          <label className="text-sm">Target ({baselineUnit})<input className={`${input} mt-1`} type="number" min="0" step="any" value={form.target} onChange={event => setTarget(event.target.value)} /></label>
-          <label className="text-sm">Riduzione ({baselineUnit === '%' ? 'punti %' : baselineUnit})<output className={`${input} mt-1 block bg-gray-50`}>{reductionAmount === null ? '—' : fmt(reductionAmount)}</output></label>
-          {reductionKg !== null && <label className="text-sm">Riduzione kg nel periodo<output className={`${input} mt-1 block bg-gray-50`}>{fmt(reductionKg)}</output></label>}
-          {field('Scadenza', 'scadenza', 'date')}
+        </div>
+        <div className="mt-4 rounded-xl border border-primary/20 bg-white p-4 space-y-3">
+          <label className="block text-sm font-bold text-primary">Di quanto vuoi ridurre la perdita selezionata? (%)
+            <input className={`${input} mt-2 max-w-xs text-lg font-bold border-primary`} type="number" min="0" max="100" step="any" value={targetReduction === null ? '' : Number(targetReduction.toFixed(2))} disabled={!(analysis.baseline > 0)} onChange={event => setReduction(event.target.value)} />
+          </label>
+          <p className="text-sm text-gray-600">Inserisci una riduzione rispetto alla situazione attuale, per esempio 30 per ridurre del 30%. Il target finale viene calcolato automaticamente sul perimetro scelto sopra.</p>
+          <div className="grid md:grid-cols-3 gap-3">
+            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-600">Situazione attuale (baseline)</p><strong className="text-lg">{fmt(analysis.baseline)} {baselineUnit}</strong></div>
+            <div className="rounded-lg bg-emerald-50 p-3"><p className="text-xs text-gray-600">Obiettivo da raggiungere</p><strong className="text-lg">{valid(form.target) ? `${fmt(number(form.target))} ${baselineUnit}` : 'Inserisci la riduzione'}</strong></div>
+            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-600">{baselineUnit === '%' ? 'Differenza in punti percentuali' : `Perdita da evitare (${baselineUnit})`}</p><strong className="text-lg">{reductionAmount === null ? '—' : fmt(reductionAmount)}</strong></div>
+          </div>
+          {targetReduction !== null && <p className="text-sm font-semibold">Passare da {fmt(analysis.baseline)} {baselineUnit} a {fmt(number(form.target))} {baselineUnit}: riduzione del {fmt(targetReduction)}% rispetto alla baseline.</p>}
+          {reductionKg !== null && <p className="text-sm">Equivalente a {fmt(reductionKg)} kg da evitare, ipotizzando la stessa produzione del periodo baseline. Non e un saving gia realizzato.</p>}
+
         </div>
         {baselineUnit === '%' && form.baseline_fonte === 'manuale' && analysis.production === null && <p className="text-sm text-amber-800 mt-2">Baseline complessiva non calcolata: mancano i denominatori di produzione.</p>}
-        {reductionAmount !== null && reductionAmount < 0 && <p className="text-sm text-amber-800 mt-2">Il target è superiore alla baseline.</p>}
+        {reductionAmount !== null && reductionAmount < 0 && <p role="alert" className="text-sm text-amber-800 mt-2">Il target salvato e superiore alla baseline attuale. Inserisci una riduzione tra 0 e 100 per ridefinire l’obiettivo.</p>}
       </section>
       <div className="flex flex-wrap justify-end items-center gap-3 border-t pt-4"><span role="status" className="text-sm">{status}</span><button type="button" className="bg-primary text-white px-4 py-2 rounded disabled:opacity-50" disabled={saving} onClick={save}>{saving ? 'Salvataggio...' : 'Salva fase'}</button></div>
     </div>
