@@ -7,6 +7,7 @@ import MajorRouteNavigator from '../components/major/MajorRouteNavigator'
 import MajorProjectData from '../components/major/MajorProjectData'
 import MajorStepContainer from '../components/major/MajorStepContainer'
 import KaizenGantMasterPlan from '../components/kaizen/KaizenGantMasterPlan'
+import { useMajorPlanActivities } from '../components/kaizen/MajorPlanMilestones'
 
 export default function MajorKaizenDetailPage() {
   const { id } = useParams()
@@ -20,6 +21,7 @@ export default function MajorKaizenDetailPage() {
     try { return localStorage.getItem('lpw_major_gantt_open') === '1' } catch { return false }
   })
 
+  const activityData = useMajorPlanActivities(major, ganttOpen, activeKey)
   const toggleGantt = () => setGanttOpen(current => {
     const next = !current
     try { localStorage.setItem('lpw_major_gantt_open', next ? '1' : '0') } catch { return next }
@@ -47,7 +49,7 @@ export default function MajorKaizenDetailPage() {
       const res = await api.put(`/major-kaizen/${id}`, { gant_master_plan: gantt })
       setMajor(current => ({ ...current, gant_master_plan: res.data.gant_master_plan }))
     } catch (err) {
-      alert('Errore salvataggio Gantt: ' + (err.response?.data?.detail || err.message))
+      throw err
     }
   }
 
@@ -124,7 +126,9 @@ export default function MajorKaizenDetailPage() {
         </button>
         {ganttOpen && (
           <div className="border-t border-gray-200 p-2">
-            <KaizenGantMasterPlan key={major._id} value={ganttValue} onChange={saveGantt} />
+            <KaizenGantMasterPlan key={major._id} value={ganttValue} onChange={saveGantt}
+              activities={activityData.items} activitiesLoading={activityData.loading} activitiesError={activityData.error}
+              onRefreshActivities={activityData.refresh} onOpenActivityPhase={setActiveKey} />
           </div>
         )}
       </section>
