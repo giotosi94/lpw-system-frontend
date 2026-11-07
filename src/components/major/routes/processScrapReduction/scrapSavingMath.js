@@ -76,16 +76,36 @@ export function aggregateSnapshot(snapshot, scope) {
   return { production, losses }
 }
 
+export function incomparableProducts(before, after, scope) {
+  const b = aggregateSnapshot(before, scope)
+  const a = aggregateSnapshot(after, scope)
+  const products = new Map()
+  const add = (side, losses) => losses.forEach((kg, key) => {
+    const [product] = JSON.parse(key)
+    const row = products.get(product) || { product, beforeLoss: 0, afterLoss: 0 }
+    row[side] += kg
+    products.set(product, row)
+  })
+  add('beforeLoss', b.losses)
+  add('afterLoss', a.losses)
+  return [...products.values()]
+    .filter(row => !(b.production.get(row.product) > 0) || !(a.production.get(row.product) > 0))
+    .map(row => ({ ...row, missing: !(b.production.get(row.product) > 0) && !(a.production.get(row.product) > 0) ? 'entrambi i periodi' : !(b.production.get(row.product) > 0) ? 'periodo prima' : 'periodo dopo' }))
+    .sort((x, y) => x.product.localeCompare(y.product))
+}
+
 export function compareSnapshots(before, after, scope, previous = []) {
   const b = aggregateSnapshot(before, scope)
   const a = aggregateSnapshot(after, scope)
   const keys = new Set([...b.losses.keys(), ...a.losses.keys()])
-  const rows = [...keys].sort().map(key => {
+  const rows = [...keys].sort().filter(key => {
+    const [product] = JSON.parse(key)
+    return b.production.get(product) > 0 && a.production.get(product) > 0
+  }).map(key => {
     const [product, type] = JSON.parse(key)
-    if (!(b.production.get(product) > 0) || !(a.production.get(product) > 0)) throw new Error(`Prodotto non confrontabile nei due periodi: ${product}. Restringi il perimetro in Fase 1 o usa un confronto manuale documentato.`)
     const old = previous.find(row => row.product === product && row.type === type)
     return { id: key, product, type, beforeProduction: b.production.get(product), beforeLoss: b.losses.get(key) || 0, afterProduction: a.production.get(product), afterLoss: a.losses.get(key) || 0, driver: old?.driver ?? '', driverYear: old?.driverYear || '', driverRef: old?.driverRef || '' }
   })
-  if (!rows.length) throw new Error('Nessuna perdita classificata confrontabile nel perimetro.')
+  if (!rows.length) throw new Error('Nessun prodotto con produzione in entrambi i periodi e perdite nel perimetro selezionato.')
   return rows
 }
