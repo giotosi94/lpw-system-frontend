@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import api from '../../../../services/api'
 import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ReferenceLine } from 'recharts'
-import { baselineScope, aggregateSnapshot, compareSnapshots, calculateSaving } from './scrapSavingMath'
+import { baselineScope, aggregateSnapshot, compareSnapshots, incomparableProducts, calculateSaving } from './scrapSavingMath'
 
 const field = 'w-full border border-gray-300 rounded px-2 py-2 text-sm bg-white'
 const button = 'border rounded px-3 py-2 text-sm disabled:opacity-50'
 const section = 'border border-gray-200 rounded-lg bg-white p-4 space-y-3'
 const fmt = value => value == null || !Number.isFinite(value) ? 'Non disponibile' : new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 }).format(value)
-const empty = () => ({ mode: 'stain', trendRestoration: '', trendImprovement: '', trendData: null, scope: null, before: null, after: null, afterFrom: '', afterTo: '', manualBeforeFrom: '', manualBeforeTo: '', rows: [], costs: '', costNote: '', annualProduction: '', annualBasis: '', source: '', notes: '', reviewed: false })
+const empty = () => ({ mode: 'stain', trendRestoration: '', trendImprovement: '', trendData: null, excluded: [], scope: null, before: null, after: null, afterFrom: '', afterTo: '', manualBeforeFrom: '', manualBeforeTo: '', rows: [], costs: '', costNote: '', annualProduction: '', annualBasis: '', source: '', notes: '', reviewed: false })
 
 
 function outcome(value, positive, negative, unit) {
@@ -276,9 +276,10 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         api.get('/stain/scarti', { params: { ...params, dal: beforeFrom, al: beforeTo }, timeout: 180000 }),
         api.get('/stain/scarti', { params: { ...params, dal: form.afterFrom, al: form.afterTo }, timeout: 180000 }),
       ])
+      const excluded = incomparableProducts(beforeResponse.data, afterResponse.data, form.scope)
       const rows = compareSnapshots(beforeResponse.data, afterResponse.data, form.scope, form.rows)
-      change({ before: beforeResponse.data, after: afterResponse.data, rows })
-      setPeriodStatus(`Entrambi i periodi caricati: ${rows.length} righe. Ora applica i driver economici.`)
+      change({ before: beforeResponse.data, after: afterResponse.data, rows, excluded })
+      setPeriodStatus(`Entrambi i periodi caricati: ${rows.length} righe${excluded.length ? `, ${excluded.length} prodotti esclusi` : ''}. Ora applica i driver economici.`)
     } catch (error) { setPeriodStatus(error.response?.data?.detail || error.message || 'Lettura STAIN non riuscita') }
     finally { setBusy(false) }
   }
@@ -421,6 +422,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         {form.mode === 'stain' && <button type="button" disabled={busy || !form.scope || Boolean(periodError) || scopeStale} className={button} onClick={load}>{busy ? 'Caricamento...' : 'Carica confronto da STAIN'}</button>}
         {periodError && <p role="alert" className="text-sm text-amber-800">{periodError}</p>}
         {periodStatus && <p role="status" aria-live="polite" className="text-sm">{periodStatus}</p>}
+        {form.rows.length > 0 && form.excluded?.length > 0 && <div role="alert" className="text-sm bg-amber-50 border border-amber-300 text-amber-900 p-3 rounded space-y-1"><p className="font-semibold">Prodotti esclusi dal saving: produzione assente nel periodo indicato</p>{form.excluded.map(item => <p key={item.product}>{item.product}: assente in {item.missing} · perdite prima {fmt(item.beforeLoss)} kg, dopo {fmt(item.afterLoss)} kg</p>)}<p>Le loro perdite non sono valorizzate nel saving.</p></div>}
       </section>
       <ScrapInterventionTrend form={form} change={change} from={beforeFrom} to={form.afterTo} />
       <section className={section}>
