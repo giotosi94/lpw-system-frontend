@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import api from '../../../../services/api'
+import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ReferenceLine } from 'recharts'
 import { baselineScope, aggregateSnapshot, compareSnapshots, calculateSaving } from './scrapSavingMath'
 
 const field = 'w-full border border-gray-300 rounded px-2 py-2 text-sm bg-white'
 const button = 'border rounded px-3 py-2 text-sm disabled:opacity-50'
 const section = 'border border-gray-200 rounded-lg bg-white p-4 space-y-3'
 const fmt = value => value == null || !Number.isFinite(value) ? 'Non disponibile' : new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 }).format(value)
-const empty = () => ({ mode: 'stain', scope: null, before: null, after: null, afterFrom: '', afterTo: '', manualBeforeFrom: '', manualBeforeTo: '', rows: [], costs: '', costNote: '', annualProduction: '', annualBasis: '', source: '', notes: '', reviewed: false })
+const empty = () => ({ mode: 'stain', trendRestoration: '', trendImprovement: '', trendData: null, scope: null, before: null, after: null, afterFrom: '', afterTo: '', manualBeforeFrom: '', manualBeforeTo: '', rows: [], costs: '', costNote: '', annualProduction: '', annualBasis: '', source: '', notes: '', reviewed: false })
 
 
 function outcome(value, positive, negative, unit) {
@@ -28,6 +29,150 @@ function dayAfter(value) {
 function todayDate() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
+function trendKey(scope, from, to) {
+  return JSON.stringify({ line: scope?.line, products: scope?.products, types: scope?.types, priorities: scope?.priorities, from, to })
+}
+
+function buildScrapTrend(snapshot, scope) {
+  aggregateSnapshot(snapshot, scope)
+  const selected = new Set(scope.products || [])
+  const days = new Map()
+  const get = day => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) throw new Error('Data giornaliera STAIN mancante o non valida.')
+    if (!days.has(day)) days.set(day, { date: day, timestamp: Date.parse(`${day}T00:00:00Z`), production: 0, loss: 0 })
+    return days.get(day)
+  }
+  snapshot.produzione.forEach(row => {
+    if (!selected.size || selected.has(row.prodotto)) get(row.data).production += Number(row.kg)
+  })
+  snapshot.dettaglio.forEach(row => {
+    if (selected.size && !selected.has(row.prodotto)) return
+    if (!scope.types.includes(row.tipo)) return
+    if (scope.priorities.length && !scope.priorities.includes(`${row.codice} - ${row.causale}`)) return
+    get(row.data).loss += Number(row.kg)
+  })
+  const start = Date.parse(`${snapshot.dal}T00:00:00Z`)
+  const end = Date.parse(`${snapshot.al}T00:00:00Z`)
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start || end - start > 366 * 86400000) throw new Error('Periodo trend non valido: massimo 367 giorni inclusi.')
+  const points = []
+  for (let timestamp = start; timestamp <= end; timestamp += 86400000) {
+    const date = new Date(timestamp).toISOString().slice(0, 10)
+    const point = days.get(date) || { date, timestamp, production: 0, loss: 0 }
+    const valid = point.production > 0 && point.loss >= 0 && point.loss <= point.production
+    points.push({ ...point, valid, value: valid ? point.loss / point.production * 100 : null })
+  }
+  return points
+}
+
+function trendSegments(points, restoration, improvement) {
+  if (!restoration || !improvement || improvement <= restoration) return []
+  const ranges = [
+    { label: 'Prima del ripristino', includes: date => date < restoration },
+    { label: 'Dopo il ripristino', includes: date => date >= restoration && date < improvement },
+    { label: 'Dopo il miglioramento', includes: date => date >= improvement },
+  ]
+  return ranges.map(range => {
+    const selected = points.filter(point => range.includes(point.date))
+    const valid = selected.filter(point => point.valid)
+    const incomplete = selected.some(point => !point.valid && (point.production !== 0 || point.loss !== 0))
+    const production = valid.reduce((sum, point) => sum + point.production, 0)
+    const loss = valid.reduce((sum, point) => sum + point.loss, 0)
+    return { label: range.label, count: valid.length, production, loss, value: !incomplete && production > 0 ? loss / production * 100 : null, incomplete }
+  })
+}
+
+function ScrapInterventionTrend({ form, change, from, to }) {
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState('')
+  const requestRef = useRef(0)
+  const scope = form.scope
+  const key = form.mode + trendKey(scope, from, to)
+  const keyRef = useRef(key)
+  keyRef.current = key
+  useEffect(() => () => { requestRef.current += 1 }, [])
+  const start = Date.parse(`${from}T00:00:00Z`)
+  const end = Date.parse(`${to}T00:00:00Z`)
+  const periodValid = Boolean(scope && Number.isFinite(start) && Number.isFinite(end) && end >= start && end - start <= 366 * 86400000 && to <= todayDate())
+  const restoration = form.trendRestoration || ''
+  const improvement = form.trendImprovement || ''
+  const markerError = restoration && improvement && improvement <= restoration
+    ? 'Il miglioramento deve essere successivo al ripristino per distinguere i tre periodi.'
+    : [restoration, improvement].some(date => date && (date < from || date > to))
+      ? 'Le date degli interventi devono essere comprese nel periodo del trend.' : ''
+  let points = []
+  let dataError = ''
+  if (form.trendData?.key === key) {
+    try { points = buildScrapTrend(form.trendData.snapshot, scope) }
+    catch (error) { dataError = error.message }
+  }
+  const segments = markerError ? [] : trendSegments(points, restoration, improvement)
+  const baselineRate = segments[0]?.value
+  const invalid = points.filter(point => !point.valid && (point.loss !== 0 || point.production !== 0)).length
+  const loadTrend = async () => {
+    if (!periodValid || loading) return
+    const request = ++requestRef.current
+    setLoading(true)
+    setMessage('Caricamento del periodo continuo, inclusi i giorni tra prima e dopo...')
+    try {
+      const response = await api.get('/stain/scarti', { params: { linea: scope.line, tipi: scope.types.join(','), dal: from, al: to }, timeout: 180000 })
+      buildScrapTrend(response.data, scope)
+      if (requestRef.current !== request) return
+      if (keyRef.current !== key) { setMessage('Perimetro modificato durante il caricamento: ricarica il trend.'); return }
+      change({ trendData: { key, snapshot: response.data } })
+      setMessage('Trend caricato. Le date degli interventi e lo snapshot vengono salvati automaticamente.')
+    } catch (error) {
+      if (requestRef.current === request) setMessage(typeof error.response?.data?.detail === 'string' ? error.response.data.detail : error.message || 'Caricamento trend non riuscito.')
+    } finally {
+      if (requestRef.current === request) setLoading(false)
+    }
+  }
+  const labelDate = value => new Date(value).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', timeZone: 'UTC' })
+  return (
+    <section className={section}>
+      <h3 className="font-bold text-primary">Trend e verifica degli interventi</h3>
+      <p className="text-sm text-gray-600">Perdita percentuale giornaliera sulla produzione, con gli stessi prodotti, tipi e causali del confronto. Il periodo continuo va dall'inizio del prima alla fine del dopo, inclusi i giorni intermedi.</p>
+      {form.mode !== 'stain' ? <p className="text-sm text-amber-800">Il confronto manuale contiene solo totali: non viene generato un trend senza dati giornalieri.</p> : <>
+        <p className="text-sm">Periodo: {from || 'Da definire'} / {to || 'Da definire'}</p>
+        <div className="grid md:grid-cols-2 gap-3">
+          <label className="block text-sm">Data ripristino<input type="date" className={field} min={from || undefined} max={to || todayDate()} value={restoration} onChange={event => change({ trendRestoration: event.target.value })} /></label>
+          <label className="block text-sm">Data miglioramento<input type="date" className={field} min={restoration ? dayAfter(restoration) : from || undefined} max={to || todayDate()} value={improvement} onChange={event => change({ trendImprovement: event.target.value })} /></label>
+        </div>
+        <button type="button" className={button} disabled={loading || !periodValid} onClick={loadTrend}>{loading ? 'Caricamento trend...' : 'Carica / aggiorna trend da STAIN'}</button>
+        {!periodValid && <p className="text-sm text-amber-800">Importa il perimetro e scegli un periodo storico continuo di massimo 367 giorni.</p>}
+        {markerError && <p role="alert" className="text-sm text-amber-800">{markerError}</p>}
+        {message && <p role="status" aria-live="polite" className="text-sm">{message}</p>}
+        {dataError && <p role="alert" className="text-sm text-red-700">{dataError}</p>}
+        {form.trendData && form.trendData.key !== key && <p className="text-sm text-amber-800">Date o filtri modificati: aggiorna il trend. Il precedente non viene mostrato.</p>}
+        {points.length > 0 && <>
+          <div className="h-80 w-full" role="img" aria-label="Trend giornaliero della percentuale di perdita con date di ripristino e miglioramento">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={points} margin={{ top: 40, right: 30, bottom: 10, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="timestamp" type="number" scale="time" domain={[start, end]} tickFormatter={labelDate} />
+                <YAxis unit="%" width={65} />
+                <Tooltip labelFormatter={value => new Date(value).toLocaleDateString('it-IT', { timeZone: 'UTC' })} formatter={value => [`${fmt(value)}%`, 'Perdita sulla produzione']} />
+                <Legend />
+                <Line name="Perdita selezionata (%)" type="linear" dataKey="value" stroke="#85583f" strokeWidth={2} dot={{ r: 2 }} connectNulls={false} isAnimationActive={false} />
+                {!markerError && restoration && <ReferenceLine x={Date.parse(`${restoration}T00:00:00Z`)} stroke="#2563eb" strokeWidth={2} strokeDasharray="5 3" label={{ value: 'Ripristino', position: 'insideTopLeft', fill: '#2563eb' }} />}
+                {!markerError && improvement && <ReferenceLine x={Date.parse(`${improvement}T00:00:00Z`)} stroke="#15803d" strokeWidth={2} strokeDasharray="5 3" label={{ value: 'Miglioramento', position: 'insideTopRight', fill: '#15803d' }} />}
+                {baselineRate != null && <ReferenceLine y={baselineRate} stroke="#6b7280" strokeDasharray="4 4" label={{ value: `Prima: ${fmt(baselineRate)}%`, position: 'insideTopRight' }} />}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          {!points.some(point => point.valid) && <p className="text-sm text-amber-800">Nessun giorno con produzione e perdite valide nel perimetro.</p>}
+          {invalid > 0 && <p className="text-sm text-amber-800">{invalid} giorni con perdita senza produzione o quantitativi incoerenti: percentuale non calcolata. I riepiloghi dei periodi interessati non sono disponibili.</p>}
+          {!restoration || !improvement ? <p className="text-sm text-gray-600">Indica entrambe le date per confrontare i tre periodi.</p> : null}
+          {segments.length > 0 && <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr>{['Periodo', 'Giorni produttivi validi', 'Perdita ponderata', 'Riduzione vs prima'].map(label => <th key={label} className="text-left border-b p-2">{label}</th>)}</tr></thead><tbody>{segments.map((segment, index) => {
+            const reduction = index > 0 && baselineRate > 0 && segment.value != null ? (baselineRate - segment.value) / baselineRate * 100 : null
+            return <tr key={segment.label}><td className="p-2">{segment.label}</td><td className="p-2">{segment.count}</td><td className="p-2">{segment.value == null ? 'Non disponibile' : `${fmt(segment.value)}%`}</td><td className="p-2">{index === 0 ? 'Riferimento' : reduction == null ? 'Non disponibile' : `${fmt(reduction)}%`}</td></tr>
+          })}</tbody></table></div>}
+          <p className="text-xs text-gray-600">Percentuale ponderata = kg persi / kg prodotti nel periodo, non media delle percentuali giornaliere. Il giorno dell'intervento appartiene al periodo successivo. Giorni senza produzione: interruzione della linea, non zero. Riduzione negativa: peggioramento. Variazioni del mix prodotto possono influire sul risultato: per una verifica omogenea seleziona lo stesso prodotto. Il trend mostra l'associazione temporale, non dimostra da solo la causalita.</p>
+        </>}
+      </>}
+    </section>
+  )
 }
 
 export default function ScrapSavings({ stepData, allStepsData, onChange, major }) {
@@ -270,6 +415,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         {periodError && <p role="alert" className="text-sm text-amber-800">{periodError}</p>}
         {periodStatus && <p role="status" aria-live="polite" className="text-sm">{periodStatus}</p>}
       </section>
+      <ScrapInterventionTrend form={form} change={change} from={beforeFrom} to={form.afterTo} />
       <section className={section}>
         <h3 className="font-bold text-primary">2 · Driver e beneficio economico</h3>
         <p className="text-xs text-gray-600">Driver €/kg dalla versione annuale dei Settings, oppure inserimento manuale documentato. Scarto e rework distinti: non inserire gli stessi kg due volte. Le produzioni per uno stesso prodotto devono coincidere. Nessuna formula manodopera inclusa.</p>
