@@ -45,7 +45,8 @@ export function baselineScope(data) {
   if (!snapshot || !Array.isArray(snapshot.dettaglio) || !Array.isArray(snapshot.produzione)) throw new Error('Ricarica e salva la baseline STAIN nella Fase 1: servono dettaglio e produzione.')
   const types = [...(data.stain_tipi || snapshot.tipi || [])].sort()
   if (snapshot.linea !== data.stain_linea || snapshot.dal !== data.periodo_da || snapshot.al !== data.periodo_a || JSON.stringify([...(snapshot.tipi || [])].sort()) !== JSON.stringify(types)) throw new Error('Baseline STAIN non aggiornata: ricarica e salva la Fase 1.')
-  const priorities = data.perimetro_kpi === 'priorita' ? (data.priorita_stain || data.priorita || []) : []
+  const selectedPriorities = data.priorita_stain || data.priorita || []
+  const priorities = data.perimetro_kpi === 'priorita' || selectedPriorities.length ? selectedPriorities : []
   if (data.perimetro_kpi === 'priorita' && !priorities.length) throw new Error('Seleziona le categorie prioritarie nella Fase 1.')
   return { line: snapshot.linea, from: snapshot.dal, to: snapshot.al, products: [...(data.stain_prodotti || [])], types, priorities, captured: new Date().toISOString() }
 }
