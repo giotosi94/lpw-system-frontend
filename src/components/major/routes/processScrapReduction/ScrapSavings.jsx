@@ -397,7 +397,6 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
-        <span>Salvataggio automatico attivo, anche per bozze incomplete.</span>
         <span role="status" aria-live="polite" className={saveState === 'error' ? 'text-red-700' : ''}>{saveState === 'saving' ? 'Salvataggio...' : saveState === 'dirty' ? 'Modifiche da salvare...' : saveState === 'error' ? 'Errore: riprova in fondo alla pagina' : 'Salvato'}</span>
       </div>
       <section className={section}>
@@ -450,7 +449,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       </section>
 
       <div className="flex flex-wrap justify-end items-center gap-3">
-        <span role="status" aria-live="polite" className={`text-sm ${saveState === 'error' ? 'text-red-700' : 'text-gray-600'}`}>{status || 'Salvataggio automatico attivo'}</span>
+        <span role="status" aria-live="polite" className={`text-sm ${saveState === 'error' ? 'text-red-700' : 'text-gray-600'}`}>{status || ''}</span>
         {saveState === 'error' && <button type="button" className={button} onClick={() => persistRef.current?.()}>Riprova salvataggio</button>}
       </div>
     </div>
