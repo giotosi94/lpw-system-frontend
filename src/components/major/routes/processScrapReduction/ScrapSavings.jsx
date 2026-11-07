@@ -200,6 +200,12 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   onChangeRef.current = onChange
   baseRef.current = stepData?.dati || {}
   const baseline = Object.values(allStepsData || {}).map(item => item?.dati).find(data => data?.stain_snapshot || data?.categorie_scarto)
+  let phaseScope = null
+  if (form.mode === 'stain' && baseline) {
+    try { phaseScope = baselineScope(baseline) } catch { phaseScope = null }
+  }
+  const scopeSignature = value => value ? JSON.stringify([value.line, [...(value.products || [])].sort(), [...(value.types || [])].sort(), [...(value.priorities || [])].sort()]) : ''
+  const scopeStale = Boolean(form.scope && phaseScope && scopeSignature(form.scope) !== scopeSignature(phaseScope))
   useEffect(() => {
     if (!dirty.current && !savingRef.current) {
       const next = { ...empty(), ...(stepData?.dati?.saving_economico || {}) }
@@ -243,6 +249,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   const periodError = !beforeFrom || !beforeTo || !form.afterFrom || !form.afterTo ? 'Seleziona i quattro estremi dei periodi prima e dopo.' : beforeFrom > beforeTo || form.afterFrom > form.afterTo ? 'Ogni periodo deve avere la fine successiva o uguale all’inizio.' : form.afterFrom <= beforeTo ? 'I periodi si sovrappongono: la fine del prima deve precedere l’inizio del dopo.' : beforeTo > today || form.afterTo > today ? 'Scegli periodi gia trascorsi: non si calcolano dati futuri.' : ''
 
   if (periodError) issues.push(periodError)
+  if (scopeStale) issues.push('Il perimetro della Fase 1 è cambiato dopo l’importazione: importa di nuovo linea, filtri e periodo prima di calcolare il saving.')
 
   if (!beforeFrom || !beforeTo || !form.afterFrom || !form.afterTo || beforeFrom > beforeTo || form.afterFrom > form.afterTo || form.afterFrom <= beforeTo) issues.push('Definisci periodi validi, non sovrapposti: il dopo deve iniziare dopo la baseline.')
   if (form.mode === 'stain' && (!form.before || form.before.dal !== beforeFrom || form.before.al !== beforeTo || !form.after || form.after.dal !== form.afterFrom || form.after.al !== form.afterTo)) issues.push('Carica entrambi i periodi per le date selezionate.')
@@ -405,12 +412,13 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         <label className="block text-sm">Fonte<select className={field} disabled={busy} value={form.mode} onChange={event => { if (!form.rows.length || window.confirm('Cambiare fonte e azzerare il confronto?')) change({ ...empty(), mode: event.target.value }) }}><option value="stain">STAIN</option><option value="manuale">Confronto manuale in kg</option></select></label>
         {form.mode === 'stain' ? <>
           <button type="button" disabled={busy} className={button} onClick={capture}>Importa linea, filtri e periodo dalla Fase 1</button>
+          {scopeStale && <div role="alert" className="text-sm bg-amber-50 border border-amber-300 text-amber-900 p-3 rounded space-y-1"><p className="font-semibold">Il perimetro della Fase 1 è diverso da quello usato qui.</p><p>Fase 1 - Prodotti: {phaseScope.products.join(', ') || 'Tutti'} · Causali: {phaseScope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Qui - Prodotti: {form.scope.products.join(', ') || 'Tutti'} · Causali: {form.scope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Premi Importa linea, filtri e periodo dalla Fase 1. Il confronto dopo verrà azzerato e andrà ricaricato.</p></div>}
           {form.scope && <div className="text-sm bg-gray-50 p-3 rounded"><p>{form.scope.line} · {form.scope.from} / {form.scope.to}</p><p>Prodotti: {form.scope.products.join(', ') || 'Tutti'} · Causali: {form.scope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Confronto indipendente: modificare queste date non cambia la Fase 1.</p></div>}
         </> : <><div className="grid md:grid-cols-2 gap-3">{input('Baseline da', 'manualBeforeFrom', 'date')}{input('Baseline a', 'manualBeforeTo', 'date')}</div>{input('Fonte e perimetro manuale (linea, prodotti, causali, evidenze)', 'source')}</>}
         <p className="text-sm text-gray-600">Confronta due periodi storici: prima degli interventi e dopo gli interventi. Puoi cambiare entrambi qui. Le date vengono controllate al caricamento, senza essere riscritte automaticamente.</p>
         {form.mode === 'stain' && form.scope && <div className="grid md:grid-cols-2 gap-3">{input('Periodo prima da', 'comparisonFrom', 'date')}{input('Periodo prima a', 'comparisonTo', 'date')}</div>}
         <div className="grid md:grid-cols-2 gap-3">{input('Periodo dopo da', 'afterFrom', 'date')}{input('Periodo dopo a', 'afterTo', 'date')}</div>
-        {form.mode === 'stain' && <button type="button" disabled={busy || !form.scope || Boolean(periodError)} className={button} onClick={load}>{busy ? 'Caricamento...' : 'Carica confronto da STAIN'}</button>}
+        {form.mode === 'stain' && <button type="button" disabled={busy || !form.scope || Boolean(periodError) || scopeStale} className={button} onClick={load}>{busy ? 'Caricamento...' : 'Carica confronto da STAIN'}</button>}
         {periodError && <p role="alert" className="text-sm text-amber-800">{periodError}</p>}
         {periodStatus && <p role="status" aria-live="polite" className="text-sm">{periodStatus}</p>}
       </section>
