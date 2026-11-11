@@ -12,23 +12,17 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem('token')
     if (savedUser && token) {
       setUser(JSON.parse(savedUser))
-      // Imposta il token come default per tutte le chiamate API
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`
     }
     setLoading(false)
   }, [])
 
-  const login = async (email, password) => {
-    const res = await api.post('/auth/login', { email, password })
+  const login = async (upn, password) => {
+    const res = await api.post('/auth/login', { upn, password })
     const { access_token, user: userData } = res.data
-
-    // Salva token e user
     localStorage.setItem('token', access_token)
     localStorage.setItem('user', JSON.stringify(userData))
-
-    // Imposta il token nelle headers
     api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
-
     setUser(userData)
     return res.data
   }
