@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import api from '../services/api'
 import {
-  Users, Plus, Edit2, Trash2, Search, X, Save, Eye, EyeOff,
-  Shield, Briefcase, Factory, MapPin, Mail, Phone, Lock, RefreshCw
+  Users, Plus, Edit2, Trash2, Search, X, Save,
+  Briefcase, Factory, MapPin, Mail, RefreshCw
 } from 'lucide-react'
 
 const RUOLI = [
@@ -58,25 +58,6 @@ export default function UsersPage() {
     }
   }
 
-  async function handleResetPassword(user) {
-    const newPassword = prompt(
-      `Reset password per "${user.full_name}"\n\nInserisci la nuova password (minimo 4 caratteri):`,
-      'Demo2026!'
-    )
-    if (!newPassword || newPassword.trim().length < 4) {
-      if (newPassword !== null) alert('Password troppo corta (min 4 caratteri)')
-      return
-    }
-    try {
-      await api.post(`/users/${user.id}/reset-password`, {
-        new_password: newPassword.trim(),
-      })
-      alert(`Password resettata con successo per ${user.full_name}.\n\nNuova password: ${newPassword.trim()}\n\nComunica la password all'utente.`)
-    } catch (err) {
-      alert('Errore reset password: ' + (err.response?.data?.detail || err.message))
-    }
-  }
-
   async function handleReactivate(user) {
     try {
       await api.put(`/users/${user.id}`, { is_active: true })
@@ -95,6 +76,7 @@ export default function UsersPage() {
         u.full_name?.toLowerCase().includes(s) ||
         u.username?.toLowerCase().includes(s) ||
         u.email?.toLowerCase().includes(s) ||
+        u.upn?.toLowerCase().includes(s) ||
         u.reparto?.toLowerCase().includes(s) ||
         u.job_title?.toLowerCase().includes(s)
       )
@@ -111,7 +93,6 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-4">
-      {/* HEADER */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -129,7 +110,6 @@ export default function UsersPage() {
         </button>
       </div>
 
-      {/* STATS */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <StatBlock label="Totale" value={counts.totale} color="gray" />
         <StatBlock label="Admin" value={counts.admin} color="red" />
@@ -138,7 +118,6 @@ export default function UsersPage() {
         <StatBlock label="Operatori" value={counts.operator} color="green" />
       </div>
 
-      {/* FILTRI */}
       <div className="bg-white p-3 rounded-lg shadow-sm flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
@@ -173,7 +152,6 @@ export default function UsersPage() {
         </span>
       </div>
 
-      {/* LISTA UTENTI */}
       {loading ? (
         <div className="bg-white rounded-lg shadow-sm p-12 text-center text-gray-400">
           Caricamento utenti...
@@ -199,7 +177,7 @@ export default function UsersPage() {
                 <th className="px-3 py-2 text-left">Reparto / Linee</th>
                 <th className="px-3 py-2 text-left">Pillar</th>
                 <th className="px-3 py-2 text-left w-24">Stato</th>
-                <th className="px-3 py-2 text-center w-32">Azioni</th>
+                <th className="px-3 py-2 text-center w-24">Azioni</th>
               </tr>
             </thead>
             <tbody>
@@ -219,7 +197,7 @@ export default function UsersPage() {
                         <div>
                           <div className="font-medium">{u.full_name || u.username}</div>
                           <div className="text-xs text-gray-500">
-                            <Mail size={10} className="inline mr-1" />{u.email}
+                            <Mail size={10} className="inline mr-1" />{u.upn || u.email}
                           </div>
                           {u.job_title && (
                             <div className="text-xs text-gray-500 mt-0.5">
@@ -290,13 +268,6 @@ export default function UsersPage() {
                         >
                           <Edit2 size={14} />
                         </button>
-                        <button
-                          onClick={() => handleResetPassword(u)}
-                          className="p-1 hover:bg-blue-100 rounded text-blue-600"
-                          title="Reset password"
-                        >
-                          <Lock size={14} />
-                        </button>
                         {u.is_active ? (
                           <button
                             onClick={() => handleDelete(u)}
@@ -324,7 +295,6 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* MODAL FORM */}
       {showForm && (
         <UserForm
           user={editingUser}
@@ -338,16 +308,11 @@ export default function UsersPage() {
   )
 }
 
-// ──────────────────────────────────────────
-// USER FORM
-// ──────────────────────────────────────────
-function UserForm({ user, pillars, reparti, onClose, onSaved }) {
+function UserForm({ user, reparti, onClose, onSaved }) {
   const [form, setForm] = useState({
-    username: user?.username || '',
-    email: user?.email || '',
-    password: '',
+    upn: user?.upn || user?.email || '',
     full_name: user?.full_name || '',
-    role: user?.role || 'office',
+    role: user?.role || 'operator',
     job_title: user?.job_title || '',
     telefono: user?.telefono || '',
     reparto: user?.reparto || '',
@@ -356,16 +321,13 @@ function UserForm({ user, pillars, reparti, onClose, onSaved }) {
     macchine: user?.macchine || [],
   })
   const [saving, setSaving] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
 
-  // Linee disponibili in base al reparto selezionato
   const lineeDisponibili = useMemo(() => {
     if (!form.reparto) return []
     const rep = reparti.find(r => r.nome === form.reparto)
     return rep?.linee?.filter(l => l.attivo !== false) || []
   }, [form.reparto, reparti])
 
-  // Macchine disponibili in base alle linee
   const macchineDisponibili = useMemo(() => {
     const allMacchine = []
     form.linee.forEach(lineaName => {
@@ -397,24 +359,18 @@ function UserForm({ user, pillars, reparti, onClose, onSaved }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.full_name.trim() || !form.email.trim()) {
-      alert('Nome completo ed email sono obbligatori')
-      return
-    }
-    if (!user && !form.password) {
-      alert('Password obbligatoria per nuovi utenti')
+    const upn = form.upn.trim().toLowerCase()
+    if (!form.full_name.trim() || !upn.includes('@')) {
+      alert('Nome completo e utente aziendale (nome.cognome@lindt.com) sono obbligatori')
       return
     }
     setSaving(true)
     try {
       if (user?.id) {
-        // Update: NON mandare password se vuota
-        const payload = { ...form }
-        if (!payload.password) delete payload.password
+        const { upn: _upn, ...payload } = form
         await api.put(`/users/${user.id}`, payload)
       } else {
-        // Create: usa endpoint register
-        await api.post('/auth/register', form)
+        await api.post('/auth/preregister', { ...form, upn })
       }
       onSaved()
     } catch (err) {
@@ -437,7 +393,6 @@ function UserForm({ user, pillars, reparti, onClose, onSaved }) {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* ANAGRAFICA BASE */}
           <Section title="Anagrafica">
             <div className="grid grid-cols-2 gap-3">
               <Field label="Nome completo *">
@@ -448,24 +403,27 @@ function UserForm({ user, pillars, reparti, onClose, onSaved }) {
                   className="w-full border rounded-lg px-3 py-2"
                 />
               </Field>
-              <Field label="Username *">
+              <Field label="Utente aziendale *">
                 <input
                   required
-                  value={form.username}
-                  onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })}
-                  className="w-full border rounded-lg px-3 py-2 font-mono"
+                  disabled={!!user}
+                  value={form.upn}
+                  onChange={(e) => setForm({ ...form, upn: e.target.value.toLowerCase() })}
+                  className="w-full border rounded-lg px-3 py-2 disabled:bg-gray-100 disabled:text-gray-500"
+                  placeholder="nome.cognome@lindt.com"
+                  autoCapitalize="none"
+                  spellCheck={false}
                 />
               </Field>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Email *">
+              <Field label="Job Title (ruolo aziendale)">
                 <input
-                  required
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value.toLowerCase() })}
+                  value={form.job_title}
+                  onChange={(e) => setForm({ ...form, job_title: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2"
+                  placeholder="es: TPM Development Engineer"
                 />
               </Field>
               <Field label="Telefono">
@@ -476,38 +434,8 @@ function UserForm({ user, pillars, reparti, onClose, onSaved }) {
                 />
               </Field>
             </div>
-
-            <Field label="Job Title (ruolo aziendale)">
-              <input
-                value={form.job_title}
-                onChange={(e) => setForm({ ...form, job_title: e.target.value })}
-                className="w-full border rounded-lg px-3 py-2"
-                placeholder="es: TPM Development Engineer"
-              />
-            </Field>
-
-            <Field label={user ? "Nuova password (lascia vuoto per non cambiare)" : "Password *"}>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required={!user}
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  className="w-full border rounded-lg px-3 py-2 pr-10"
-                  placeholder={user ? 'Lascia vuoto per non cambiare' : 'Min 8 caratteri'}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-2.5 text-gray-400"
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </Field>
           </Section>
 
-          {/* RUOLO E PERMESSI */}
           <Section title="Ruolo e Permessi">
             <Field label="Ruolo *">
               <div className="grid grid-cols-4 gap-2">
@@ -535,7 +463,6 @@ function UserForm({ user, pillars, reparti, onClose, onSaved }) {
             </Field>
           </Section>
 
-          {/* PRODUZIONE */}
           <Section title="Assegnazione produzione (per operatori)">
             <Field label="Reparto">
               <select
@@ -597,7 +524,6 @@ function UserForm({ user, pillars, reparti, onClose, onSaved }) {
             </Field>
           </Section>
 
-          {/* BOTTONI */}
           <div className="flex justify-end gap-2 pt-4 border-t">
             <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg">
               Annulla
@@ -617,9 +543,6 @@ function UserForm({ user, pillars, reparti, onClose, onSaved }) {
   )
 }
 
-// ──────────────────────────────────────────
-// HELPERS
-// ──────────────────────────────────────────
 function StatBlock({ label, value, color }) {
   const colors = {
     gray: 'text-gray-700 bg-gray-50',
