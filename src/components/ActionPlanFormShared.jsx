@@ -13,8 +13,9 @@ const QUINTA_M = [
   { value: 'Misurazione', label: 'Misurazione' },
 ]
 
-export default function ActionPlanFormShared({ plan, onClose, onSaved, prefilledKaizen = null, prefilledParent = null }) {
+export default function ActionPlanFormShared({ plan, onClose, onSaved, prefilledKaizen = null, prefilledParent = null, routeOptions = [] }) {
 const [form, setForm] = useState({
+  route_source: plan?.route_source || prefilledParent?.route_source || null,
   titolo: plan?.titolo || prefilledParent?.titolo || '',
   tipo: plan?.tipo || prefilledParent?.tipo || '',
   priorita: plan?.priorita || '',
@@ -177,6 +178,19 @@ const [form, setForm] = useState({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {form.parent_type === 'major_kaizen' && (routeOptions.length > 0 || form.route_source) && (
+            <label className="block text-sm">Anomalia collegata
+              <select className="w-full border rounded-lg px-3 py-2" value={form.route_source?.anomaly_id || ''} onChange={event => {
+                const selected = routeOptions.find(item => item.id === event.target.value)
+                setForm(current => ({ ...current, route_source: selected ? { step_id: current.gant_step_id, anomaly_id: selected.id } : null, macchina: selected?.macchina || current.macchina }))
+              }}>
+                <option value="">Azione generale della fase</option>
+                {form.route_source && !routeOptions.some(item => item.id === form.route_source.anomaly_id) && <option value={form.route_source.anomaly_id}>Anomalia collegata</option>}
+                {routeOptions.map(item => <option key={item.id} value={item.id}>{item.descrizione}</option>)}
+              </select>
+              {form.route_source?.cause_id && <span className="block text-xs text-gray-500 mt-1">Collegata alla causa selezionata nei 5 Perche.</span>}
+            </label>
+          )}
           <Field label="Titolo *">
             <input
               required
