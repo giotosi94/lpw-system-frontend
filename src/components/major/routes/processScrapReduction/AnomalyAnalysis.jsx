@@ -475,13 +475,14 @@ export default function AnomalyAnalysis({ stepData, onChange, major, allStepsDat
             mutate(state => ({ ...state, miglioramenti: items }))
           }}
         />
+        <KaizenAzioniList key={listVersion} routeOptions={selected} parent={parent} defaultStepId={step?.step_id || ''} />
+      </section>
         <EcrsTable
           rows={form.ecrs}
           onChange={rows => mutate(state => ({ ...state, ecrs: rows }))}
           onCreatePlan={openEcrsPlan}
         />
-        <KaizenAzioniList key={listVersion} routeOptions={selected} parent={parent} defaultStepId={step?.step_id || ''} />
-      </section>
+
 
       <div role="status" aria-live="polite" className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4 text-sm">
         <span className={status === 'error' ? 'text-red-700' : 'text-gray-600'}>{STATUS_LABELS[status]}</span>
