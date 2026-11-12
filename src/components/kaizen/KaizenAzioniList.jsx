@@ -151,8 +151,8 @@ export default function KaizenAzioniList({
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl shadow p-4">
-        <div className="flex justify-between items-center mb-3">
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 space-y-3 min-w-0">
+        <div className="flex flex-wrap justify-between items-center gap-3">
           <div>
             <h4 className="font-bold text-sm uppercase text-gray-700">{phaseLocked ? 'Azioni della fase' : `Azioni del ${contextLabel}`}</h4>
             <p className="text-xs text-gray-500">
@@ -171,7 +171,7 @@ export default function KaizenAzioniList({
           </button>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap mt-2 pt-3 border-t">
+        <div className="flex items-center gap-2 flex-wrap pt-3 border-t">
           <Filter size={14} className="text-gray-400" />
           <span className="text-xs font-medium text-gray-600">Filtri:</span>
           {!phaseLocked && <select
@@ -208,10 +208,9 @@ export default function KaizenAzioniList({
             {azioniFiltrate.length} azion{azioniFiltrate.length === 1 ? 'e' : 'i'} visualizzate
           </span>
         </div>
-      </div>
 
       {loading ? (
-        <div className="bg-white rounded-xl shadow p-8 text-center text-gray-400">Caricamento...</div>
+        <div className="p-8 text-center text-gray-400">Caricamento...</div>
       ) : (
         <ActionPlanViews
           plans={azioniFiltrate}
@@ -242,6 +241,7 @@ export default function KaizenAzioniList({
         />
       )}
 
+      </div>
       {showForm && (
         <ActionPlanFormShared
           plan={editingAP}
