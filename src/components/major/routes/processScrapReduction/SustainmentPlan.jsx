@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import api from '../../../../services/api'
 import UserPicker from '../../../UserPicker'
+import OplPublishModal from '../../../opl/OplPublishModal'
 import OplNativaModal from '../../../opl/OplNativaModal'
 import OplImportModal from '../../../opl/OplImportModal'
 import { OplChoiceModal, SopUploadModal, PreviewModal, readUser } from '../../../../pages/DocumentiPage'
@@ -208,7 +209,10 @@ export default function SustainmentPlan({ stepData, onChange, allStepsData = {},
         {form.standards.map(row => <Row key={row.id} onRemove={() => remove('standards', row.id)}>
           {sourceField(row, 'standards')}
           <Field label="Standard introdotto o modifica richiesta" multiline value={row.change} onChange={value => patch('standards', row.id, { change: value })} />
-          {list(row.documents).map(entry => <DocumentPicker key={entry.id} value={entry.id} label={entry.label || 'Documento collegato'} documents={documents} major={major} onOpen={() => openDocument(entry.id)} onCreate={() => startCreate(row)} onSelect={doc => { if (!doc) patch('standards', row.id, { documents: row.documents.filter(item => item.id !== entry.id) }) }} />)}
+          {list(row.documents).map(entry => <div key={entry.id} className="space-y-2">
+            <DocumentPicker value={entry.id} label={entry.label || 'Documento collegato'} documents={documents} major={major} onOpen={() => openDocument(entry.id)} onCreate={() => startCreate(row)} onSelect={doc => { if (!doc) patch('standards', row.id, { documents: row.documents.filter(item => item.id !== entry.id) }) }} />
+            <StandardReading document={documents.find(doc => doc._id === entry.id)} onReload={loadDocuments} />
+          </div>)}
           <DocumentPicker value="" documents={documents.filter(doc => !list(row.documents).some(entry => entry.id === doc._id))} major={major} onSelect={doc => addDocument(row.id, doc)} onCreate={() => startCreate(row)} onOpen={() => {}} />
         </Row>)}
           <div className="border-t pt-4 space-y-3">
@@ -365,3 +369,55 @@ function DocumentPicker({ value, label, documents, priorityIds = [], major, onSe
   )
 }
 
+
+function StandardReading({ document: doc, onReload }) {
+  const [publishing, setPublishing] = useState(false)
+  const [report, setReport] = useState(null)
+  const [expanded, setExpanded] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const id = doc?._id
+  const published = Boolean(doc?.pubblicata)
+  const load = async () => {
+    if (!id || !published) { setReport(null); return }
+    setLoading(true)
+    setError('')
+    try {
+      const response = await api.get(`/opl-letture/${id}/report`)
+      setReport(response.data)
+    } catch {
+      setReport(null)
+      setError('Letture non disponibili: riprova.')
+    } finally { setLoading(false) }
+  }
+  useEffect(() => {
+    let active = true
+    setReport(null)
+    setError('')
+    if (!id || !published) return () => { active = false }
+    setLoading(true)
+    api.get(`/opl-letture/${id}/report`).then(response => { if (active) setReport(response.data) }).catch(() => { if (active) setError('Letture non disponibili: riprova.') }).finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [id, published, doc?.versione])
+  if (!doc) return null
+  const summary = report?.riepilogo
+  const total = summary?.destinatari || 0
+  const onPublished = async () => {
+    await onReload()
+    if (published) await load()
+  }
+  return <div className="space-y-2 pl-1">
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <button type="button" className={smallButton} onClick={() => setPublishing(true)}>{published ? 'Assegna lettura / aggiungi destinatari' : 'Pubblica e assegna lettura'}</button>
+      {published && <>
+        <span role="status">{loading ? 'Caricamento letture...' : summary ? `Letture confermate: ${summary.confermati || 0}/${total}` : 'Letture non disponibili'}</span>
+        <button type="button" disabled={loading} className={smallButton} onClick={load}>Aggiorna</button>
+        {total > 0 && <button type="button" aria-expanded={expanded} className={smallButton} onClick={() => setExpanded(value => !value)}>{expanded ? 'Chiudi persone' : 'Persone'}</button>}
+      </>}
+      {!published && <span className="text-amber-700">Documento non pubblicato</span>}
+    </div>
+    {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+    {expanded && published && report && <div className="overflow-x-auto rounded border bg-gray-50 p-2"><table className="w-full text-xs"><thead><tr className="text-left"><th className="p-2">Persona</th><th className="p-2">Reparto</th><th className="p-2">Lettura</th><th className="p-2">Test</th><th className="p-2">Verifica in campo</th></tr></thead><tbody>{list(report.righe).map(row => <tr key={row.user_id} className="border-t"><td className="p-2">{row.user_name || '-'}</td><td className="p-2">{row.reparto || '-'}</td><td className="p-2">{row.status || '-'}</td><td className="p-2">{row.test_punteggio == null ? '—' : `${row.test_punteggio}%`}</td><td className="p-2">{row.verifica_esito === true ? 'Esegue correttamente' : row.verifica_esito === false ? 'Non ancora' : 'Da verificare'}</td></tr>)}</tbody></table></div>}
+    {publishing && <OplPublishModal documento={doc} onClose={() => setPublishing(false)} onPublished={onPublished} />}
+  </div>
+}
