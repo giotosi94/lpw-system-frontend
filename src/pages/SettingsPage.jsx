@@ -1547,6 +1547,7 @@ function PillarIcon({ pillar, size = 40 }) {
 // ──────────────────────────────────────────────────────────
 function PillarForm({ pillar, onClose, onSaved }) {
   const [form, setForm] = useState({
+    kpi_management_enabled: pillar ? pillar.kpi_management_enabled !== false : false,
     mp_info_enabled: pillar?.mp_info_enabled === true,
     sigla: pillar?.sigla || '',
     label: pillar?.label || '',
@@ -1794,6 +1795,12 @@ function PillarForm({ pillar, onClose, onSaved }) {
             />
           </div>
 
+          <h3 className="font-semibold text-sm pt-3 border-t">Funzioni dedicate del pilastro</h3>
+          <p className="text-xs text-gray-500">Anagrafica con team, calendario e masterplan, Kaizen, Action Plan, Skill Matrix e Maturity Grid sono comuni. Disabilitare una funzione nasconde la scheda senza cancellare i dati.</p>
+          <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
+            <input type="checkbox" checked={form.kpi_management_enabled} onChange={event => setForm({ ...form, kpi_management_enabled: event.target.checked })} />
+            <span><strong>5 Step KPI Management</strong><span className="block text-xs text-gray-500">Abilita il percorso di analisi e gestione KPI per questo pilastro. Le analisi già salvate restano conservate.</span></span>
+          </label>
           <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
             <input type="checkbox" checked={form.mp_info_enabled} onChange={event => setForm({ ...form, mp_info_enabled: event.target.checked })} />
             <span><strong>Abilita MP Info</strong><span className="block text-xs text-gray-500">Riceve gli apprendimenti dai Major Kaizen. La valutazione spetta a leader, membri e amministratori.</span></span>
