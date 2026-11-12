@@ -95,10 +95,10 @@ function trendSegments(points, restoration, improvement) {
   return ranges.map(range => {
     const selected = points.filter(point => range.includes(point.date))
     const valid = selected.filter(point => point.valid)
-    const incomplete = selected.some(point => !point.valid && (point.production !== 0 || point.loss !== 0))
+    const excluded = selected.filter(point => !point.valid && (point.production !== 0 || point.loss !== 0)).length
     const production = valid.reduce((sum, point) => sum + point.production, 0)
     const loss = valid.reduce((sum, point) => sum + point.loss, 0)
-    return { label: range.label, count: valid.length, production, loss, value: !incomplete && production > 0 ? loss / production * 100 : null, incomplete }
+    return { label: range.label, count: valid.length, production, loss, value: production > 0 ? loss / production * 100 : null, excluded }
   })
 }
 
@@ -207,7 +207,7 @@ function ScrapInterventionTrend({ form, from, to }) {
   const segments = markerError ? [] : trendSegments(points, restoration, improvement)
   const baselinePoints = points.filter(point => point.date >= form.scope?.from && point.date <= form.scope?.to)
   const baselineProduction = baselinePoints.reduce((sum, point) => sum + (point.valid ? point.production : 0), 0)
-  const baselineRate = baselineProduction > 0 && !baselinePoints.some(point => !point.valid && (point.production || point.loss)) ? baselinePoints.reduce((sum, point) => sum + point.loss, 0) / baselineProduction * 100 : null
+  const baselineRate = baselineProduction > 0 ? baselinePoints.reduce((sum, point) => sum + (point.valid ? point.loss : 0), 0) / baselineProduction * 100 : null
   const verificationPoints = points.filter(point => point.date >= form.afterFrom && point.date <= form.afterTo && point.valid)
   const invalid = points.filter(point => !point.valid && (point.loss !== 0 || point.production !== 0)).length
   const labelDate = value => new Date(value).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', timeZone: 'UTC' })
@@ -241,7 +241,7 @@ function ScrapInterventionTrend({ form, from, to }) {
           {invalid > 0 && <p className="text-sm text-amber-800">{invalid} giorni con dati incoerenti esclusi dal calcolo.</p>}
           {segments.length > 0 && <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr>{['Periodo', 'Giorni produttivi', 'Perdita', 'Rispetto alla baseline'].map(label => <th key={label} className="text-left border-b p-2">{label}</th>)}</tr></thead><tbody>{segments.map(segment => {
             const reduction = baselineRate > 0 && segment.value != null ? (baselineRate - segment.value) / baselineRate * 100 : null
-            return <tr key={segment.label}><td className="p-2">{segment.label}</td><td className="p-2">{segment.count}</td><td className="p-2">{segment.value == null ? 'Non disponibile' : `${fmt(segment.value)}%`}</td><td className="p-2">{reduction == null ? 'Non disponibile' : `${reduction >= 0 ? 'Riduzione' : 'Aumento'} ${fmt(Math.abs(reduction))}%`}</td></tr>
+            return <tr key={segment.label}><td className="p-2">{segment.label}</td><td className="p-2">{segment.count}{segment.excluded > 0 ? ` (${segment.excluded} esclusi)` : ''}</td><td className="p-2">{segment.value == null ? 'Non disponibile' : `${fmt(segment.value)}%`}</td><td className="p-2">{reduction == null ? 'Non disponibile' : `${reduction >= 0 ? 'Riduzione' : 'Aumento'} ${fmt(Math.abs(reduction))}%`}</td></tr>
           })}</tbody></table></div>}
           <p className="text-xs text-gray-500">Perdita = kg persi / kg prodotti nel periodo. Il grafico mostra l'andamento, non dimostra da solo la causa.</p>
         </>}
