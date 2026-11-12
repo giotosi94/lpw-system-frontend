@@ -266,8 +266,8 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
   const sameZone = (a, b) => a.macchina === b.macchina && a.componente.trim().toLowerCase() === b.componente.trim().toLowerCase()
   const missingZones = form.aree
     .filter(item => item.macchina)
-    .filter((item, index, all) => all.findIndex(other => sameZone(other, item)) === index)
-    .filter(item => !form.anomalie.some(anomaly => sameZone(anomaly, item)))
+    .filter((item, index, all) => all.findIndex(other => sameZone(other, item) && other.perdita === item.perdita) === index)
+    .filter(item => !form.anomalie.some(anomaly => anomaly.area_id === item.id || (!anomaly.area_id && sameZone(anomaly, item) && anomaly.perdita === item.perdita)))
 
 
   const planningParent = useMemo(() => ({
