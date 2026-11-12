@@ -15,6 +15,8 @@ export default function KaizenAzioniList({
   phases = [],
   defaultStepId = '',
   routeOptions = [],
+  refreshKey = 0,
+  onPlansLoaded = null,
 }) {
   const isMajor = Boolean(parent)
   const phaseLocked = isMajor && Boolean(defaultStepId)
@@ -36,14 +38,16 @@ export default function KaizenAzioniList({
 
   const contextLabel = phaseLocked ? 'fase' : isMajor ? 'progetto' : 'Kaizen'
 
-  useEffect(() => { loadAzioni() }, [kaizenId, parent?.parent_id])
+  useEffect(() => { loadAzioni() }, [kaizenId, parent?.parent_id, defaultStepId, refreshKey])
 
   const loadAzioni = async () => {
     setLoading(true)
     try {
       if (isMajor) {
         const res = await api.get('/action-plans/', { params: { parent_id: parent.parent_id } })
-        setAzioni((res.data || []).filter(ap => ap.parent_type === parent.parent_type && ap.parent_id === parent.parent_id && (!phaseLocked || ap.gant_step_id === defaultStepId)))
+        const loaded = (res.data || []).filter(ap => ap.parent_type === parent.parent_type && ap.parent_id === parent.parent_id && (!phaseLocked || ap.gant_step_id === defaultStepId))
+        setAzioni(loaded)
+        onPlansLoaded?.(loaded)
       } else {
         const res = await api.get(`/kaizens/${kaizenId}/action-plans`)
         setAzioni(res.data || [])
