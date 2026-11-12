@@ -1,3 +1,4 @@
+import MpInfoPanel from '../components/pillar/MpInfoPanel'
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import api from '../services/api'
@@ -68,6 +69,7 @@ export default function PillarDetailPage() {
     { id: 'action_plan', label: `Action Plan (${actionPlans.length})` },
     { id: 'skill_matrix', label: 'Skill Matrix' },
     { id: 'maturity', label: 'Maturity Grid' },
+    ...(pillar.mp_info_enabled || stats?.mp_info_count > 0 ? [{ id: 'mp_info', label: 'MP Info' }] : []),
   ]
 
   return (
@@ -148,6 +150,7 @@ export default function PillarDetailPage() {
         ))}
       </div>
 
+      {activeTab === 'mp_info' && <MpInfoPanel pillar={pillar} />}
       {activeTab === 'anagrafica' && <AnagraficaTab pillar={pillar} />}
       {activeTab === 'kpi' && <KpiManagementTab pillar={pillar} color={color} onSaved={loadAll} />}
       {activeTab === 'masterplan' && <MasterPlanTab pillar={pillar} color={color} onSaved={loadAll} />}
