@@ -10,32 +10,44 @@ const section = 'border border-gray-200 rounded-lg bg-white p-4 space-y-3'
 const fmt = value => value == null || !Number.isFinite(value) ? 'Non disponibile' : new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 }).format(value)
 const empty = () => ({ verificationPeriod: 'custom', mode: 'stain', objectiveId: '', objectiveSnapshot: null, objectiveFingerprint: '', trendRestoration: '', trendImprovement: '', trendRestorationRef: '', trendImprovementRef: '', trendData: null, excluded: [], scope: null, before: null, after: null, afterFrom: '', afterTo: '', manualBeforeFrom: '', manualBeforeTo: '', rows: [], costs: '', costNote: '', annualProduction: '', annualBasis: '', source: '', notes: '', reviewed: false, reviewedBy: '', reviewedAt: '' })
 
+function StepBar({ title, hint }) {
+  return (
+    <>
+      <div className="bg-primary text-white text-center font-bold uppercase rounded-lg py-2 text-sm tracking-wide">{title}</div>
+      {hint && <p className="text-sm text-gray-600">{hint}</p>}
+    </>
+  )
+}
 
 function outcome(value, positive, negative, unit) {
   if (value == null || !Number.isFinite(value)) return 'Non disponibile'
   if (Math.abs(value) < 0.000001) return `Nessuna variazione (0 ${unit})`
   return `${value > 0 ? positive : negative}: ${fmt(Math.abs(value))} ${unit}`
 }
+
 function rate(loss, production) {
   const p = Number(production)
   return p > 0 ? Number(loss) / p * 100 : null
 }
+
 function dayAfter(value) {
   if (!value) return ''
   const d = new Date(`${value}T12:00:00`)
   if (Number.isNaN(d.getTime())) return ''
   d.setDate(d.getDate() + 1)
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+
 function previousDay(value) {
   const d = new Date(`${value}T12:00:00`)
   if (Number.isNaN(d.getTime())) return ''
   d.setDate(d.getDate() - 1)
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+
 function todayDate() {
   const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 function trendKey(scope, from, to) {
@@ -89,7 +101,6 @@ function trendSegments(points, restoration, improvement) {
     return { label: range.label, count: valid.length, production, loss, value: !incomplete && production > 0 ? loss / production * 100 : null, incomplete }
   })
 }
-
 
 const DONE_CARL = ['FINISHED', 'CLOSED']
 
@@ -156,30 +167,29 @@ function InterventionSelect({ label, kind, items, value, refKey, dateKey, change
   const options = items.filter(item => item.kind === kind)
   const selected = options.find(item => item.key === value)
   return (
-      <label className="block text-sm">{label}
-        <select className={field} value={selected ? selected.key : ''} onChange={event => {
-          const item = options.find(row => row.key === event.target.value)
-          change(item ? { [refKey]: item.key, [dateKey]: item.date } : { [refKey]: '' })
-        }}>
-          <option value="">{options.length ? 'Seleziona intervento' : 'Nessun intervento collegato'}</option>
-          {options.map(item => <option key={item.key} value={item.key} disabled={!item.date}>{item.label}{item.date ? ` · ${item.date.split('-').reverse().join('/')}` : item.unavailable ? ' · stato non disponibile' : ' · non concluso'}</option>)}
-        </select>
-      </label>
+    <label className="block text-sm">{label}
+      <select className={field} value={selected ? selected.key : ''} onChange={event => {
+        const item = options.find(row => row.key === event.target.value)
+        change(item ? { [refKey]: item.key, [dateKey]: item.date } : { [refKey]: '' })
+      }}>
+        <option value="">{options.length ? 'Seleziona intervento' : 'Nessun intervento collegato'}</option>
+        {options.map(item => <option key={item.key} value={item.key} disabled={!item.date}>{item.label}{item.date ? ` · ${item.date.split('-').reverse().join('/')}` : item.unavailable ? ' · stato non disponibile' : ' · non concluso'}</option>)}
+      </select>
+    </label>
   )
 }
 
-function ScrapInterventionTrend({ form, change, from, to, interventions }) {
+function ScrapInterventionTrend({ form, from, to }) {
   const scope = form.scope && form.rows.length ? { ...form.scope, products: [...new Set(form.rows.map(row => row.product))] } : form.scope
   const key = form.mode + trendKey(scope, from, to)
   const start = Date.parse(`${from}T00:00:00Z`)
   const end = Date.parse(`${to}T00:00:00Z`)
-  const periodValid = Boolean(scope && Number.isFinite(start) && Number.isFinite(end) && end >= start && end - start <= 366 * 86400000 && to <= todayDate())
   const restoration = form.trendRestoration || ''
   const improvement = form.trendImprovement || ''
   const markerError = restoration && improvement && improvement <= restoration
     ? 'Il miglioramento deve essere successivo al ripristino per distinguere i tre periodi.'
     : [restoration, improvement].some(date => date && (date < from || date > to))
-      ? 'Le date degli interventi devono essere comprese nel periodo del trend.' : ''
+      ? 'Le date degli interventi devono essere comprese nel periodo del grafico.' : ''
   let points = []
   let dataError = ''
   if (form.rows.length && form.after && form.trendData?.key === key) {
@@ -195,40 +205,37 @@ function ScrapInterventionTrend({ form, change, from, to, interventions }) {
   const labelDate = value => new Date(value).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', timeZone: 'UTC' })
   return (
     <section className={section}>
-      <h3 className="font-bold text-primary">Andamento della perdita</h3>
-      <p className="text-sm text-gray-600">Stesso obiettivo e prodotti del saving. L'area verde indica il periodo di verifica; la linea tratteggiata indica la baseline selezionata. Il trend aggregato puo risentire del mix prodotto; il saving e normalizzato per prodotto.</p>
-      {form.mode !== 'stain' ? <p className="text-sm text-amber-800">Il confronto manuale contiene solo totali: non viene generato un trend senza dati giornalieri.</p> : <>
-        <p className="text-sm">Periodo: {from || 'Da definire'} / {to || 'Da definire'}</p>
-
-        {!periodValid && <p className="text-sm text-amber-800">Importa il perimetro e scegli un periodo storico continuo di massimo 367 giorni.</p>}
-        {markerError && <p role="alert" className="text-sm text-amber-800">{markerError}</p>}
+      <StepBar title="Passo 2 - Andamento della perdita" hint="Il grafico si aggiorna dal Passo 1. L'area verde è il periodo verificato." />
+      {form.mode !== 'stain' ? <p className="text-sm text-gray-600">Confronto manuale: grafico non disponibile senza dati giornalieri.</p> : <>
+        {!points.length && !dataError && <p className="text-sm text-gray-600">Premi “Aggiorna confronto” nel Passo 1.</p>}
+        {markerError && points.length > 0 && <p role="alert" className="text-sm text-amber-800">{markerError}</p>}
         {dataError && <p role="alert" className="text-sm text-red-700">{dataError}</p>}
-        {form.trendData && form.trendData.key !== key && <p className="text-sm text-amber-800">Date o filtri modificati: aggiorna il trend. Il precedente non viene mostrato.</p>}
+        {form.trendData && form.trendData.key !== key && <p className="text-sm text-amber-800">Date o filtri modificati: aggiorna il confronto.</p>}
         {points.length > 0 && <>
-          <p className="text-sm">Verifica: {form.afterFrom} / {form.afterTo} · {verificationPoints.length} giorni produttivi validi. La durata del campione va valutata prima di confermare l’efficacia.</p>
-          <div className="h-80 w-full" role="img" aria-label="Trend giornaliero della percentuale di perdita con date di ripristino e miglioramento">
+          <p className="text-sm">Verifica: {form.afterFrom} / {form.afterTo} · {verificationPoints.length} giorni produttivi</p>
+          <div className="h-80 w-full" role="img" aria-label="Andamento giornaliero della percentuale di perdita">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={points} margin={{ top: 40, right: 30, bottom: 10, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" /><ReferenceArea x1={Date.parse(`${form.afterFrom}T00:00:00Z`)} x2={Date.parse(`${form.afterTo}T00:00:00Z`)} fill="#15803d" fillOpacity={0.1} label="Periodo del saving" />
+                <CartesianGrid strokeDasharray="3 3" />
+                <ReferenceArea x1={Date.parse(`${form.afterFrom}T00:00:00Z`)} x2={Date.parse(`${form.afterTo}T00:00:00Z`)} fill="#15803d" fillOpacity={0.1} />
                 <XAxis dataKey="timestamp" type="number" scale="time" domain={[start, end]} tickFormatter={labelDate} />
                 <YAxis unit="%" width={65} />
                 <Tooltip labelFormatter={value => new Date(value).toLocaleDateString('it-IT', { timeZone: 'UTC' })} formatter={value => [`${fmt(value)}%`, 'Perdita sulla produzione']} />
                 <Legend />
-                <Line name="Perdita selezionata (%)" type="linear" dataKey="value" stroke="#85583f" strokeWidth={2} dot={{ r: 2 }} connectNulls={false} isAnimationActive={false} />
+                <Line name="Perdita (%)" type="linear" dataKey="value" stroke="#85583f" strokeWidth={2} dot={{ r: 2 }} connectNulls={false} isAnimationActive={false} />
                 {!markerError && restoration && <ReferenceLine x={Date.parse(`${restoration}T00:00:00Z`)} stroke="#2563eb" strokeWidth={2} strokeDasharray="5 3" label={{ value: 'Ripristino', position: 'insideTopLeft', fill: '#2563eb' }} />}
-                {!markerError && improvement && <ReferenceLine x={Date.parse(`${improvement}T00:00:00Z`)} stroke="#15803d" strokeWidth={2} strokeDasharray="5 3" label={{ value: 'Intervento di miglioramento', position: 'insideTopRight', fill: '#15803d' }} />}
-                {baselineRate != null && <ReferenceLine y={baselineRate} stroke="#6b7280" strokeDasharray="4 4" label={{ value: `Prima: ${fmt(baselineRate)}%`, position: 'insideTopRight' }} />}
+                {!markerError && improvement && <ReferenceLine x={Date.parse(`${improvement}T00:00:00Z`)} stroke="#15803d" strokeWidth={2} strokeDasharray="5 3" label={{ value: 'Miglioramento', position: 'insideTopRight', fill: '#15803d' }} />}
+                {baselineRate != null && <ReferenceLine y={baselineRate} stroke="#6b7280" strokeDasharray="4 4" label={{ value: `Baseline: ${fmt(baselineRate)}%`, position: 'insideTopRight' }} />}
               </LineChart>
             </ResponsiveContainer>
           </div>
-          {!points.some(point => point.valid) && <p className="text-sm text-amber-800">Nessun giorno con produzione e perdite valide nel perimetro.</p>}
-          {invalid > 0 && <p className="text-sm text-amber-800">{invalid} giorni con perdita senza produzione o quantitativi incoerenti: percentuale non calcolata. I riepiloghi dei periodi interessati non sono disponibili.</p>}
-          {!restoration || !improvement ? <p className="text-sm text-gray-600">Indica entrambe le date per confrontare i tre periodi.</p> : null}
-          {segments.length > 0 && <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr>{['Periodo', 'Giorni produttivi validi', 'Perdita ponderata', 'Variazione rispetto alla baseline'].map(label => <th key={label} className="text-left border-b p-2">{label}</th>)}</tr></thead><tbody>{segments.map((segment, index) => {
+          {!points.some(point => point.valid) && <p className="text-sm text-amber-800">Nessun giorno con produzione e perdite valide.</p>}
+          {invalid > 0 && <p className="text-sm text-amber-800">{invalid} giorni con dati incoerenti esclusi dal calcolo.</p>}
+          {segments.length > 0 && <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr>{['Periodo', 'Giorni produttivi', 'Perdita', 'Rispetto alla baseline'].map(label => <th key={label} className="text-left border-b p-2">{label}</th>)}</tr></thead><tbody>{segments.map(segment => {
             const reduction = baselineRate > 0 && segment.value != null ? (baselineRate - segment.value) / baselineRate * 100 : null
             return <tr key={segment.label}><td className="p-2">{segment.label}</td><td className="p-2">{segment.count}</td><td className="p-2">{segment.value == null ? 'Non disponibile' : `${fmt(segment.value)}%`}</td><td className="p-2">{reduction == null ? 'Non disponibile' : `${reduction >= 0 ? 'Riduzione' : 'Aumento'} ${fmt(Math.abs(reduction))}%`}</td></tr>
           })}</tbody></table></div>}
-          <p className="text-xs text-gray-600">Percentuale ponderata = kg persi / kg prodotti nel periodo, non media delle percentuali giornaliere. Il giorno dell'intervento appartiene al periodo successivo. Giorni senza produzione: interruzione della linea, non zero. Variazione rispetto alla baseline selezionata. Variazioni del mix prodotto possono influire sul risultato: per una verifica omogenea seleziona lo stesso prodotto. Il trend mostra l'associazione temporale, non dimostra da solo la causalita.</p>
+          <p className="text-xs text-gray-500">Perdita = kg persi / kg prodotti nel periodo. Il grafico mostra l'andamento, non dimostra da solo la causa.</p>
         </>}
       </>}
     </section>
@@ -245,9 +252,11 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   const [driverStatus, setDriverStatus] = useState('')
   const [driverVersions, setDriverVersions] = useState([])
   const driverVersion = form.selectedDriverVersion || form.driverSnapshot?.version_id || ''
+
   useEffect(() => {
     api.get('/economic-drivers/versions').then(response => setDriverVersions(response.data)).catch(() => setDriverStatus('Elenco driver non disponibile: verifica il backend.'))
   }, [])
+
   const dirty = useRef(false)
   const revision = useRef(0)
   const formRef = useRef(form)
@@ -261,6 +270,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   const [saveState, setSaveState] = useState('saved')
   onChangeRef.current = onChange
   baseRef.current = stepData?.dati || {}
+
   const baseline = Object.values(allStepsData || {}).map(item => item?.dati).find(data => data?.stain_snapshot || data?.categorie_scarto)
   const objectives = Array.isArray(baseline?.obiettivi) ? baseline.obiettivi : []
   const selectedObjective = objectives.find(row => row.id === form.objectiveId)
@@ -273,12 +283,14 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   const objectiveError = objectiveState.error
   const objectiveStale = Boolean(currentObjective && form.objectiveFingerprint !== currentObjective.fingerprint)
   const objectiveBlocked = Boolean(objectiveError || objectiveStale)
+
   let phaseScope = null
   if (form.mode === 'stain' && baseline) {
     try { phaseScope = objectives.length ? currentObjective?.scope || null : baselineScope(baseline) } catch { phaseScope = null }
   }
   const scopeSignature = value => value ? JSON.stringify([value.line, [...(value.products || [])].sort(), [...(value.types || [])].sort(), [...(value.priorities || [])].sort()]) : ''
   const scopeStale = Boolean(form.scope && phaseScope && scopeSignature(form.scope) !== scopeSignature(phaseScope))
+
   useEffect(() => {
     if (!dirty.current && !savingRef.current) {
       const next = { ...empty(), ...(stepData?.dati?.saving_economico || {}) }
@@ -286,6 +298,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       setForm(next)
     }
   }, [stepData?.dati])
+
   const change = (patch, preserveReview = false) => {
     let linked = { ...patch }
     const current = formRef.current
@@ -307,20 +320,23 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     setStatus('Modifiche in attesa di salvataggio automatico')
     setForm(next)
   }
+
   const selectObjective = id => {
     if (busy) return
-    if (form.rows.length && !window.confirm('Cambiare obiettivo? Il confronto precedente verra azzerato.')) return
+    if (form.rows.length && !window.confirm('Cambiare obiettivo? Il confronto precedente verrà azzerato.')) return
     const objective = objectives.find(row => row.id === id)
     try {
       const context = objectiveContext(baseline, objective)
       change({ ...objectivePatch(context), verificationPeriod: 'custom', before: context.scope ? JSON.parse(JSON.stringify(baseline.stain_snapshot)) : null })
-      setPeriodStatus(context.meta.source === 'manuale' ? 'Perdite prima recuperate. Inserisci produzione e dati dopo per lo stesso perimetro.' : 'Obiettivo acquisito. Seleziona il periodo dopo.')
+      setPeriodStatus(context.meta.source === 'manuale' ? 'Perdite prima recuperate. Inserisci produzione e dati dopo.' : 'Obiettivo acquisito. Scegli il periodo da verificare.')
     } catch (error) {
       change({ ...objectivePatch({ meta: { id, source: objective?.fonte }, fingerprint: '', scope: null, rows: [], from: '', to: '' }), objectiveSnapshot: null })
       setPeriodStatus(error.message)
     }
   }
+
   const patchRow = (id, key, value) => change({ rows: form.rows.map(row => row.id === id ? { ...row, [key]: value, ...(key === 'driver' ? { driverSource: 'manuale' } : {}) } : row) })
+
   const applyDrivers = async () => {
     if (objectiveBlocked) { setDriverStatus('Aggiorna prima obiettivo e confronto.'); return }
     if (!driverVersion || !form.rows.length) { setDriverStatus('Carica il confronto e seleziona una versione driver.'); return }
@@ -337,29 +353,34 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         if (value == null || !Number.isFinite(Number(value))) throw new Error('Driver da configurare per il tipo di perdita')
         return { ...row, driver: value, driverYear: String(snapshot.year), driverRef: `${snapshot.filename} · ${snapshot.resource.code} · ${snapshot.version_id}`, driverSource: 'settings' }
       }) })
-      setDriverStatus('Driver applicati. Salvataggio automatico dello snapshot in corso.')
+      setDriverStatus('Driver applicati.')
     } catch (error) { setDriverStatus(typeof error.response?.data?.detail === 'string' ? error.response.data.detail : error.message || 'Driver da configurare') }
     finally { setBusy(false) }
   }
+
   const result = calculateSaving(form.rows, form.costs === '' ? 0 : form.costs, '')
   const issues = [...result.issues]
   const beforeFrom = form.mode === 'stain' ? form.scope?.from : form.manualBeforeFrom
   const beforeTo = form.mode === 'stain' ? form.scope?.to : form.manualBeforeTo
   const today = todayDate()
-  const firstAfter = dayAfter(beforeTo)
-  const periodError = !beforeFrom || !beforeTo || !form.afterFrom || !form.afterTo ? 'Seleziona i quattro estremi dei periodi prima e dopo.' : beforeFrom > beforeTo || form.afterFrom > form.afterTo ? 'Ogni periodo deve avere la fine successiva o uguale all’inizio.' : form.afterFrom <= beforeTo ? 'I periodi si sovrappongono: la fine del prima deve precedere l’inizio del dopo.' : beforeTo > today || form.afterTo > today ? 'Scegli periodi gia trascorsi: non si calcolano dati futuri.' : ''
+  const periodError = !beforeFrom || !beforeTo || !form.afterFrom || !form.afterTo ? 'Seleziona le date di baseline e verifica.' : beforeFrom > beforeTo || form.afterFrom > form.afterTo ? 'Ogni periodo deve avere la fine successiva o uguale all’inizio.' : form.afterFrom <= beforeTo ? 'I periodi si sovrappongono: la verifica deve iniziare dopo la baseline.' : beforeTo > today || form.afterTo > today ? 'Scegli periodi già trascorsi.' : ''
+  const interventionsInverted = Boolean(form.trendRestoration && form.trendImprovement && form.trendImprovement <= form.trendRestoration)
+  const firstIntervention = [form.trendRestoration, form.trendImprovement].filter(Boolean).sort()[0]
+  const timingWarning = interventionsInverted
+    ? 'Il miglioramento è precedente al ripristino: controlla le date.'
+    : firstIntervention && form.afterFrom && form.afterFrom < firstIntervention
+      ? 'La verifica inizia prima degli interventi: il risultato non misura il loro effetto.'
+      : ''
 
-      if (objectiveError) issues.push(objectiveError)
-    if (objectiveStale) issues.push('Obiettivo o dati della Fase 1 modificati: importa nuovamente obiettivo e confronto.')
-    if (form.mode === 'manuale' && currentObjective && form.rows.some(row => !currentObjective.rows.some(item => item.product === row.product && item.type === row.type))) issues.push('Riga manuale fuori dal perimetro obiettivo.')
-    if (periodError) issues.push(periodError)
-    if (form.verificationPeriod === 'restoration' && (!form.trendRestoration || !form.trendImprovement || form.trendImprovement <= form.trendRestoration)) issues.push('Definisci ripristino e miglioramento in ordine cronologico.')
-    if (form.verificationPeriod === 'improvement' && !form.trendImprovement) issues.push('Indica la data del miglioramento.')
-    if (form.verificationPeriod === 'all' && !form.trendRestoration) issues.push('Indica la data del ripristino.')
-  if (scopeStale) issues.push('Il perimetro della Fase 1 è cambiato dopo l’importazione: importa di nuovo linea, filtri e periodo prima di calcolare il saving.')
-
-  if (!beforeFrom || !beforeTo || !form.afterFrom || !form.afterTo || beforeFrom > beforeTo || form.afterFrom > form.afterTo || form.afterFrom <= beforeTo) issues.push('Definisci periodi validi, non sovrapposti: il dopo deve iniziare dopo la baseline.')
-  if (form.mode === 'stain' && (!form.before || form.before.dal !== beforeFrom || form.before.al !== beforeTo || !form.after || form.after.dal !== form.afterFrom || form.after.al !== form.afterTo)) issues.push('Carica entrambi i periodi per le date selezionate.')
+  if (objectiveError) issues.push(objectiveError)
+  if (objectiveStale) issues.push('Obiettivo o dati della Fase 1 modificati: importa nuovamente obiettivo e confronto.')
+  if (form.mode === 'manuale' && currentObjective && form.rows.some(row => !currentObjective.rows.some(item => item.product === row.product && item.type === row.type))) issues.push('Riga manuale fuori dal perimetro obiettivo.')
+  if (periodError) issues.push(periodError)
+  if (form.verificationPeriod === 'restoration' && (!form.trendRestoration || !form.trendImprovement || interventionsInverted)) issues.push('Definisci ripristino e miglioramento in ordine cronologico.')
+  if (form.verificationPeriod === 'improvement' && !form.trendImprovement) issues.push('Indica la data del miglioramento.')
+  if (form.verificationPeriod === 'all' && !form.trendRestoration) issues.push('Indica la data del ripristino.')
+  if (scopeStale) issues.push('Il perimetro della Fase 1 è cambiato: importa di nuovo l’obiettivo.')
+  if (form.mode === 'stain' && (!form.before || form.before.dal !== beforeFrom || form.before.al !== beforeTo || !form.after || form.after.dal !== form.afterFrom || form.after.al !== form.afterTo)) issues.push('Aggiorna il confronto per le date selezionate.')
   if (form.mode === 'manuale' && !form.source.trim()) issues.push('Documenta fonte, linea, prodotti e causali del confronto manuale.')
   if (form.costs !== '' && Number(String(form.costs).replace(',', '.')) > 0 && !form.costNote.trim()) issues.push('Descrivi i costi di implementazione.')
 
@@ -367,17 +388,18 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     try {
       if (!baseline) throw new Error('Salva prima la baseline della Fase 1.')
       if (objectives.length) { selectObjective(form.objectiveId); return }
-      if (form.scope && !window.confirm('Sostituire lo snapshot baseline? Il confronto dopo e i calcoli saranno azzerati.')) return
+      if (form.scope && !window.confirm('Sostituire la baseline? Il confronto e i calcoli saranno azzerati.')) return
       const scope = baselineScope(baseline)
       aggregateSnapshot(baseline.stain_snapshot, scope)
       change({ scope, before: JSON.parse(JSON.stringify(baseline.stain_snapshot)), after: null, rows: [], driverSnapshot: null, afterFrom: '', afterTo: '' })
-      setPeriodStatus('Linea e filtri acquisiti. Puoi modificare qui il periodo prima e scegliere un periodo dopo gia trascorso. La Fase 1 non viene modificata.')
+      setPeriodStatus('Baseline acquisita dalla Fase 1. Scegli il periodo da verificare.')
     } catch (error) { setPeriodStatus(error.message) }
   }
+
   const load = async () => {
     if (periodError || objectiveBlocked) { setPeriodStatus(periodError || objectiveError || 'Importa nuovamente obiettivo.'); return }
     const span = Date.parse(`${form.afterTo}T00:00:00Z`) - Date.parse(`${beforeFrom}T00:00:00Z`)
-    if (span > 366 * 86400000) { setPeriodStatus('Grafico e saving richiedono un periodo continuo di massimo 367 giorni.'); return }
+    if (span > 366 * 86400000) { setPeriodStatus('Baseline e verifica devono stare in massimo 367 giorni.'); return }
     const requestRevision = revision.current
     setBusy(true)
     setPeriodStatus('Lettura STAIN in corso...')
@@ -391,7 +413,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       })
       const beforeResponse = { data: slice(beforeFrom, beforeTo) }
       const afterResponse = { data: slice(form.afterFrom, form.afterTo) }
-      if (requestRevision !== revision.current || !mountedRef.current) { setPeriodStatus('Dati modificati: ricarica il confronto.'); return }
+      if (requestRevision !== revision.current || !mountedRef.current) { setPeriodStatus('Dati modificati: aggiorna di nuovo il confronto.'); return }
       const excluded = incomparableProducts(beforeResponse.data, afterResponse.data, form.scope)
       const rows = compareSnapshots(beforeResponse.data, afterResponse.data, form.scope, form.rows)
       const comparableScope = { ...form.scope, products: [...new Set(rows.map(row => row.product))] }
@@ -399,10 +421,11 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       change({ before: beforeResponse.data, after: afterResponse.data, rows, excluded,
         trendData: { key: form.mode + trendKey(comparableScope, beforeFrom, form.afterTo), snapshot: continuous },
       })
-      setPeriodStatus(`Grafico e confronto aggiornati: ${rows.length} righe${excluded.length ? `, ${excluded.length} prodotti esclusi` : ''}. Ora applica i driver economici.`)
+      setPeriodStatus(`Confronto aggiornato: ${rows.length} righe${excluded.length ? `, ${excluded.length} prodotti esclusi` : ''}.`)
     } catch (error) { setPeriodStatus(error.response?.data?.detail || error.message || 'Lettura STAIN non riuscita') }
     finally { setBusy(false) }
   }
+
   draftStateRef.current = { form, result, issues, periodError }
   persistRef.current = async () => {
     clearTimeout(timerRef.current)
@@ -455,14 +478,14 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         dirty.current = false
         if (mountedRef.current) {
           setSaveState('saved')
-          setStatus(ready ? 'Salvato automaticamente' : 'Bozza salvata automaticamente, anche con dati incompleti')
+          setStatus(ready ? 'Salvato automaticamente' : 'Bozza salvata automaticamente')
         }
       }
     } catch {
       failed = true
       if (mountedRef.current) {
         setSaveState('error')
-        setStatus('Errore di salvataggio: modifiche ancora nella pagina. Premi Riprova.')
+        setStatus('Errore di salvataggio: premi Riprova.')
       }
     } finally {
       savingRef.current = false
@@ -475,12 +498,14 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       }
     }
   }
+
   useEffect(() => {
     if (!dirty.current) return
     clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => persistRef.current?.(), 800)
     return () => clearTimeout(timerRef.current)
   }, [form])
+
   useEffect(() => {
     mountedRef.current = true
     const guard = event => {
@@ -497,6 +522,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       if (dirty.current && !savingRef.current) persistRef.current?.()
     }
   }, [])
+
   useEffect(() => {
     if (objectives.length || form.objectiveId || form.mode !== 'stain' || form.scope || !baseline || dirty.current) return
     try {
@@ -504,22 +530,33 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       aggregateSnapshot(baseline.stain_snapshot, scope)
       change({ scope, before: JSON.parse(JSON.stringify(baseline.stain_snapshot)) })
     } catch {
-      setPeriodStatus('Baseline non disponibile: carica e salva i dati nella Fase 1, poi importali qui.')
+      setPeriodStatus('Baseline non disponibile: carica e salva i dati nella Fase 1.')
     }
   }, [baseline, form.mode, form.scope])
+
   useEffect(() => {
     if (objectives.length !== 1 || form.objectiveId || busy || dirty.current || savingRef.current) return
     if (form.rows.length) return
     selectObjective(objectives[0].id)
   }, [baseline, form.objectiveId, busy, form.rows.length])
+
   useEffect(() => {
     if (!form.objectiveId || !objectiveBlocked || (!form.rows.length && !form.result && !form.reviewed)) return
     change({ rows: [], before: null, after: null, trendData: null, result: null, reviewed: false, reviewedBy: '', reviewedAt: '' })
   }, [objectiveBlocked, form.objectiveId, form.rows.length, form.result, form.reviewed])
+
   const input = (label, key, type = 'text') => {
     const beforeDate = key === 'comparisonFrom' || key === 'comparisonTo'
     const value = beforeDate ? (key === 'comparisonFrom' ? beforeFrom : beforeTo) || '' : form[key]
-    return <label className="text-sm block">{label}<input className={field} type={type} disabled={busy || (key === 'afterFrom' && form.verificationPeriod && form.verificationPeriod !== 'custom') || (key === 'afterTo' && form.verificationPeriod === 'restoration')} min={   type === 'number'     ? '0'     : key === 'afterFrom'       ? dayAfter(beforeTo) || undefined       : key === 'afterTo'         ? form.afterFrom && form.afterFrom > beforeTo           ? form.afterFrom           : dayAfter(beforeTo) || undefined         : undefined } max={type === 'date' ? today : undefined} step={type === 'number' ? 'any' : undefined} value={value} onChange={event => {
+    const locked = (key === 'afterFrom' && form.verificationPeriod && form.verificationPeriod !== 'custom') || (key === 'afterTo' && form.verificationPeriod === 'restoration')
+    const min = type === 'number'
+      ? '0'
+      : key === 'afterFrom'
+        ? dayAfter(beforeTo) || undefined
+        : key === 'afterTo'
+          ? form.afterFrom && form.afterFrom > beforeTo ? form.afterFrom : dayAfter(beforeTo) || undefined
+          : undefined
+    return <label className="text-sm block">{label}<input className={field} type={type} disabled={busy || locked} min={min} max={type === 'date' ? today : undefined} step={type === 'number' ? 'any' : undefined} value={value} onChange={event => {
       const value = event.target.value
       if (beforeDate) {
         change({ scope: { ...form.scope, [key === 'comparisonFrom' ? 'from' : 'to']: value }, before: null, after: null, rows: [] })
@@ -528,89 +565,120 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       } else {
         change({ [key]: value })
       }
-      if (type === 'date') setPeriodStatus('Date modificate. Premi Carica confronto da STAIN per ricalcolare entrambi i periodi.')
+      if (type === 'date') setPeriodStatus('Date modificate: premi Aggiorna confronto.')
     }} /></label>
   }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
         <span role="status" aria-live="polite" className={saveState === 'error' ? 'text-red-700' : ''}>{saveState === 'saving' ? 'Salvataggio...' : saveState === 'dirty' ? 'Modifiche da salvare...' : saveState === 'error' ? 'Errore: riprova in fondo alla pagina' : 'Salvato'}</span>
       </div>
+
       <section className={section}>
-        <h3 className="font-bold text-primary">1 · Confronto prima e dopo</h3>
-        <p className="text-sm text-gray-600">Confronto delle percentuali di perdita sulla produzione, per prodotto e tipo. La differenza viene valorizzata in kg e in euro: Saving indica un miglioramento; Maggior costo stimato indica un peggioramento. La variazione in punti percentuali e calcolata come dopo meno prima: positiva significa aumento delle perdite.</p>
-                  {(objectives.length > 0 || form.objectiveId) && <div className="space-y-2">
-            <label className="block text-sm">Obiettivo della Fase 1<select className={field} disabled={busy} value={form.objectiveId} onChange={event => selectObjective(event.target.value)}>
-              <option value="">Seleziona obiettivo</option>
-              {form.objectiveId && !selectedObjective && <option value={form.objectiveId}>Obiettivo rimosso</option>}
-              {objectives.map((row, index) => <option key={row.id} value={row.id}>{objectiveLabel(row, index)}</option>)}
-            </select></label>
-            {selectedObjective && <p className="text-sm">Baseline: {fmt(selectedObjective.baseline)} {selectedObjective.unit} · Target: {fmt(selectedObjective.target)} {selectedObjective.unit}</p>}
-            {objectiveBlocked && <p role="alert" className="text-sm text-amber-800">{objectiveError || 'Obiettivo modificato: importa nuovamente il confronto.'}</p>}
-            <button type="button" className={button} disabled={busy || !selectedObjective} onClick={() => selectObjective(form.objectiveId)}>Importa / aggiorna obiettivo</button>
-          </div>}
-          <label className="block text-sm">Fonte<select className={field} disabled={busy || objectives.length > 0 || Boolean(form.objectiveId)} value={form.mode} onChange={event => { if (!form.rows.length || window.confirm('Cambiare fonte e azzerare il confronto?')) change({ ...empty(), mode: event.target.value }) }}><option value="stain">STAIN</option><option value="manuale">Confronto manuale in kg</option></select></label>
+        <StepBar title="Passo 1 - Obiettivo e periodo" hint="Scegli l'obiettivo, gli interventi e il periodo da verificare." />
+
+        {(objectives.length > 0 || form.objectiveId) && <div className="space-y-2">
+          <label className="block text-sm">Obiettivo della Fase 1<select className={field} disabled={busy} value={form.objectiveId} onChange={event => selectObjective(event.target.value)}>
+            <option value="">Seleziona obiettivo</option>
+            {form.objectiveId && !selectedObjective && <option value={form.objectiveId}>Obiettivo rimosso</option>}
+            {objectives.map((row, index) => <option key={row.id} value={row.id}>{objectiveLabel(row, index)}</option>)}
+          </select></label>
+          {objectiveBlocked && <div className="flex flex-wrap items-center gap-3"><p role="alert" className="text-sm text-amber-800">{objectiveError || 'Obiettivo modificato nella Fase 1.'}</p><button type="button" className={button} disabled={busy || !selectedObjective} onClick={() => selectObjective(form.objectiveId)}>Aggiorna obiettivo</button></div>}
+        </div>}
+
+        {!objectives.length && !form.objectiveId && <label className="block text-sm">Fonte<select className={field} disabled={busy} value={form.mode} onChange={event => { if (!form.rows.length || window.confirm('Cambiare fonte e azzerare il confronto?')) change({ ...empty(), mode: event.target.value }) }}><option value="stain">STAIN</option><option value="manuale">Confronto manuale in kg</option></select></label>}
+
         {form.mode === 'stain' ? <>
-          {!objectives.length && <button type="button" disabled={busy} className={button} onClick={capture}>Importa linea, filtri e periodo dalla Fase 1</button>}
-          {scopeStale && <div role="alert" className="text-sm bg-amber-50 border border-amber-300 text-amber-900 p-3 rounded space-y-1"><p className="font-semibold">Il perimetro della Fase 1 è diverso da quello usato qui.</p><p>Fase 1 - Prodotti: {phaseScope.products.join(', ') || 'Tutti'} · Causali: {phaseScope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Qui - Prodotti: {form.scope.products.join(', ') || 'Tutti'} · Causali: {form.scope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Premi Importa linea, filtri e periodo dalla Fase 1. Il confronto dopo verrà azzerato e andrà ricaricato.</p></div>}
-          {form.scope && <div className="text-sm bg-gray-50 p-3 rounded"><p>{form.scope.line} · {form.scope.from} / {form.scope.to}</p><p>Prodotti: {form.scope.products.join(', ') || 'Tutti'} · Causali: {form.scope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Baseline del confronto. Le modifiche non cambiano la Fase 1.</p></div>}
-        </> : <><div className="grid md:grid-cols-2 gap-3">{input('Baseline da', 'manualBeforeFrom', 'date')}{input('Baseline a', 'manualBeforeTo', 'date')}</div>{input('Fonte e perimetro manuale (linea, prodotti, causali, evidenze)', 'source')}{form.objectiveId && <p className="text-xs text-gray-600">Inserisci solo perdite del perimetro selezionato. La produzione non viene ricostruita dalla raccolta manuale.</p>}</>}
-        <p className="text-sm text-gray-600">Scegli gli interventi e il periodo da verificare. Il saving usa questi stessi estremi.</p>
-        {form.mode === 'stain' && form.scope && <div className="grid md:grid-cols-2 gap-3">{input('Periodo prima da', 'comparisonFrom', 'date')}{input('Periodo prima a', 'comparisonTo', 'date')}</div>}
+          {!objectives.length && <button type="button" disabled={busy} className={button} onClick={capture}>Importa baseline dalla Fase 1</button>}
+          {scopeStale && <div role="alert" className="text-sm bg-amber-50 border border-amber-300 text-amber-900 p-3 rounded flex flex-wrap items-center gap-3"><span>Il perimetro della Fase 1 è cambiato.</span><button type="button" className={button} disabled={busy} onClick={capture}>Aggiorna</button></div>}
+          {form.scope && <div className="text-sm bg-gray-50 p-3 rounded">
+            <p><strong>{form.scope.line}</strong> · {form.objectiveSnapshot?.source === 'manuale' ? 'Manuale' : 'STAIN'}{selectedObjective ? ` · Baseline ${fmt(selectedObjective.baseline)} ${selectedObjective.unit} → Target ${fmt(selectedObjective.target)} ${selectedObjective.unit}` : ''}</p>
+            <p className="text-gray-600">Prodotti: {form.scope.products.join(', ') || 'Tutti'} · Perdite: {form.scope.priorities.join(', ') || 'Tutte'}</p>
+          </div>}
+        </> : <>
+          <div className="grid md:grid-cols-2 gap-3">{input('Baseline da', 'manualBeforeFrom', 'date')}{input('Baseline a', 'manualBeforeTo', 'date')}</div>
+          {input('Fonte dei dati manuali', 'source')}
+        </>}
+
+        {form.mode === 'stain' && form.scope && <div className="grid md:grid-cols-2 gap-3">{input('Baseline da', 'comparisonFrom', 'date')}{input('Baseline a', 'comparisonTo', 'date')}</div>}
+
         <div className="grid md:grid-cols-2 gap-3">
           <div className="space-y-2">
             <InterventionSelect label="Ripristino" kind="ripristino" items={interventions} value={form.trendRestorationRef} refKey="trendRestorationRef" dateKey="trendRestoration" change={change} />
-            <label className="block text-sm">Data ripristino<input type="date" className={field} min={undefined} max={today} value={form.trendRestoration || ''} onChange={event => change({ trendRestoration: event.target.value, trendRestorationRef: '' })} /></label>
+            <label className="block text-sm">Data ripristino<input type="date" className={field} max={today} value={form.trendRestoration || ''} onChange={event => change({ trendRestoration: event.target.value, trendRestorationRef: '' })} /></label>
+            {form.trendRestoration && !form.trendRestorationRef && <p className="text-xs text-gray-500">Data inserita a mano</p>}
           </div>
           <div className="space-y-2">
             <InterventionSelect label="Miglioramento" kind="miglioramento" items={interventions} value={form.trendImprovementRef} refKey="trendImprovementRef" dateKey="trendImprovement" change={change} />
-            <label className="block text-sm">Data miglioramento<input type="date" className={field} min={undefined} max={today} value={form.trendImprovement || ''} onChange={event => change({ trendImprovement: event.target.value, trendImprovementRef: '' })} /></label>
+            <label className="block text-sm">Data miglioramento<input type="date" className={field} max={today} value={form.trendImprovement || ''} onChange={event => change({ trendImprovement: event.target.value, trendImprovementRef: '' })} /></label>
+            {form.trendImprovement && !form.trendImprovementRef && <p className="text-xs text-gray-500">Data inserita a mano</p>}
           </div>
         </div>
+
         <label className="block text-sm">Periodo da verificare<select className={field} disabled={busy} value={form.verificationPeriod || 'custom'} onChange={event => change({ verificationPeriod: event.target.value })}>
-<option value="custom">Periodo personalizzato</option>
-<option value="restoration" disabled={!form.trendRestoration || !form.trendImprovement}>Dopo il ripristino, prima del miglioramento</option>
-<option value="improvement" disabled={!form.trendImprovement}>Dopo l'intervento di miglioramento</option>
-<option value="all" disabled={!form.trendRestoration}>Intero periodo dal ripristino</option>
-</select></label><p className="text-xs text-gray-600">Un solo periodo per grafico e saving. Dopo una modifica ricarica il confronto.</p>
-<div className="grid md:grid-cols-2 gap-3">{input('Periodo dopo da', 'afterFrom', 'date')}{input('Periodo dopo a', 'afterTo', 'date')}</div>
-        {form.mode === 'stain' && <button type="button" disabled={busy || !form.scope || Boolean(periodError) || scopeStale || objectiveBlocked} className={button} onClick={load}>{busy ? 'Caricamento...' : 'Aggiorna grafico e saving da STAIN'}</button>}
+          <option value="custom">Personalizzato</option>
+          <option value="restoration" disabled={!form.trendRestoration || !form.trendImprovement || interventionsInverted}>Dopo il ripristino, prima del miglioramento</option>
+          <option value="improvement" disabled={!form.trendImprovement}>Dopo il miglioramento</option>
+          <option value="all" disabled={!form.trendRestoration}>Tutto dal ripristino</option>
+        </select></label>
+
+        <div className="grid md:grid-cols-2 gap-3">{input('Verifica da', 'afterFrom', 'date')}{input('Verifica a', 'afterTo', 'date')}</div>
+
+        {timingWarning && <p role="alert" className="text-sm text-amber-800">{timingWarning}</p>}
+
+        {form.mode === 'stain' && <button type="button" disabled={busy || !form.scope || Boolean(periodError) || scopeStale || objectiveBlocked} className="bg-primary text-white rounded px-4 py-2 text-sm disabled:opacity-50" onClick={load}>{busy ? 'Caricamento...' : 'Aggiorna confronto'}</button>}
         {periodError && <p role="alert" className="text-sm text-amber-800">{periodError}</p>}
         {periodStatus && <p role="status" aria-live="polite" className="text-sm">{periodStatus}</p>}
-        {form.rows.length > 0 && form.excluded?.length > 0 && <div role="alert" className="text-sm bg-amber-50 border border-amber-300 text-amber-900 p-3 rounded space-y-1"><p className="font-semibold">Prodotti esclusi dal saving: produzione assente nel periodo indicato</p>{form.excluded.map(item => <p key={item.product}>{item.product}: assente in {item.missing} · perdite prima {fmt(item.beforeLoss)} kg, dopo {fmt(item.afterLoss)} kg</p>)}<p>Le loro perdite non sono valorizzate nel saving.</p></div>}
+        {form.rows.length > 0 && form.excluded?.length > 0 && <div role="alert" className="text-sm bg-amber-50 border border-amber-300 text-amber-900 p-3 rounded space-y-1">
+          <p className="font-semibold">Prodotti esclusi: non prodotti in uno dei due periodi</p>
+          {form.excluded.map(item => <p key={item.product}>{item.product}: assente in {item.missing}</p>)}
+        </div>}
       </section>
-      <ScrapInterventionTrend form={form} change={change} from={beforeFrom} to={form.afterTo} interventions={interventions} />
+
+      <ScrapInterventionTrend form={form} from={beforeFrom} to={form.afterTo} />
+
       <section className={section}>
-        <h3 className="font-bold text-primary">2 · Risultato del periodo selezionato</h3><p className="text-sm">Baseline: {beforeFrom || "Da definire"} / {beforeTo || "Da definire"} · Verifica: {form.afterFrom || "Da definire"} / {form.afterTo || "Da definire"}</p>
-        <p className="text-xs text-gray-600">Driver €/kg dalla versione annuale dei Settings, oppure inserimento manuale documentato. Scarto e rework distinti: non inserire gli stessi kg due volte. Le produzioni per uno stesso prodotto devono coincidere. Nessuna formula manodopera inclusa.</p>
+        <StepBar title="Passo 3 - Risultato economico" hint="Applica i driver €/kg e verifica il risultato del periodo." />
+        <p className="text-sm">Baseline: {beforeFrom || 'Da definire'} / {beforeTo || 'Da definire'} · Verifica: {form.afterFrom || 'Da definire'} / {form.afterTo || 'Da definire'}</p>
+
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-sm flex-1">Versione driver economici<select className={field} disabled={busy} value={driverVersion} onChange={event => change({ selectedDriverVersion: event.target.value })}><option value="">Seleziona anno e versione</option>{driverVersions.map(version => <option key={version.id} value={version.id}>{version.year} · {version.filename} · {new Date(version.created_at).toLocaleString('it-IT')}</option>)}</select></label>
-          <button type="button" className={button} disabled={busy || !driverVersion || !form.rows.length} onClick={applyDrivers}>Applica driver della linea</button>
+          <button type="button" className={button} disabled={busy || !driverVersion || !form.rows.length} onClick={applyDrivers}>Applica driver</button>
         </div>
-        {!form.rows.length && <p className="text-sm text-amber-800">Prima carica il confronto nel punto 1. Solo dopo puoi applicare i costi alle righe.</p>}
-        {form.rows.length > 0 && !driverVersion && <p className="text-sm">Seleziona una versione driver pubblicata nei Settings.</p>}
-        {!driverVersions.length && <p className="text-sm">Nessuna versione driver disponibile: verifica la pubblicazione nei Settings.</p>}
+        {!form.rows.length && <p className="text-sm text-gray-600">Aggiorna prima il confronto nel Passo 1.</p>}
+        {!driverVersions.length && <p className="text-sm">Nessuna versione driver disponibile nei Settings.</p>}
         {driverStatus && <p role="status" className="text-sm">{driverStatus}</p>}
-        {form.driverSnapshot && <p className="text-xs text-gray-600">Snapshot driver: {form.driverSnapshot.year} · {form.driverSnapshot.resource.code} · {form.driverSnapshot.filename}. I nuovi caricamenti annuali non aggiornano automaticamente questo progetto. Modifiche manuali restano distinguibili nelle righe salvate.</p>}
+
         {form.mode === 'manuale' && !form.objectiveId && <button type="button" disabled={busy} className={button} onClick={() => change({ rows: [...form.rows, { id: globalThis.crypto?.randomUUID?.() || `r_${Date.now()}`, product: '', type: 'scarto', beforeProduction: '', beforeLoss: '', afterProduction: '', afterLoss: '', driver: '', driverYear: '', driverRef: '' }] })}>Aggiungi prodotto / tipo</button>}
+
         {form.rows.length > 0 && <div className="overflow-x-auto"><table className="w-full min-w-[1450px] text-xs"><thead><tr>{['Prodotto', 'Tipo', 'Produzione prima kg', 'Perdita prima kg', 'Produzione dopo kg', 'Perdita dopo kg', 'Driver €/kg', 'Anno', 'Riferimento driver', 'Perdita prima %', 'Perdita dopo %', 'Variazione p.p.', 'Esito kg', 'Esito economico', ''].map((label, index) => <th key={index} className="p-2 text-left border-b">{label}</th>)}</tr></thead><tbody>
-          {form.rows.map(row => { const computed = result.rows.find(item => item.id === row.id); return <tr key={row.id}>
-            <td className="p-1"><input aria-label="Prodotto" className={field} disabled={form.mode === 'stain' || Boolean(form.objectiveId)} value={row.product} onChange={event => patchRow(row.id, 'product', event.target.value)} /></td>
-            <td className="p-1"><select aria-label="Tipo perdita" className={field} disabled={form.mode === 'stain' || Boolean(form.objectiveId)} value={row.type} onChange={event => patchRow(row.id, 'type', event.target.value)}><option value="scarto">Scarto</option><option value="rework">Rework</option></select></td>
-            {['beforeProduction', 'beforeLoss', 'afterProduction', 'afterLoss', 'driver', 'driverYear', 'driverRef'].map(key => <td key={key} className="p-1"><input aria-label={key} className={field} disabled={form.mode === 'stain' && ['beforeProduction', 'beforeLoss', 'afterProduction', 'afterLoss'].includes(key)} type={key === 'driverRef' ? 'text' : 'number'} min="0" step="any" value={row[key]} onChange={event => patchRow(row.id, key, event.target.value)} /></td>)}
-            <td className="p-2">{fmt(rate(row.beforeLoss, row.beforeProduction))}%</td>
-            <td className="p-2">{fmt(rate(row.afterLoss, row.afterProduction))}%</td>
-            <td className="p-2">{fmt(rate(row.afterLoss, row.afterProduction) - rate(row.beforeLoss, row.beforeProduction))} p.p.</td>
-            <td className={`p-2 ${computed?.avoided < 0 ? 'text-red-700' : 'text-green-800'}`}>{outcome(computed?.avoided, 'Risparmiati', 'Aggiuntivi', 'kg')}</td>
-            <td className={`p-2 ${computed?.gross < 0 ? 'text-red-700' : 'text-green-800'}`}>{outcome(computed?.gross, 'Saving', 'Maggior costo stimato', '€')}</td><td>{form.mode === 'manuale' && !form.objectiveId && <button type="button" onClick={() => change({ rows: form.rows.filter(item => item.id !== row.id) })}>Elimina</button>}</td>
-          </tr> })}
+          {form.rows.map(row => {
+            const computed = result.rows.find(item => item.id === row.id)
+            return <tr key={row.id}>
+              <td className="p-1"><input aria-label="Prodotto" className={field} disabled={form.mode === 'stain' || Boolean(form.objectiveId)} value={row.product} onChange={event => patchRow(row.id, 'product', event.target.value)} /></td>
+              <td className="p-1"><select aria-label="Tipo perdita" className={field} disabled={form.mode === 'stain' || Boolean(form.objectiveId)} value={row.type} onChange={event => patchRow(row.id, 'type', event.target.value)}><option value="scarto">Scarto</option><option value="rework">Rework</option></select></td>
+              {['beforeProduction', 'beforeLoss', 'afterProduction', 'afterLoss', 'driver', 'driverYear', 'driverRef'].map(key => <td key={key} className="p-1"><input aria-label={key} className={field} disabled={form.mode === 'stain' && ['beforeProduction', 'beforeLoss', 'afterProduction', 'afterLoss'].includes(key)} type={key === 'driverRef' ? 'text' : 'number'} min="0" step="any" value={row[key]} onChange={event => patchRow(row.id, key, event.target.value)} /></td>)}
+              <td className="p-2">{fmt(rate(row.beforeLoss, row.beforeProduction))}%</td>
+              <td className="p-2">{fmt(rate(row.afterLoss, row.afterProduction))}%</td>
+              <td className="p-2">{fmt(rate(row.afterLoss, row.afterProduction) - rate(row.beforeLoss, row.beforeProduction))} p.p.</td>
+              <td className={`p-2 ${computed?.avoided < 0 ? 'text-red-700' : 'text-green-800'}`}>{outcome(computed?.avoided, 'Risparmiati', 'Aggiuntivi', 'kg')}</td>
+              <td className={`p-2 ${computed?.gross < 0 ? 'text-red-700' : 'text-green-800'}`}>{outcome(computed?.gross, 'Saving', 'Maggior costo stimato', '€')}</td>
+              <td>{form.mode === 'manuale' && !form.objectiveId && <button type="button" onClick={() => change({ rows: form.rows.filter(item => item.id !== row.id) })}>Elimina</button>}</td>
+            </tr>
+          })}
         </tbody></table></div>}
-        <div className="grid md:grid-cols-2 gap-3">{input('Costi implementazione € (facoltativi)', 'costs', 'number')}{input('Descrizione e fonte dei costi', 'costNote')}</div>
-        {form.rows.length > 0 && (issues.length ? <div className="text-sm text-amber-800">{[...new Set(issues)].map(issue => <p key={issue}>{issue}</p>)}</div> : <div className="grid md:grid-cols-2 gap-3">
-          <div className="bg-gray-50 rounded p-3"><div className="text-xs">{result.avoided < 0 ? 'Kg aggiuntivi rispetto all’atteso' : 'Kg risparmiati'}</div><strong>{fmt(Math.abs(result.avoided))}</strong></div>
-          <div className="bg-gray-50 rounded p-3"><div className="text-xs">{result.gross < 0 ? 'Maggior costo stimato del periodo €' : 'Saving lordo del periodo €'}</div><strong>{fmt(Math.abs(result.gross))}</strong></div>
-          {form.costs !== '' && <p className="text-sm">{result.net < 0 ? 'Saldo netto negativo, inclusi costi' : 'Beneficio netto'}: {fmt(Math.abs(result.net))} €</p>}
+
+        <div className="grid md:grid-cols-2 gap-3">{input('Costi implementazione € (facoltativi)', 'costs', 'number')}{input('Descrizione dei costi', 'costNote')}</div>
+
+        {form.rows.length > 0 && (issues.length ? <div className="text-sm text-amber-800">{[...new Set(issues)].map(issue => <p key={issue}>{issue}</p>)}</div> : <div className="grid md:grid-cols-3 gap-3">
+          <div className="bg-gray-50 rounded p-3"><div className="text-xs">{result.avoided < 0 ? 'Kg aggiuntivi' : 'Kg evitati'}</div><strong>{fmt(Math.abs(result.avoided))}</strong></div>
+          <div className="bg-gray-50 rounded p-3"><div className="text-xs">{result.gross < 0 ? 'Maggior costo €' : 'Saving lordo €'}</div><strong>{fmt(Math.abs(result.gross))}</strong></div>
+          <div className="bg-gray-50 rounded p-3"><div className="text-xs">{result.net < 0 ? 'Saldo netto negativo €' : 'Beneficio netto €'}</div><strong>{form.costs === '' ? fmt(Math.abs(result.gross)) : fmt(Math.abs(result.net))}</strong></div>
         </div>)}
+
+        {form.rows.length > 0 && !issues.length && timingWarning && <p role="alert" className="text-sm text-amber-800">{timingWarning}</p>}
+
         {form.rows.length > 0 && !issues.length && <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={Boolean(form.reviewed)} onChange={event => change(event.target.checked ? { reviewed: true, reviewedBy: user?.full_name || user?.email || '', reviewedAt: new Date().toISOString() } : { reviewed: false, reviewedBy: '', reviewedAt: '' }, true)} />
           Risultato verificato
