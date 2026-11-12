@@ -1,3 +1,4 @@
+import MpInfoProposal from './MpInfoProposal'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import api from '../../../../services/api'
@@ -37,7 +38,7 @@ function outputs(form) {
   return {
     nuovi_standard: resolved('standards', form.standards.length > 0 && form.standards.every(row => row.documents?.length && row.change?.trim())),
     espansione_orizzontale: resolved('expansion', form.expansion.length > 0 && form.expansion.every(row => row.improvement?.trim() && row.lineKey && row.owner)),
-    mp_info_eem: !form.mp.length || resolved('mp', form.mp.every(row => row.title?.trim() && row.files?.length && row.owner)),
+    mp_info_eem: true,
     scala_contromisure: resolved('ladder', form.ladder.length > 0 && form.ladder.every(row => row.improvement?.trim() && row.level)),
     mantenimento: Boolean(form.sustain.owner && form.sustain.date && (form.sustain.indicator.trim() || (form.sustain.usePhase5 && form.sustain.referenceSnapshot))),
   }
@@ -74,7 +75,7 @@ export default function SustainmentPlan({ stepData, onChange, allStepsData = {},
     if (mounted.current) setStatus('saving')
     let failed = false
     try {
-      const response = await onChangeRef.current({ dati: { ...baseRef.current, standardizzazione_v2: snapshot, mp_info_eem_scope: 'deferred_to_eem' }, output_compilati: outputs(snapshot) })
+      const response = await onChangeRef.current({ dati: { ...baseRef.current, standardizzazione_v2: snapshot, mp_info_eem_scope: 'pillar_module' }, output_compilati: outputs(snapshot) })
       if (response === false) throw new Error('Salvataggio rifiutato')
       if (revision.current === rev) {
         dirty.current = false
@@ -252,7 +253,11 @@ export default function SustainmentPlan({ stepData, onChange, allStepsData = {},
           </div>
         </Row> })}
       </Block>
-      {form.mp.length > 0 && <details className="rounded border bg-white p-3 text-sm"><summary className="cursor-pointer">MP Info già registrate ({form.mp.length})</summary><p className="text-xs text-gray-500 my-2">Dati conservati. La valutazione EEM sarà gestita in una sezione dedicata; nessun invio automatico.</p>{form.mp.map(row => <div key={row.id} className="border-t py-2"><strong>{row.title || row.improvement || 'MP Info'}</strong>{list(row.files).map((file, index) => <p key={index}>{file.name || file.nome || file.filename || 'Allegato conservato'}</p>)}</div>)}</details>}
+      <MpInfoProposal major={major} standards={form.standards} beforeSend={async () => {
+        await persistRef.current?.()
+        if (dirty.current || saving.current) throw new Error('Attendi il salvataggio della fase e riprova.')
+      }} />
+      {form.mp.length > 0 && <details className="rounded border bg-white p-3 text-sm"><summary className="cursor-pointer">MP Info già registrate ({form.mp.length})</summary><p className="text-xs text-gray-500 my-2">Dati precedenti conservati. Non sono stati inviati automaticamente al pilastro: usa Proponi MP Info per trasmettere un apprendimento.</p>{form.mp.map(row => <div key={row.id} className="border-t py-2"><strong>{row.title || row.improvement || 'MP Info'}</strong>{list(row.files).map((file, index) => <p key={index}>{file.name || file.nome || file.filename || 'Allegato conservato'}</p>)}</div>)}</details>}
       <div role="status" aria-live="polite" className="flex justify-end gap-3 text-sm"><span>{statusText}</span>{status === 'error' && <button type="button" className={smallButton} onClick={() => persistRef.current?.()}>Riprova salvataggio</button>}</div>
       {creating?.mode === 'choice' && <OplChoiceModal onClose={() => setCreating(null)} onCreate={() => setCreating(current => ({ ...current, mode: 'nativa' }))} onImport={() => setCreating(current => ({ ...current, mode: 'import' }))} onSop={() => setCreating(current => ({ ...current, mode: 'sop' }))} />}
       {creating?.mode === 'nativa' && <OplNativaModal initial={initial} onClose={() => setCreating(null)} onSaved={doc => handleCreated(doc?._id)} />}
