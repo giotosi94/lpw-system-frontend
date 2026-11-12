@@ -145,7 +145,8 @@ function useProjectInterventions(major, allStepsData) {
         .filter(plan => plan.parent_type === 'major_kaizen' && plan.parent_id === major._id)
         .map(plan => {
           const stepId = plan.route_source?.step_id || plan.gant_step_id
-          return { key: `ap:${plan._id}`, kind: restoreSteps.has(stepId) ? 'ripristino' : 'miglioramento', label: `${plan.numero || 'AP'} · ${plan.titolo || ''}`, date: isoDay(plan.data_completamento) }
+          const closed = ['chiuso', 'closed', 'completato', 'completed', 'done'].includes(String(plan.stato || '').toLowerCase())
+          return { key: `ap:${plan._id}`, kind: restoreSteps.has(stepId) ? 'ripristino' : 'miglioramento', label: `${plan.numero || 'AP'} · ${plan.titolo || ''}`, closed, date: isoDay(plan.data_completamento) }
         })
       const carlItems = await Promise.all(carl.map(async item => {
         try {
@@ -158,7 +159,14 @@ function useProjectInterventions(major, allStepsData) {
       if (active) setItems([...carlItems, ...planItems])
     }
     load()
-    return () => { active = false }
+    const reload = () => { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', reload)
+    window.addEventListener('focus', reload)
+    return () => {
+      active = false
+      document.removeEventListener('visibilitychange', reload)
+      window.removeEventListener('focus', reload)
+    }
   }, [signature])
   return items
 }
@@ -170,10 +178,10 @@ function InterventionSelect({ label, kind, items, value, refKey, dateKey, change
     <label className="block text-sm">{label}
       <select className={field} value={selected ? selected.key : ''} onChange={event => {
         const item = options.find(row => row.key === event.target.value)
-        change(item ? { [refKey]: item.key, [dateKey]: item.date } : { [refKey]: '' })
+        change(item ? (item.date ? { [refKey]: item.key, [dateKey]: item.date } : { [refKey]: item.key }) : { [refKey]: '' })
       }}>
         <option value="">{options.length ? 'Seleziona intervento' : 'Nessun intervento collegato'}</option>
-        {options.map(item => <option key={item.key} value={item.key} disabled={!item.date}>{item.label}{item.date ? ` · ${item.date.split('-').reverse().join('/')}` : item.unavailable ? ' · stato non disponibile' : ' · non concluso'}</option>)}
+        {options.map(item => <option key={item.key} value={item.key} disabled={!item.date && !item.closed}>{item.label}{item.date ? ` · ${item.date.split('-').reverse().join('/')}` : item.closed ? ' · chiuso' : item.unavailable ? ' · stato non disponibile' : ' · non concluso'}</option>)}
       </select>
     </label>
   )
@@ -606,13 +614,13 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         <div className="grid md:grid-cols-2 gap-3">
           <div className="space-y-2">
             <InterventionSelect label="Ripristino" kind="ripristino" items={interventions} value={form.trendRestorationRef} refKey="trendRestorationRef" dateKey="trendRestoration" change={change} />
-            <label className="block text-sm">Data ripristino<input type="date" className={field} max={today} value={form.trendRestoration || ''} onChange={event => change({ trendRestoration: event.target.value, trendRestorationRef: '' })} /></label>
-            {form.trendRestoration && !form.trendRestorationRef && <p className="text-xs text-gray-500">Data inserita a mano</p>}
+            <label className="block text-sm">Data ripristino<input type="date" className={field} max={today} value={form.trendRestoration || ''} onChange={event => change({ trendRestoration: event.target.value })} /></label>
+            {form.trendRestorationRef && !form.trendRestoration && <p className="text-xs text-amber-800">Inserisci la data di esecuzione</p>}
           </div>
           <div className="space-y-2">
             <InterventionSelect label="Miglioramento" kind="miglioramento" items={interventions} value={form.trendImprovementRef} refKey="trendImprovementRef" dateKey="trendImprovement" change={change} />
-            <label className="block text-sm">Data miglioramento<input type="date" className={field} max={today} value={form.trendImprovement || ''} onChange={event => change({ trendImprovement: event.target.value, trendImprovementRef: '' })} /></label>
-            {form.trendImprovement && !form.trendImprovementRef && <p className="text-xs text-gray-500">Data inserita a mano</p>}
+            <label className="block text-sm">Data miglioramento<input type="date" className={field} max={today} value={form.trendImprovement || ''} onChange={event => change({ trendImprovement: event.target.value })} /></label>
+            {form.trendImprovementRef && !form.trendImprovement && <p className="text-xs text-amber-800">Inserisci la data di esecuzione</p>}
           </div>
         </div>
 
