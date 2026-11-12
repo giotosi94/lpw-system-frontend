@@ -14,6 +14,7 @@ export default function KaizenAzioniList({
   parent = null,
   phases = [],
   defaultStepId = '',
+  routeOptions = [],
 }) {
   const isMajor = Boolean(parent)
   const phaseLocked = isMajor && Boolean(defaultStepId)
@@ -240,6 +241,7 @@ export default function KaizenAzioniList({
       {showForm && (
         <ActionPlanFormShared
           plan={editingAP}
+          routeOptions={routeOptions}
           prefilledKaizen={isMajor ? null : { kaizen_id: kaizenId, kaizen_numero: kaizenNumero }}
           prefilledParent={isMajor && !editingAP ? { ...parent, gant_step_id: defaultStepId || null } : null}
           onClose={() => { setShowForm(false); setEditingAP(null) }}
