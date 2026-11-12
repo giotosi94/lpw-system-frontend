@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import api from '../../../../services/api'
 import { useAuth } from '../../../../context/AuthContext'
 import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ReferenceLine } from 'recharts'
-import { baselineScope, aggregateSnapshot, compareSnapshots, incomparableProducts, calculateSaving } from './scrapSavingMath'
+import { baselineScope, aggregateSnapshot, compareSnapshots, incomparableProducts, calculateSaving, objectiveLabel, objectiveContext, objectivePatch } from './scrapSavingMath'
 
 const field = 'w-full border border-gray-300 rounded px-2 py-2 text-sm bg-white'
 const button = 'border rounded px-3 py-2 text-sm disabled:opacity-50'
 const section = 'border border-gray-200 rounded-lg bg-white p-4 space-y-3'
 const fmt = value => value == null || !Number.isFinite(value) ? 'Non disponibile' : new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 }).format(value)
-const empty = () => ({ mode: 'stain', trendRestoration: '', trendImprovement: '', trendRestorationRef: '', trendImprovementRef: '', trendData: null, excluded: [], scope: null, before: null, after: null, afterFrom: '', afterTo: '', manualBeforeFrom: '', manualBeforeTo: '', rows: [], costs: '', costNote: '', annualProduction: '', annualBasis: '', source: '', notes: '', reviewed: false, reviewedBy: '', reviewedAt: '' })
+const empty = () => ({ mode: 'stain', objectiveId: '', objectiveSnapshot: null, objectiveFingerprint: '', trendRestoration: '', trendImprovement: '', trendRestorationRef: '', trendImprovementRef: '', trendData: null, excluded: [], scope: null, before: null, after: null, afterFrom: '', afterTo: '', manualBeforeFrom: '', manualBeforeTo: '', rows: [], costs: '', costNote: '', annualProduction: '', annualBasis: '', source: '', notes: '', reviewed: false, reviewedBy: '', reviewedAt: '' })
 
 
 function outcome(value, positive, negative, unit) {
@@ -287,9 +287,20 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   onChangeRef.current = onChange
   baseRef.current = stepData?.dati || {}
   const baseline = Object.values(allStepsData || {}).map(item => item?.dati).find(data => data?.stain_snapshot || data?.categorie_scarto)
+  const objectives = Array.isArray(baseline?.obiettivi) ? baseline.obiettivi : []
+  const selectedObjective = objectives.find(row => row.id === form.objectiveId)
+  const objectiveState = useMemo(() => {
+    if (!objectives.length && !form.objectiveId) return { context: null, error: '' }
+    try { return { context: objectiveContext(baseline || {}, selectedObjective), error: '' } }
+    catch (error) { return { context: null, error: error.message } }
+  }, [baseline, form.objectiveId])
+  const currentObjective = objectiveState.context
+  const objectiveError = objectiveState.error
+  const objectiveStale = Boolean(currentObjective && form.objectiveFingerprint !== currentObjective.fingerprint)
+  const objectiveBlocked = Boolean(objectiveError || objectiveStale)
   let phaseScope = null
   if (form.mode === 'stain' && baseline) {
-    try { phaseScope = baselineScope(baseline) } catch { phaseScope = null }
+    try { phaseScope = objectives.length ? currentObjective?.scope || null : baselineScope(baseline) } catch { phaseScope = null }
   }
   const scopeSignature = value => value ? JSON.stringify([value.line, [...(value.products || [])].sort(), [...(value.types || [])].sort(), [...(value.priorities || [])].sort()]) : ''
   const scopeStale = Boolean(form.scope && phaseScope && scopeSignature(form.scope) !== scopeSignature(phaseScope))
@@ -301,7 +312,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     }
   }, [stepData?.dati])
   const change = (patch, preserveReview = false) => {
-    const next = { ...formRef.current, ...patch, ...(preserveReview ? {} : { reviewed: false }) }
+    const next = { ...formRef.current, ...patch, ...(preserveReview ? {} : { reviewed: false, reviewedBy: '', reviewedAt: '' }) }
     formRef.current = next
     dirty.current = true
     revision.current += 1
@@ -309,14 +320,30 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     setStatus('Modifiche in attesa di salvataggio automatico')
     setForm(next)
   }
+  const selectObjective = id => {
+    if (busy) return
+    if (form.rows.length && !window.confirm('Cambiare obiettivo? Il confronto precedente verra azzerato.')) return
+    const objective = objectives.find(row => row.id === id)
+    try {
+      const context = objectiveContext(baseline, objective)
+      change({ ...objectivePatch(context), before: context.scope ? JSON.parse(JSON.stringify(baseline.stain_snapshot)) : null })
+      setPeriodStatus(context.meta.source === 'manuale' ? 'Perdite prima recuperate. Inserisci produzione e dati dopo per lo stesso perimetro.' : 'Obiettivo acquisito. Seleziona il periodo dopo.')
+    } catch (error) {
+      change({ ...objectivePatch({ meta: { id, source: objective?.fonte }, fingerprint: '', scope: null, rows: [], from: '', to: '' }), objectiveSnapshot: null })
+      setPeriodStatus(error.message)
+    }
+  }
   const patchRow = (id, key, value) => change({ rows: form.rows.map(row => row.id === id ? { ...row, [key]: value, ...(key === 'driver' ? { driverSource: 'manuale' } : {}) } : row) })
   const applyDrivers = async () => {
+    if (objectiveBlocked) { setDriverStatus('Aggiorna prima obiettivo e confronto.'); return }
     if (!driverVersion || !form.rows.length) { setDriverStatus('Carica il confronto e seleziona una versione driver.'); return }
     if (!major?.reparto || !major?.linea) { setDriverStatus('Imposta reparto e linea nel Major.'); return }
     if (!window.confirm('Applicare i driver selezionati alle righe? I valori precedenti saranno sostituiti.')) return
+    const requestRevision = revision.current
     setBusy(true)
     try {
       const response = await api.get(`/economic-drivers/${driverVersion}/resolve`, { params: { department: major.reparto, line: major.linea } })
+      if (requestRevision !== revision.current || !mountedRef.current) { setDriverStatus('Dati modificati: applica nuovamente i driver.'); return }
       const snapshot = response.data
       change({ driverSnapshot: snapshot, rows: form.rows.map(row => {
         const value = snapshot.resource[row.type]
@@ -335,7 +362,10 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   const firstAfter = dayAfter(beforeTo)
   const periodError = !beforeFrom || !beforeTo || !form.afterFrom || !form.afterTo ? 'Seleziona i quattro estremi dei periodi prima e dopo.' : beforeFrom > beforeTo || form.afterFrom > form.afterTo ? 'Ogni periodo deve avere la fine successiva o uguale all’inizio.' : form.afterFrom <= beforeTo ? 'I periodi si sovrappongono: la fine del prima deve precedere l’inizio del dopo.' : beforeTo > today || form.afterTo > today ? 'Scegli periodi gia trascorsi: non si calcolano dati futuri.' : ''
 
-  if (periodError) issues.push(periodError)
+      if (objectiveError) issues.push(objectiveError)
+    if (objectiveStale) issues.push('Obiettivo o dati della Fase 1 modificati: importa nuovamente obiettivo e confronto.')
+    if (form.mode === 'manuale' && currentObjective && form.rows.some(row => !currentObjective.rows.some(item => item.product === row.product && item.type === row.type))) issues.push('Riga manuale fuori dal perimetro obiettivo.')
+    if (periodError) issues.push(periodError)
   if (scopeStale) issues.push('Il perimetro della Fase 1 è cambiato dopo l’importazione: importa di nuovo linea, filtri e periodo prima di calcolare il saving.')
 
   if (!beforeFrom || !beforeTo || !form.afterFrom || !form.afterTo || beforeFrom > beforeTo || form.afterFrom > form.afterTo || form.afterFrom <= beforeTo) issues.push('Definisci periodi validi, non sovrapposti: il dopo deve iniziare dopo la baseline.')
@@ -346,6 +376,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   const capture = () => {
     try {
       if (!baseline) throw new Error('Salva prima la baseline della Fase 1.')
+      if (objectives.length) { selectObjective(form.objectiveId); return }
       if (form.scope && !window.confirm('Sostituire lo snapshot baseline? Il confronto dopo e i calcoli saranno azzerati.')) return
       const scope = baselineScope(baseline)
       aggregateSnapshot(baseline.stain_snapshot, scope)
@@ -354,7 +385,8 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     } catch (error) { setPeriodStatus(error.message) }
   }
   const load = async () => {
-    if (periodError) { setPeriodStatus(periodError); return }
+    if (periodError || objectiveBlocked) { setPeriodStatus(periodError || objectiveError || 'Importa nuovamente obiettivo.'); return }
+    const requestRevision = revision.current
     setBusy(true)
     setPeriodStatus('Lettura STAIN in corso...')
     try {
@@ -363,6 +395,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         api.get('/stain/scarti', { params: { ...params, dal: beforeFrom, al: beforeTo }, timeout: 180000 }),
         api.get('/stain/scarti', { params: { ...params, dal: form.afterFrom, al: form.afterTo }, timeout: 180000 }),
       ])
+      if (requestRevision !== revision.current || !mountedRef.current) { setPeriodStatus('Dati modificati: ricarica il confronto.'); return }
       const excluded = incomparableProducts(beforeResponse.data, afterResponse.data, form.scope)
       const rows = compareSnapshots(beforeResponse.data, afterResponse.data, form.scope, form.rows)
       change({ before: beforeResponse.data, after: afterResponse.data, rows, excluded })
@@ -379,7 +412,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     const rev = revision.current
     const currentCalculation = state && state.form === snapshot
     const ready = Boolean(currentCalculation && state.issues.length === 0)
-    const comparisonReady = Boolean(currentCalculation && !state.periodError && snapshot.rows.length && (
+    const comparisonReady = Boolean(currentCalculation && !objectiveBlocked && !scopeStale && !state.periodError && snapshot.rows.length && (
       snapshot.mode === 'manuale'
         ? snapshot.manualBeforeFrom && snapshot.manualBeforeTo && snapshot.afterFrom && snapshot.afterTo
         : snapshot.before && snapshot.after && snapshot.before.dal === snapshot.scope?.from && snapshot.before.al === snapshot.scope?.to && snapshot.after.dal === snapshot.afterFrom && snapshot.after.al === snapshot.afterTo
@@ -465,7 +498,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     }
   }, [])
   useEffect(() => {
-    if (form.mode !== 'stain' || form.scope || !baseline || dirty.current) return
+    if (objectives.length || form.objectiveId || form.mode !== 'stain' || form.scope || !baseline || dirty.current) return
     try {
       const scope = baselineScope(baseline)
       aggregateSnapshot(baseline.stain_snapshot, scope)
@@ -474,6 +507,15 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       setPeriodStatus('Baseline non disponibile: carica e salva i dati nella Fase 1, poi importali qui.')
     }
   }, [baseline, form.mode, form.scope])
+  useEffect(() => {
+    if (objectives.length !== 1 || form.objectiveId || busy || dirty.current || savingRef.current) return
+    if (form.rows.length) return
+    selectObjective(objectives[0].id)
+  }, [baseline, form.objectiveId, busy, form.rows.length])
+  useEffect(() => {
+    if (!form.objectiveId || !objectiveBlocked || (!form.rows.length && !form.result && !form.reviewed)) return
+    change({ rows: [], before: null, after: null, trendData: null, result: null, reviewed: false, reviewedBy: '', reviewedAt: '' })
+  }, [objectiveBlocked, form.objectiveId, form.rows.length, form.result, form.reviewed])
   const input = (label, key, type = 'text') => {
     const beforeDate = key === 'comparisonFrom' || key === 'comparisonTo'
     const value = beforeDate ? (key === 'comparisonFrom' ? beforeFrom : beforeTo) || '' : form[key]
@@ -482,7 +524,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       if (beforeDate) {
         change({ scope: { ...form.scope, [key === 'comparisonFrom' ? 'from' : 'to']: value }, before: null, after: null, rows: [] })
       } else if (type === 'date') {
-        change({ [key]: value, after: null, rows: [] })
+        change({ [key]: value, after: null, rows: form.mode === 'manuale' ? form.rows.map(row => ({ ...row, afterLoss: '', afterProduction: '', ...(['manualBeforeFrom', 'manualBeforeTo'].includes(key) ? { beforeLoss: '', beforeProduction: '' } : {}) })) : [] })
       } else {
         change({ [key]: value })
       }
@@ -497,16 +539,26 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       <section className={section}>
         <h3 className="font-bold text-primary">1 · Confronto prima e dopo</h3>
         <p className="text-sm text-gray-600">Confronto delle percentuali di perdita sulla produzione, per prodotto e tipo. La differenza viene valorizzata in kg e in euro: Saving indica un miglioramento; Maggior costo stimato indica un peggioramento. La variazione in punti percentuali e calcolata come dopo meno prima: positiva significa aumento delle perdite.</p>
-        <label className="block text-sm">Fonte<select className={field} disabled={busy} value={form.mode} onChange={event => { if (!form.rows.length || window.confirm('Cambiare fonte e azzerare il confronto?')) change({ ...empty(), mode: event.target.value }) }}><option value="stain">STAIN</option><option value="manuale">Confronto manuale in kg</option></select></label>
+                  {(objectives.length > 0 || form.objectiveId) && <div className="space-y-2">
+            <label className="block text-sm">Obiettivo della Fase 1<select className={field} disabled={busy} value={form.objectiveId} onChange={event => selectObjective(event.target.value)}>
+              <option value="">Seleziona obiettivo</option>
+              {form.objectiveId && !selectedObjective && <option value={form.objectiveId}>Obiettivo rimosso</option>}
+              {objectives.map((row, index) => <option key={row.id} value={row.id}>{objectiveLabel(row, index)}</option>)}
+            </select></label>
+            {selectedObjective && <p className="text-sm">Baseline: {fmt(selectedObjective.baseline)} {selectedObjective.unit} · Target: {fmt(selectedObjective.target)} {selectedObjective.unit}</p>}
+            {objectiveBlocked && <p role="alert" className="text-sm text-amber-800">{objectiveError || 'Obiettivo modificato: importa nuovamente il confronto.'}</p>}
+            <button type="button" className={button} disabled={busy || !selectedObjective} onClick={() => selectObjective(form.objectiveId)}>Importa / aggiorna obiettivo</button>
+          </div>}
+          <label className="block text-sm">Fonte<select className={field} disabled={busy || objectives.length > 0 || Boolean(form.objectiveId)} value={form.mode} onChange={event => { if (!form.rows.length || window.confirm('Cambiare fonte e azzerare il confronto?')) change({ ...empty(), mode: event.target.value }) }}><option value="stain">STAIN</option><option value="manuale">Confronto manuale in kg</option></select></label>
         {form.mode === 'stain' ? <>
-          <button type="button" disabled={busy} className={button} onClick={capture}>Importa linea, filtri e periodo dalla Fase 1</button>
+          {!objectives.length && <button type="button" disabled={busy} className={button} onClick={capture}>Importa linea, filtri e periodo dalla Fase 1</button>}
           {scopeStale && <div role="alert" className="text-sm bg-amber-50 border border-amber-300 text-amber-900 p-3 rounded space-y-1"><p className="font-semibold">Il perimetro della Fase 1 è diverso da quello usato qui.</p><p>Fase 1 - Prodotti: {phaseScope.products.join(', ') || 'Tutti'} · Causali: {phaseScope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Qui - Prodotti: {form.scope.products.join(', ') || 'Tutti'} · Causali: {form.scope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Premi Importa linea, filtri e periodo dalla Fase 1. Il confronto dopo verrà azzerato e andrà ricaricato.</p></div>}
           {form.scope && <div className="text-sm bg-gray-50 p-3 rounded"><p>{form.scope.line} · {form.scope.from} / {form.scope.to}</p><p>Prodotti: {form.scope.products.join(', ') || 'Tutti'} · Causali: {form.scope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Confronto indipendente: modificare queste date non cambia la Fase 1.</p></div>}
-        </> : <><div className="grid md:grid-cols-2 gap-3">{input('Baseline da', 'manualBeforeFrom', 'date')}{input('Baseline a', 'manualBeforeTo', 'date')}</div>{input('Fonte e perimetro manuale (linea, prodotti, causali, evidenze)', 'source')}</>}
+        </> : <><div className="grid md:grid-cols-2 gap-3">{input('Baseline da', 'manualBeforeFrom', 'date')}{input('Baseline a', 'manualBeforeTo', 'date')}</div>{input('Fonte e perimetro manuale (linea, prodotti, causali, evidenze)', 'source')}{form.objectiveId && <p className="text-xs text-gray-600">Inserisci solo perdite del perimetro selezionato. La produzione non viene ricostruita dalla raccolta manuale.</p>}</>}
         <p className="text-sm text-gray-600">Confronta due periodi storici: prima degli interventi e dopo gli interventi. Puoi cambiare entrambi qui. Le date vengono controllate al caricamento, senza essere riscritte automaticamente.</p>
         {form.mode === 'stain' && form.scope && <div className="grid md:grid-cols-2 gap-3">{input('Periodo prima da', 'comparisonFrom', 'date')}{input('Periodo prima a', 'comparisonTo', 'date')}</div>}
         <div className="grid md:grid-cols-2 gap-3">{input('Periodo dopo da', 'afterFrom', 'date')}{input('Periodo dopo a', 'afterTo', 'date')}</div>
-        {form.mode === 'stain' && <button type="button" disabled={busy || !form.scope || Boolean(periodError) || scopeStale} className={button} onClick={load}>{busy ? 'Caricamento...' : 'Carica confronto da STAIN'}</button>}
+        {form.mode === 'stain' && <button type="button" disabled={busy || !form.scope || Boolean(periodError) || scopeStale || objectiveBlocked} className={button} onClick={load}>{busy ? 'Caricamento...' : 'Carica confronto da STAIN'}</button>}
         {periodError && <p role="alert" className="text-sm text-amber-800">{periodError}</p>}
         {periodStatus && <p role="status" aria-live="polite" className="text-sm">{periodStatus}</p>}
         {form.rows.length > 0 && form.excluded?.length > 0 && <div role="alert" className="text-sm bg-amber-50 border border-amber-300 text-amber-900 p-3 rounded space-y-1"><p className="font-semibold">Prodotti esclusi dal saving: produzione assente nel periodo indicato</p>{form.excluded.map(item => <p key={item.product}>{item.product}: assente in {item.missing} · perdite prima {fmt(item.beforeLoss)} kg, dopo {fmt(item.afterLoss)} kg</p>)}<p>Le loro perdite non sono valorizzate nel saving.</p></div>}
@@ -524,17 +576,17 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         {!driverVersions.length && <p className="text-sm">Nessuna versione driver disponibile: verifica la pubblicazione nei Settings.</p>}
         {driverStatus && <p role="status" className="text-sm">{driverStatus}</p>}
         {form.driverSnapshot && <p className="text-xs text-gray-600">Snapshot driver: {form.driverSnapshot.year} · {form.driverSnapshot.resource.code} · {form.driverSnapshot.filename}. I nuovi caricamenti annuali non aggiornano automaticamente questo progetto. Modifiche manuali restano distinguibili nelle righe salvate.</p>}
-        {form.mode === 'manuale' && <button type="button" disabled={busy} className={button} onClick={() => change({ rows: [...form.rows, { id: globalThis.crypto?.randomUUID?.() || `r_${Date.now()}`, product: '', type: 'scarto', beforeProduction: '', beforeLoss: '', afterProduction: '', afterLoss: '', driver: '', driverYear: '', driverRef: '' }] })}>Aggiungi prodotto / tipo</button>}
+        {form.mode === 'manuale' && !form.objectiveId && <button type="button" disabled={busy} className={button} onClick={() => change({ rows: [...form.rows, { id: globalThis.crypto?.randomUUID?.() || `r_${Date.now()}`, product: '', type: 'scarto', beforeProduction: '', beforeLoss: '', afterProduction: '', afterLoss: '', driver: '', driverYear: '', driverRef: '' }] })}>Aggiungi prodotto / tipo</button>}
         {form.rows.length > 0 && <div className="overflow-x-auto"><table className="w-full min-w-[1450px] text-xs"><thead><tr>{['Prodotto', 'Tipo', 'Produzione prima kg', 'Perdita prima kg', 'Produzione dopo kg', 'Perdita dopo kg', 'Driver €/kg', 'Anno', 'Riferimento driver', 'Perdita prima %', 'Perdita dopo %', 'Variazione p.p.', 'Esito kg', 'Esito economico', ''].map((label, index) => <th key={index} className="p-2 text-left border-b">{label}</th>)}</tr></thead><tbody>
           {form.rows.map(row => { const computed = result.rows.find(item => item.id === row.id); return <tr key={row.id}>
-            <td className="p-1"><input aria-label="Prodotto" className={field} disabled={form.mode === 'stain'} value={row.product} onChange={event => patchRow(row.id, 'product', event.target.value)} /></td>
-            <td className="p-1"><select aria-label="Tipo perdita" className={field} disabled={form.mode === 'stain'} value={row.type} onChange={event => patchRow(row.id, 'type', event.target.value)}><option value="scarto">Scarto</option><option value="rework">Rework</option></select></td>
+            <td className="p-1"><input aria-label="Prodotto" className={field} disabled={form.mode === 'stain' || Boolean(form.objectiveId)} value={row.product} onChange={event => patchRow(row.id, 'product', event.target.value)} /></td>
+            <td className="p-1"><select aria-label="Tipo perdita" className={field} disabled={form.mode === 'stain' || Boolean(form.objectiveId)} value={row.type} onChange={event => patchRow(row.id, 'type', event.target.value)}><option value="scarto">Scarto</option><option value="rework">Rework</option></select></td>
             {['beforeProduction', 'beforeLoss', 'afterProduction', 'afterLoss', 'driver', 'driverYear', 'driverRef'].map(key => <td key={key} className="p-1"><input aria-label={key} className={field} disabled={form.mode === 'stain' && ['beforeProduction', 'beforeLoss', 'afterProduction', 'afterLoss'].includes(key)} type={key === 'driverRef' ? 'text' : 'number'} min="0" step="any" value={row[key]} onChange={event => patchRow(row.id, key, event.target.value)} /></td>)}
             <td className="p-2">{fmt(rate(row.beforeLoss, row.beforeProduction))}%</td>
             <td className="p-2">{fmt(rate(row.afterLoss, row.afterProduction))}%</td>
             <td className="p-2">{fmt(rate(row.afterLoss, row.afterProduction) - rate(row.beforeLoss, row.beforeProduction))} p.p.</td>
             <td className={`p-2 ${computed?.avoided < 0 ? 'text-red-700' : 'text-green-800'}`}>{outcome(computed?.avoided, 'Risparmiati', 'Aggiuntivi', 'kg')}</td>
-            <td className={`p-2 ${computed?.gross < 0 ? 'text-red-700' : 'text-green-800'}`}>{outcome(computed?.gross, 'Saving', 'Maggior costo stimato', '€')}</td><td>{form.mode === 'manuale' && <button type="button" onClick={() => change({ rows: form.rows.filter(item => item.id !== row.id) })}>Elimina</button>}</td>
+            <td className={`p-2 ${computed?.gross < 0 ? 'text-red-700' : 'text-green-800'}`}>{outcome(computed?.gross, 'Saving', 'Maggior costo stimato', '€')}</td><td>{form.mode === 'manuale' && !form.objectiveId && <button type="button" onClick={() => change({ rows: form.rows.filter(item => item.id !== row.id) })}>Elimina</button>}</td>
           </tr> })}
         </tbody></table></div>}
         <div className="grid md:grid-cols-2 gap-3">{input('Costi implementazione € (facoltativi)', 'costs', 'number')}{input('Descrizione e fonte dei costi', 'costNote')}</div>
