@@ -19,6 +19,82 @@ const STATUS_LABELS = {
 
 const list = value => (Array.isArray(value) ? value : [])
 
+const ECRS_ACTIONS = [
+  { value: 'eliminare', label: 'Eliminare' },
+  { value: 'combinare', label: 'Combinare' },
+  { value: 'riordinare', label: 'Riordinare' },
+  { value: 'semplificare', label: 'Semplificare' },
+]
+
+function EcrsTable({ rows, onChange, onCreatePlan }) {
+  const [open, setOpen] = useState(rows.length > 0)
+  const patch = (id, key, value) => onChange(rows.map(row => row.id === id ? { ...row, [key]: value } : row))
+  const add = () => onChange([...rows, { id: createId(), operazione: '', problema: '', azione: '', proposta: '' }])
+  const remove = id => {
+    if (!confirm('Eliminare la riga?')) return
+    onChange(rows.filter(row => row.id !== id))
+  }
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">
+        Analizza il metodo (ECRS)
+      </button>
+    )
+  }
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-gray-700">Analisi del metodo (ECRS)</h4>
+        {rows.length === 0 && <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-500 hover:underline">Chiudi</button>}
+      </div>
+      <p className="text-sm text-gray-600">Elenca le operazioni che generano scarto e scegli come cambiarle.</p>
+      {rows.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-sm">
+            <thead>
+              <tr className="text-left text-xs text-gray-500">
+                <th className="p-2">Operazione</th>
+                <th className="p-2">Problema</th>
+                <th className="p-2 w-40">Azione ECRS</th>
+                <th className="p-2">Proposta</th>
+                <th className="p-2 w-40"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(row => (
+                <tr key={row.id} className="border-t align-top">
+                  <td className="p-1"><input aria-label="Operazione" className={input} value={row.operazione} onChange={event => patch(row.id, 'operazione', event.target.value)} placeholder="es. Cambio formato" /></td>
+                  <td className="p-1"><input aria-label="Problema" className={input} value={row.problema} onChange={event => patch(row.id, 'problema', event.target.value)} placeholder="Perché genera scarto" /></td>
+                  <td className="p-1">
+                    <select aria-label="Azione ECRS" className={input} value={row.azione} onChange={event => patch(row.id, 'azione', event.target.value)}>
+                      <option value="">Seleziona</option>
+                      {ECRS_ACTIONS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
+                    </select>
+                  </td>
+                  <td className="p-1"><input aria-label="Proposta" className={input} value={row.proposta} onChange={event => patch(row.id, 'proposta', event.target.value)} placeholder="Cosa cambiare" /></td>
+                  <td className="p-1">
+                    <div className="flex items-center gap-1">
+                      <button type="button" disabled={!row.azione || !row.proposta.trim()} onClick={() => onCreatePlan(row)} className="whitespace-nowrap rounded bg-primary px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
+                        Crea Action Plan
+                      </button>
+                      <button type="button" aria-label="Elimina riga" onClick={() => remove(row.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded">
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <button type="button" onClick={add} className="inline-flex items-center gap-1 rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50">
+        <Plus size={15} /> Aggiungi operazione
+      </button>
+    </div>
+  )
+}
+
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
   return `extra_${Date.now()}_${Math.random().toString(16).slice(2)}`
@@ -47,6 +123,7 @@ function buildForm(data) {
     miglioramenti: list(data.miglioramenti),
     analisi: data.analisi && typeof data.analisi === 'object' ? data.analisi : {},
     anomalie_extra: list(data.anomalie_extra),
+    ecrs: list(data.ecrs),
   }
 }
 
@@ -270,6 +347,22 @@ export default function AnomalyAnalysis({ stepData, onChange, major, allStepsDat
     })
   }
 
+  const openEcrsPlan = async row => {
+    try {
+      const saved = await onChangeRef.current({ dati: { ...baseRef.current, ...formRef.current }, output_compilati: outputs(formRef.current) })
+      if (saved === false) throw new Error('Salvataggio non riuscito')
+    } catch {
+      setStatus('error')
+      return
+    }
+    const label = ECRS_ACTIONS.find(item => item.value === row.azione)?.label || 'ECRS'
+    setApPrefill({
+      route_source: { step_id: step?.step_id, anomaly_id: null, cause_id: null, ecrs_id: row.id },
+      ...parent,
+      gant_step_id: step?.step_id || null,
+      titolo: `${label}: ${row.proposta.trim()}${row.operazione.trim() ? ` (${row.operazione.trim()})` : ''}`.slice(0, 140),
+    })
+  }
   const analysis = current ? form.analisi[current.id] || { effetto: current.descrizione, rami: {} } : null
 
   return (
@@ -386,6 +479,11 @@ export default function AnomalyAnalysis({ stepData, onChange, major, allStepsDat
             if (result === false) throw new Error('Salvataggio non riuscito')
             mutate(state => ({ ...state, miglioramenti: items }))
           }}
+        />
+        <EcrsTable
+          rows={form.ecrs}
+          onChange={rows => mutate(state => ({ ...state, ecrs: rows }))}
+          onCreatePlan={openEcrsPlan}
         />
         <h4 className="text-sm font-semibold text-gray-700">Action Plan LPW</h4>
         <KaizenAzioniList key={listVersion} routeOptions={selected} parent={parent} defaultStepId={step?.step_id || ''} />
