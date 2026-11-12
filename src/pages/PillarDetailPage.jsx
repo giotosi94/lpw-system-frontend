@@ -63,13 +63,12 @@ export default function PillarDetailPage() {
 
   const tabs = [
     { id: 'anagrafica', label: 'Anagrafica' },
-    { id: 'kpi', label: `5 Step KPI (${stepsCompleted}/${stepsTotal})` },
-    { id: 'masterplan', label: 'Master Plan' },
     { id: 'kaizen', label: `Kaizen (${kaizens.length})` },
     { id: 'action_plan', label: `Action Plan (${actionPlans.length})` },
     { id: 'skill_matrix', label: 'Skill Matrix' },
     { id: 'maturity', label: 'Maturity Grid' },
-    ...(pillar.mp_info_enabled || stats?.mp_info_count > 0 ? [{ id: 'mp_info', label: 'MP Info' }] : []),
+    ...(pillar.kpi_management_enabled !== false ? [{ id: 'kpi', label: `5 Step KPI (${stepsCompleted}/${stepsTotal})` }] : []),
+    ...(pillar.mp_info_enabled ? [{ id: 'mp_info', label: 'MP Info' }] : []),
   ]
 
   return (
@@ -82,66 +81,17 @@ export default function PillarDetailPage() {
         <span className="font-medium text-gray-700">{pillar.sigla}</span>
       </div>
 
-      <div className="rounded-xl shadow overflow-hidden" style={{ borderTop: `6px solid ${color}` }}>
-        <div className="px-6 py-5" style={{ backgroundColor: `${color}15` }}>
-          <div className="flex justify-between items-start gap-4">
-            <div className="flex items-start gap-4 flex-1 min-w-0">
-              <div className="w-20 h-20 rounded-xl flex items-center justify-center text-5xl flex-shrink-0 shadow-md overflow-hidden" style={{ backgroundColor: color, color: 'white' }}>
-                {pillar.icon_image ? (
-                  <img
-                    src={pillar.icon_image}
-                    alt={pillar.sigla}
-                    className="w-full h-full object-contain"
-                  />
-                ) : (
-                  pillar.icon || pillar.sigla?.charAt(0) || 'P'
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3 mb-1">
-                  <span className="font-mono font-black text-3xl" style={{ color }}>{pillar.sigla}</span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${pillar.attivo ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`}>
-                    {pillar.attivo ? 'Attivo' : 'Disattivo'}
-                  </span>
-                </div>
-                <h1 className="text-xl font-bold text-gray-800 mb-2">{pillar.label}</h1>
-                {pillar.descrizione && <p className="text-sm text-gray-600 mb-3">{pillar.descrizione}</p>}
-                <div className="flex flex-wrap gap-4 text-sm">
-                  {pillar.leader && (
-                    <div className="flex items-center gap-1 text-gray-700">
-                      <User size={14} className="text-gray-400" /><strong>{pillar.leader}</strong>
-                    </div>
-                  )}
-                  {pillar.anno && (
-                    <div className="flex items-center gap-1 text-gray-600">
-                      <Calendar size={14} /> Anno {pillar.anno}
-                    </div>
-                  )}
-                  {pillar.members?.length > 0 && (
-                    <div className="flex items-center gap-1 text-gray-600">
-                      <Users size={14} /> Team: {pillar.members.length}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            <button onClick={() => navigate('/settings')} className="px-3 py-1.5 bg-white border-2 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-1 flex-shrink-0" style={{ borderColor: color, color }}>
-              <Edit2 size={14} /> Modifica
-            </button>
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-300 pb-4">
+        <div className="flex items-center gap-4 min-w-0 flex-1">
+          {pillar.icon_image && <img src={pillar.icon_image} alt="" className="h-16 w-16 shrink-0 object-contain" onError={event => { event.currentTarget.style.display = 'none' }} />}
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-gray-900 break-words">{pillar.sigla} · {pillar.label}</h1>
+            {pillar.descrizione && <p className="text-sm text-gray-600 mt-1">{pillar.descrizione}</p>}
+            <p className="text-xs text-gray-500 mt-2">{[pillar.leader, pillar.anno, pillar.attivo === false ? 'Disattivo' : 'Attivo'].filter(Boolean).join(' · ')}</p>
           </div>
         </div>
-
-        {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 p-4 bg-white border-t">
-            <StatBlock label="Kaizen Totali" value={stats.totale_kaizen} color="indigo" />
-            <StatBlock label="Quick" value={stats.quick} color="green" />
-            <StatBlock label="Standard" value={stats.standard} color="blue" />
-            <StatBlock label="Major" value={stats.major} color="purple" />
-            <StatBlock label="5 Step Progress" value={`${stepsCompleted}/${stepsTotal}`} color="orange" />
-          </div>
-        )}
-      </div>
-
+        <button type="button" onClick={() => navigate('/settings')} className="border border-gray-300 rounded px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Modifica pilastro</button>
+      </header>
       <div className="flex gap-1 border-b overflow-x-auto">
         {tabs.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-4 py-2 font-medium text-sm whitespace-nowrap transition-colors ${activeTab === tab.id ? 'border-b-2 text-primary' : 'text-gray-500 hover:text-gray-700'}`} style={activeTab === tab.id ? { borderColor: color, color } : {}}>
@@ -150,9 +100,9 @@ export default function PillarDetailPage() {
         ))}
       </div>
 
-      {activeTab === 'mp_info' && <MpInfoPanel pillar={pillar} />}
-      {activeTab === 'anagrafica' && <AnagraficaTab pillar={pillar} />}
-      {activeTab === 'kpi' && <KpiManagementTab pillar={pillar} color={color} onSaved={loadAll} />}
+      {activeTab === 'mp_info' && pillar.mp_info_enabled && <MpInfoPanel pillar={pillar} />}
+      {activeTab === 'anagrafica' && <AnagraficaTab key={pillar._id} pillar={pillar} color={color} onSaved={loadAll} />}
+      {activeTab === 'kpi' && pillar.kpi_management_enabled !== false && <KpiManagementTab pillar={pillar} color={color} onSaved={loadAll} />}
       {activeTab === 'masterplan' && <MasterPlanTab pillar={pillar} color={color} onSaved={loadAll} />}
       {activeTab === 'kaizen' && <KaizenList kaizens={kaizens} pillar={pillar} />}
       {activeTab === 'action_plan' && <ActionPlanTab actionPlans={actionPlans} pillar={pillar} color={color} onReload={loadAll} />}
@@ -385,7 +335,7 @@ function InfoRow({ label, value, mono = false }) {
   )
 }
 
-function AnagraficaTab({ pillar }) {
+function AnagraficaTab({ pillar, color, onSaved }) {
   const [savingPresenze, setSavingPresenze] = useState(false)
   const [presenzeConfig, setPresenzeConfig] = useState(pillar.presenze_config || {})
 
@@ -465,6 +415,10 @@ function AnagraficaTab({ pillar }) {
         </div>
       )}
 
+      <details className="border-t pt-4" open>
+        <summary className="font-semibold cursor-pointer mb-3">Masterplan del pilastro</summary>
+        <MasterPlanTab pillar={pillar} color={color} onSaved={onSaved} />
+      </details>
       {/* Calendario Presenze (full width) */}
       <div className="bg-white rounded-xl shadow p-6">
         <div className="flex items-center justify-between mb-3">
@@ -2346,7 +2300,7 @@ function MasterPlanTab({ pillar, color, onSaved }) {
   async function doSave(silent = false) {
     if (!silent) setSaving(true)
     try {
-      await api.put(`/pillars/${pillar._id}`, { gantt_items: [{ type: 'masterplan', data: dataRef.current }] })
+      await api.put(`/pillars/${pillar._id}`, { gantt_items: [...(pillar.gantt_items || []).filter(item => item?.type !== 'masterplan'), { type: 'masterplan', data: dataRef.current }] })
       if (!silent) { setLastSaved(new Date()); setHasUnsavedChanges(false) }
     } catch (err) {
       console.error(err)
