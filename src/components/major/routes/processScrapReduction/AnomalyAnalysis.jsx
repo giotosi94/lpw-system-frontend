@@ -34,7 +34,7 @@ function phaseAnomalies(allStepsData, stepId) {
     if (id === stepId) return
     list(step?.dati?.anomalie).forEach(item => {
       if (item?.id && (item.descrizione || '').trim()) {
-        result.push({ id: item.id, descrizione: item.descrizione.trim(), zona: zoneOf(item), origine: 'Fase 2' })
+        result.push({ ...item, id: item.id, descrizione: item.descrizione.trim(), zona: zoneOf(item), origine: 'Fase 2' })
       }
     })
   })
@@ -252,9 +252,19 @@ export default function AnomalyAnalysis({ stepData, onChange, major, allStepsDat
     macchina: major?.macchina || '',
   }), [major])
 
-  const openActionPlan = rootCause => {
+  const openActionPlan = async rootCause => {
+    if (!current) return
+    try {
+      const saved = await onChangeRef.current({ dati: { ...baseRef.current, ...formRef.current }, output_compilati: outputs(formRef.current) })
+      if (saved === false) throw new Error('Salvataggio non riuscito')
+    } catch {
+      setStatus('error')
+      return
+    }
     setApPrefill({
+      route_source: { step_id: step?.step_id, anomaly_id: current.id, cause_id: rootCause.id },
       ...parent,
+      macchina: current.macchina || parent.macchina,
       gant_step_id: step?.step_id || null,
       titolo: `Contromisura: ${(rootCause.label || 'causa radice').slice(0, 100)}`,
     })
@@ -378,7 +388,7 @@ export default function AnomalyAnalysis({ stepData, onChange, major, allStepsDat
           }}
         />
         <h4 className="text-sm font-semibold text-gray-700">Action Plan LPW</h4>
-        <KaizenAzioniList key={listVersion} parent={parent} defaultStepId={step?.step_id || ''} />
+        <KaizenAzioniList key={listVersion} routeOptions={selected} parent={parent} defaultStepId={step?.step_id || ''} />
       </section>
 
       <div role="status" aria-live="polite" className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4 text-sm">
@@ -389,6 +399,7 @@ export default function AnomalyAnalysis({ stepData, onChange, major, allStepsDat
       {apPrefill && (
         <ActionPlanFormShared
           plan={null}
+          routeOptions={selected}
           prefilledParent={apPrefill}
           prefilledKaizen={null}
           onClose={() => setApPrefill(null)}
