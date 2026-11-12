@@ -2,7 +2,6 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import api from '../../../../services/api'
 import UserPicker from '../../../UserPicker'
-import DocumentUpload from '../../../DocumentUpload'
 import OplNativaModal from '../../../opl/OplNativaModal'
 import OplImportModal from '../../../opl/OplImportModal'
 import { OplChoiceModal, SopUploadModal, PreviewModal, readUser } from '../../../../pages/DocumentiPage'
@@ -27,19 +26,19 @@ function buildForm(data) {
     blocks: Object.fromEntries(['standards', 'expansion', 'mp', 'ladder'].map(key => [key, blankBlock()])),
     standards: list(data.opl_collegate).map(doc => ({ id: uid(), improvement: '', change: '', documents: [{ id: doc.id || doc._id, label: `${doc.numero || ''} - ${doc.titolo || ''}` }] })),
     expansion: [], mp: [], ladder: [],
-    sustain: { indicator: '', method: '', frequency: '', owner: null, date: '', reaction: '' },
+    sustain: { indicator: '', method: '', frequency: '', owner: null, date: '', reaction: '', outcome: '', note: '', checkedAt: '' },
   }
   if (!saved) return initial
   return { ...initial, ...saved, blocks: Object.fromEntries(Object.keys(initial.blocks).map(key => [key, { ...blankBlock(), ...saved.blocks?.[key] }])), standards: list(saved.standards), expansion: list(saved.expansion), mp: list(saved.mp), ladder: list(saved.ladder), sustain: { ...initial.sustain, ...saved.sustain } }
 }
 function outputs(form) {
-  const resolved = (key, complete) => form.blocks[key].applicable ? complete : Boolean(form.blocks[key].reason.trim())
+  const resolved = (key, complete) => form.blocks[key].applicable ? complete : key === 'expansion' || Boolean(form.blocks[key].reason.trim())
   return {
     nuovi_standard: resolved('standards', form.standards.length > 0 && form.standards.every(row => row.documents?.length && row.change?.trim())),
-    espansione_orizzontale: resolved('expansion', form.expansion.length > 0 && form.expansion.every(row => row.improvement?.trim() && row.lineKey && (row.applicability === 'Non applicabile' ? row.reason?.trim() : row.applicability === 'Applicabile' && row.owner && row.date))),
-    mp_info_eem: resolved('mp', form.mp.length > 0 && form.mp.every(row => row.title?.trim() && row.files?.length && row.owner)),
-    scala_contromisure: resolved('ladder', form.ladder.length > 0 && form.ladder.every(row => row.improvement?.trim() && row.level && row.reason?.trim() && row.evidence?.trim())),
-    mantenimento: Boolean(form.sustain.indicator.trim() && form.sustain.frequency.trim() && form.sustain.owner && form.sustain.reaction.trim()),
+    espansione_orizzontale: resolved('expansion', form.expansion.length > 0 && form.expansion.every(row => row.improvement?.trim() && row.lineKey && row.owner)),
+    mp_info_eem: !form.mp.length || resolved('mp', form.mp.every(row => row.title?.trim() && row.files?.length && row.owner)),
+    scala_contromisure: resolved('ladder', form.ladder.length > 0 && form.ladder.every(row => row.improvement?.trim() && row.level)),
+    mantenimento: Boolean(form.sustain.owner && form.sustain.date && (form.sustain.indicator.trim() || (form.sustain.usePhase5 && form.sustain.referenceSnapshot))),
   }
 }
 function shortNumber(value) { return String(value || '').replace(/^(OPL|SOP)-/i, '') }
@@ -74,7 +73,7 @@ export default function SustainmentPlan({ stepData, onChange, allStepsData = {},
     if (mounted.current) setStatus('saving')
     let failed = false
     try {
-      const response = await onChangeRef.current({ dati: { ...baseRef.current, standardizzazione_v2: snapshot }, output_compilati: outputs(snapshot) })
+      const response = await onChangeRef.current({ dati: { ...baseRef.current, standardizzazione_v2: snapshot, mp_info_eem_scope: 'deferred_to_eem' }, output_compilati: outputs(snapshot) })
       if (response === false) throw new Error('Salvataggio rifiutato')
       if (revision.current === rev) {
         dirty.current = false
@@ -152,6 +151,12 @@ export default function SustainmentPlan({ stepData, onChange, allStepsData = {},
     plans.forEach(plan => result.push({ id: `ap:${plan._id}`, group: 'Action Plan', label: plan.titolo || plan.numero, ref: plan.numero || '', state: plan.stato || '', documents: [] }))
     return result
   }, [allStepsData, plans])
+  const phase5 = Object.values(allStepsData).map(value => value?.dati?.saving_economico).find(Boolean)
+  const checkReference = phase5?.objectiveSnapshot
+    ? [phase5.objectiveSnapshot.product || 'Tutti i prodotti', ...(phase5.objectiveSnapshot.categories || [])].join(' · ')
+    : phase5?.scope ? [phase5.scope.line, ...(phase5.scope.priorities || [])].filter(Boolean).join(' · ') : ''
+  const checkTarget = phase5?.objectiveSnapshot?.target
+  const checkUnit = phase5?.objectiveSnapshot?.unit || ''
   const groups = [...new Set(sources.map(source => source.group))]
   const patch = (key, id, values) => mutate(current => ({ ...current, [key]: current[key].map(row => row.id === id ? { ...row, ...values } : row) }))
   const add = (key, values) => mutate(current => ({ ...current, [key]: [...current[key], { id: uid(), ...values }] }))
@@ -183,7 +188,7 @@ export default function SustainmentPlan({ stepData, onChange, allStepsData = {},
   }
   const initial = { titolo: creating?.titolo || '', reparto: major?.reparto || '', linea: major?.linea || '', macchina: major?.macchina || '' }
   const sourceField = (row, key) => <div className="space-y-2">
-    <Field label="Contromisura / miglioramento" value={row.improvement} onChange={value => patch(key, row.id, { improvement: value, sourceId: '' })} />
+    {(!row.sourceId || !sources.some(source => source.id === row.sourceId)) && <Field label="Contromisura / miglioramento" value={row.improvement} onChange={value => patch(key, row.id, { improvement: value, sourceId: '' })} />}
       {sources.length > 0 && <label className="block text-xs">Soluzione del progetto<select className={input} value={row.sourceId || ''} onChange={event => {
         const source = sources.find(item => item.id === event.target.value)
         if (!source) return
@@ -206,60 +211,44 @@ export default function SustainmentPlan({ stepData, onChange, allStepsData = {},
           {list(row.documents).map(entry => <DocumentPicker key={entry.id} value={entry.id} label={entry.label || 'Documento collegato'} documents={documents} major={major} onOpen={() => openDocument(entry.id)} onCreate={() => startCreate(row)} onSelect={doc => { if (!doc) patch('standards', row.id, { documents: row.documents.filter(item => item.id !== entry.id) }) }} />)}
           <DocumentPicker value="" documents={documents.filter(doc => !list(row.documents).some(entry => entry.id === doc._id))} major={major} onSelect={doc => addDocument(row.id, doc)} onCreate={() => startCreate(row)} onOpen={() => {}} />
         </Row>)}
+          <div className="border-t pt-4 space-y-3">
+            <h4 className="font-semibold text-sm">Scala delle contromisure</h4>
+            <p className="text-sm text-gray-600">Seleziona la soluzione e clicca il livello: la X indica quello raggiunto.</p>
+            <button type="button" className={smallButton} onClick={() => add('ladder', { improvement: '', level: '', reason: '', evidence: '' })}>Classifica una soluzione</button>
+            {form.ladder.map(row => <Row key={row.id} onRemove={() => remove('ladder', row.id)}>
+              {sourceField(row, 'ladder')}
+              <CountermeasurePyramid value={row.level} onChange={level => patch('ladder', row.id, { level })} />
+            </Row>)}
+          </div>
       </Block>
-      <Block title="2 · Espansione orizzontale" state={form.blocks.expansion} onChange={values => blockChange('expansion', values)}>
-        <p className="text-sm text-gray-600">Identifica le altre linee su cui replicare la soluzione. Il riferimento Action Plan/CARL e registrato qui, non crea nuove attivita e non somma saving.</p>
-        <button type="button" className={smallButton} onClick={() => add('expansion', { improvement: '', lineKey: '', department: '', line: '', machine: '', applicability: 'Da valutare', reason: '', owner: null, date: '', status: 'Da valutare', channel: 'LPW', reference: '', outcome: '' })}>Aggiungi linea destinataria</button>
+      <section className="bg-white border rounded-lg p-4 space-y-3">
+        <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold">2 · MANTENERE IL RISULTATO</h3>
+        <p className="text-sm text-gray-600">Assegna una verifica futura. Alla data prevista confronta i risultati e registra l’esito.</p>
+        {checkReference && <div className="rounded bg-gray-50 p-3 text-sm"><strong>Riferimento Fase 5:</strong> {checkReference}{checkTarget != null && <span> · Target {checkTarget} {checkUnit}</span>}<p className="text-xs text-gray-500 mt-1">Riferimento recuperato, nessun ricalcolo automatico. Per aggiornare i dati usa la Fase 5.</p></div>}
+        <div className="grid md:grid-cols-2 gap-3">
+          <PersonField label="Responsabile" value={form.sustain.owner} onChange={owner => mutate(current => ({ ...current, sustain: { ...current.sustain, owner } }))} />
+          <Field label="Data della verifica" type="date" value={form.sustain.date} onChange={date => mutate(current => ({ ...current, sustain: { ...current.sustain, date } }))} />
+        </div>
+        {checkReference ? <label className="flex gap-2 items-center text-sm"><input type="checkbox" checked={Boolean(form.sustain.usePhase5)} onChange={event => { const checked = event.target.checked; mutate(current => ({ ...current, sustain: { ...current.sustain, usePhase5: checked, referenceSnapshot: checked ? { label: checkReference, target: checkTarget, unit: checkUnit, objectiveId: phase5?.objectiveId || '', capturedAt: new Date().toISOString() } : null } })) }} />Usa l’obiettivo della Fase 5 come riferimento</label> : null}
+        {(!checkReference || !form.sustain.usePhase5) && <Field label="Cosa controllare" value={form.sustain.indicator} onChange={indicator => mutate(current => ({ ...current, sustain: { ...current.sustain, indicator } }))} />}
+        <Select label="Esito della verifica" value={form.sustain.outcome} options={['Risultato mantenuto', 'Risultato non mantenuto']} onChange={outcome => mutate(current => ({ ...current, sustain: { ...current.sustain, outcome, checkedAt: new Date().toISOString() } }))} />
+        {form.sustain.outcome === 'Risultato non mantenuto' && <Field label="Cosa è peggiorato e cosa fare" multiline value={form.sustain.note} onChange={note => mutate(current => ({ ...current, sustain: { ...current.sustain, note } }))} />}
+        <p className="text-xs text-gray-500">Responsabile e data definiscono il controllo; l’esito si compila dopo la verifica. Nessuna notifica automatica.</p>
+      </section>
+      <Block title="3 · Espansione orizzontale · facoltativa" state={form.blocks.expansion} onChange={values => blockChange('expansion', values)}>
+        <p className="text-sm text-gray-600">Scegli dove replicare la soluzione e chi se ne occupa. Il riferimento collega solo il numero del piano: non crea nuove attività.</p>
+        <button type="button" className={smallButton} onClick={() => add('expansion', { improvement: '', lineKey: '', department: '', line: '', machine: '', applicability: 'Applicabile', reason: '', owner: null, date: '', status: 'Da valutare', channel: 'LPW', reference: '', outcome: '' })}>Aggiungi linea destinataria</button>
         {form.expansion.map(row => { const target = lineOptions.find(item => item.key === row.lineKey); return <Row key={row.id} onRemove={() => remove('expansion', row.id)}>
           {sourceField(row, 'expansion')}
           <div className="grid md:grid-cols-2 gap-3">
             <label className="block text-sm">Linea destinataria<select className={input} value={row.lineKey} onChange={event => { const line = lineOptions.find(item => item.key === event.target.value); patch('expansion', row.id, { lineKey: line?.key || '', department: line?.department || '', line: line?.name || '', machine: '' }) }}><option value="">Seleziona linea</option>{row.lineKey && !target && <option value={row.lineKey}>{row.department} / {row.line} (non piu in anagrafica)</option>}{lineOptions.map(line => <option key={line.key} value={line.key}>{line.department} / {line.name}</option>)}</select></label>
             <Select label="Macchina (facoltativa)" value={row.machine} options={list(target?.machines).map(item => item.nome)} onChange={value => patch('expansion', row.id, { machine: value })} />
-            <Select label="Applicabilita" value={row.applicability} options={['Da valutare', 'Applicabile', 'Non applicabile']} onChange={value => patch('expansion', row.id, { applicability: value })} />
-            <Field label="Motivazione / adattamenti necessari" value={row.reason} onChange={value => patch('expansion', row.id, { reason: value })} />
             <PersonField label="Responsabile" value={row.owner} onChange={value => patch('expansion', row.id, { owner: value })} />
-            <Field label="Data prevista" type="date" value={row.date} onChange={value => patch('expansion', row.id, { date: value })} />
-            <Select label="Stato replica" value={row.status} options={['Da valutare', 'Pianificata', 'In corso', 'Completata', 'Verificata']} onChange={value => patch('expansion', row.id, { status: value })} />
-            <Select label="Gestione attivita" value={row.channel} options={['LPW', 'CARL']} onChange={value => patch('expansion', row.id, { channel: value })} />
-            <Field label="Numero / riferimento Action Plan o CARL" value={row.reference} onChange={value => patch('expansion', row.id, { reference: value })} />
-            <Field label="Esito ed evidenza della replica" value={row.outcome} onChange={value => patch('expansion', row.id, { outcome: value })} />
+          <Field label="Riferimento Action Plan / CARL (facoltativo)" value={row.reference} onChange={value => patch('expansion', row.id, { reference: value })} />
           </div>
         </Row> })}
       </Block>
-      <Block title="3 · MP Info / EEM" state={form.blocks.mp} onChange={values => blockChange('mp', values)}>
-        <p className="text-sm text-gray-600">Compila il template aziendale MP Info e allegalo qui. Il referente EEM e lo stato sono registrati nel progetto: non inviano notifiche e non costituiscono approvazione Engineering o COE.</p>
-        <button type="button" className={smallButton} onClick={() => add('mp', { title: '', number: '', improvement: '', owner: null, status: 'Da condividere', replication: 'Locale', note: '', files: [] })}>Aggiungi MP Info</button>
-        {form.mp.map(row => <Row key={row.id} onRemove={() => remove('mp', row.id)}>
-          {sourceField(row, 'mp')}
-          <div className="grid md:grid-cols-2 gap-3">
-            <Field label="Titolo MP Info" value={row.title} onChange={value => patch('mp', row.id, { title: value })} />
-            <Field label="Numero / revisione documento" value={row.number} onChange={value => patch('mp', row.id, { number: value })} />
-            <PersonField label="Referente EEM" value={row.owner} onChange={value => patch('mp', row.id, { owner: value })} />
-            <Select label="Stato condivisione" value={row.status} options={['Da condividere', 'Condivisa', 'Recepita']} onChange={value => patch('mp', row.id, { status: value })} />
-            <Select label="Potenziale di replica" value={row.replication} options={['Locale', 'Piattaforma tecnologica', 'Globale']} onChange={value => patch('mp', row.id, { replication: value })} />
-            <Field label="Requisito trasferito / evidenza recepimento" multiline value={row.note} onChange={value => patch('mp', row.id, { note: value })} />
-          </div>
-          <DocumentUpload documents={list(row.files)} onChange={value => patch('mp', row.id, { files: value })} />
-        </Row>)}
-      </Block>
-      <Block title="4 · Scala delle contromisure" state={form.blocks.ladder} onChange={values => blockChange('ladder', values)}>
-        <p className="text-sm text-gray-600">Classifica la soluzione adottata con la scala FI. Nessun punteggio automatico e nessuna media tra livelli.</p>
-        <button type="button" className={smallButton} onClick={() => add('ladder', { improvement: '', level: '', reason: '', evidence: '' })}>Aggiungi contromisura</button>
-        {form.ladder.map(row => <Row key={row.id} onRemove={() => remove('ladder', row.id)}>
-          {sourceField(row, 'ladder')}
-          <Select label="Livello raggiunto" value={row.level} options={LEVELS} onChange={value => patch('ladder', row.id, { level: value })} />
-          {row.level && <p className="text-xs text-gray-600">{EXAMPLES[LEVELS.indexOf(row.level)]}</p>}
-          <Field label="Motivazione del livello" multiline value={row.reason} onChange={value => patch('ladder', row.id, { reason: value })} />
-          <Field label="Evidenza di applicazione / rischio residuo" multiline value={row.evidence} onChange={value => patch('ladder', row.id, { evidence: value })} />
-        </Row>)}
-      </Block>
-      <section className="bg-white border rounded-lg p-4 space-y-3">
-        <h3 className="font-semibold">Mantenimento del risultato</h3>
-        <div className="grid md:grid-cols-2 gap-3">
-          {['indicator', 'method', 'frequency', 'date', 'reaction'].map((key, index) => <Field key={key} label={['Indicatore da controllare', 'Metodo / fonte', 'Frequenza', 'Prossima verifica', 'Soglia e azione in caso di peggioramento'][index]} type={key === 'date' ? 'date' : 'text'} value={form.sustain[key]} onChange={value => mutate(current => ({ ...current, sustain: { ...current.sustain, [key]: value } }))} />)}
-          <PersonField label="Responsabile controllo" value={form.sustain.owner} onChange={value => mutate(current => ({ ...current, sustain: { ...current.sustain, owner: value } }))} />
-        </div>
-      </section>
+      {form.mp.length > 0 && <details className="rounded border bg-white p-3 text-sm"><summary className="cursor-pointer">MP Info già registrate ({form.mp.length})</summary><p className="text-xs text-gray-500 my-2">Dati conservati. La valutazione EEM sarà gestita in una sezione dedicata; nessun invio automatico.</p>{form.mp.map(row => <div key={row.id} className="border-t py-2"><strong>{row.title || row.improvement || 'MP Info'}</strong>{list(row.files).map((file, index) => <p key={index}>{file.name || file.nome || file.filename || 'Allegato conservato'}</p>)}</div>)}</details>}
       <div role="status" aria-live="polite" className="flex justify-end gap-3 text-sm"><span>{statusText}</span>{status === 'error' && <button type="button" className={smallButton} onClick={() => persistRef.current?.()}>Riprova salvataggio</button>}</div>
       {creating?.mode === 'choice' && <OplChoiceModal onClose={() => setCreating(null)} onCreate={() => setCreating(current => ({ ...current, mode: 'nativa' }))} onImport={() => setCreating(current => ({ ...current, mode: 'import' }))} onSop={() => setCreating(current => ({ ...current, mode: 'sop' }))} />}
       {creating?.mode === 'nativa' && <OplNativaModal initial={initial} onClose={() => setCreating(null)} onSaved={doc => handleCreated(doc?._id)} />}
@@ -269,8 +258,21 @@ export default function SustainmentPlan({ stepData, onChange, allStepsData = {},
     </div>
   )
 }
+function CountermeasurePyramid({ value, onChange }) {
+  const colors = ['#ff6b6b', '#ffd0a0', '#fff59d', '#c8f7c5', '#9bd34d', '#79963d']
+  return <div className="space-y-1 max-w-3xl mx-auto" role="group" aria-label="Livello della contromisura">
+    {[...LEVELS].reverse().map(level => {
+      const index = LEVELS.indexOf(level)
+      const selected = value === level
+      return <button key={level} type="button" aria-pressed={selected} onClick={() => onChange(level)} title={EXAMPLES[index]} className="block mx-auto border border-gray-700 rounded px-2 py-3 text-center text-xs md:text-sm text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" style={{ width: `${100 - index * 8}%`, backgroundColor: colors[index], fontWeight: selected ? 700 : 500 }}>
+        <span className="inline-block w-6 font-bold" aria-hidden="true">{selected ? 'X' : ''}</span>{level}
+      </button>
+    })}
+    {value && <p className="text-xs text-gray-600 pt-2 text-center">{EXAMPLES[LEVELS.indexOf(value)]}</p>}
+  </div>
+}
 function Block({ title, state, onChange, children }) {
-  return <section className="bg-white border rounded-lg p-4 space-y-3"><div className="flex flex-wrap justify-between gap-2"><h3 className="font-bold text-primary">{title}</h3><label className="text-xs flex gap-2 items-center"><input type="checkbox" checked={!state.applicable} onChange={event => onChange({ applicable: !event.target.checked })} />Non applicabile</label></div>{state.applicable ? children : <Field label="Motivazione non applicabilita" multiline value={state.reason} onChange={value => onChange({ reason: value })} />}</section>
+  return <section className="bg-white border rounded-lg p-4 space-y-3"><div className="flex flex-wrap justify-between gap-2"><h3 className="bg-primary text-white text-center py-2 px-3 rounded-lg font-bold flex-1">{title}</h3><label className="text-xs flex gap-2 items-center"><input type="checkbox" checked={!state.applicable} onChange={event => onChange({ applicable: !event.target.checked })} />{title.includes('Espansione') ? 'Non prevista' : 'Non applicabile'}</label></div>{state.applicable ? children : title.includes('Espansione') ? <p className="text-sm text-gray-500">Nessuna espansione prevista.</p> : <Field label="Motivazione non applicabilita" multiline value={state.reason} onChange={value => onChange({ reason: value })} />}</section>
 }
 function Row({ children, onRemove }) { return <article className="border rounded p-3 space-y-3"><div className="flex justify-end"><button type="button" className={smallButton} onClick={onRemove}>Rimuovi riga</button></div>{children}</article> }
 function Field({ label, value, onChange, multiline = false, type = 'text' }) { return <label className="block text-sm">{label}{multiline ? <textarea className={input} rows={2} value={value || ''} onChange={event => onChange(event.target.value)} /> : <input className={input} type={type} value={value || ''} onChange={event => onChange(event.target.value)} />}</label> }
