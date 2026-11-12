@@ -109,3 +109,258 @@ export function compareSnapshots(before, after, scope, previous = []) {
   if (!rows.length) throw new Error('Nessun prodotto con produzione in entrambi i periodi e perdite nel perimetro selezionato.')
   return rows
 }
+
+function objectiveText(value) {
+  return String(value ?? '').trim()
+}
+
+function objectiveList(value) {
+  return [...new Set(
+    (Array.isArray(value) ? value : [])
+      .map(objectiveText)
+      .filter(Boolean)
+  )].sort()
+}
+
+export function objectiveLabel(row, index = 0) {
+  const source = row.fonte === 'manuale' ? 'Manuale' : 'STAIN'
+  const product = row.prodotto || 'Tutti i prodotti'
+  const perimeter = row.perimetro === 'priorita'
+    ? 'Priorità selezionate'
+    : row.perimetro || 'Perimetro da definire'
+
+  return `Obiettivo ${index + 1} · ${source} · ${product} · ${perimeter}`
+}
+
+export function objectiveContext(data, objective) {
+  if (!objective?.id) {
+    throw new Error('Seleziona un obiettivo della Fase 1.')
+  }
+
+  if (objective.errors?.length) {
+    throw new Error(objective.errors.join(' '))
+  }
+
+  const source = objective.fonte
+
+  if (!['stain', 'manuale'].includes(source)) {
+    throw new Error('Fonte obiettivo non valida.')
+  }
+
+  const priorities = objectiveList(
+    source === 'manuale'
+      ? data.priorita_manuali
+      : data.priorita_stain
+  )
+
+  const categories = objective.perimetro === 'priorita'
+    ? priorities
+    : objectiveList([objective.perimetro])
+
+  if (
+    !categories.length ||
+    categories.includes('totale') ||
+    categories.some(item => !priorities.includes(item))
+  ) {
+    throw new Error(
+      'Aggiorna le priorità e salva l’obiettivo nella Fase 1.'
+    )
+  }
+
+  const product = objectiveText(objective.prodotto)
+
+  const meta = {
+    id: objective.id,
+    source,
+    product,
+    categories,
+    baseline: objective.baseline,
+    target: objective.target,
+    unit: objective.unit,
+  }
+
+  const from = source === 'stain'
+    ? data.periodo_da
+    : data.manuale_da
+
+  const to = source === 'stain'
+    ? data.periodo_a
+    : data.manuale_a
+
+  if (!from || !to || from > to) {
+    throw new Error(
+      'Completa il periodo della fonte nella Fase 1.'
+    )
+  }
+
+  let scope = null
+  let rows = []
+  let evidence
+
+  if (source === 'stain') {
+    scope = baselineScope({
+      ...data,
+      baseline_fonte: 'stain',
+      origine: 'stain',
+    })
+
+    if (
+      product &&
+      scope.products.length &&
+      !scope.products.includes(product)
+    ) {
+      throw new Error(
+        'Prodotto fuori dal perimetro della Fase 1.'
+      )
+    }
+
+    scope = {
+      ...scope,
+      products: product ? [product] : scope.products,
+      priorities: categories,
+    }
+
+    const available = new Set(
+      (data.stain_snapshot.dettaglio || [])
+        .map(row => `${row.codice} - ${row.causale}`)
+    )
+
+    if (categories.some(item => !available.has(item))) {
+      throw new Error(
+        'Perdita non presente nello snapshot STAIN.'
+      )
+    }
+
+    aggregateSnapshot(data.stain_snapshot, scope)
+    evidence = data.stain_snapshot
+  } else {
+    const unit = objectiveText(
+      data.unita_manuale || data.unita_misura
+    ).toLowerCase()
+
+    if (unit !== 'kg') {
+      throw new Error(
+        'Il saving richiede una raccolta manuale in kg. Pezzi e percentuali non vengono convertiti automaticamente.'
+      )
+    }
+
+    const grouping = data.raggruppamento || 'prodotto'
+    const groups = new Map()
+
+    evidence = (data.categorie_scarto || []).filter(row => {
+      const type = objectiveText(row.tipo).toLowerCase()
+
+      const label = type === 'rework' || type === 'rilavorazione'
+        ? 'Rework'
+        : type === 'scarto'
+          ? 'Scarto'
+          : ''
+
+      const category = `${objectiveText(row[grouping])} · ${label}`
+
+      return (
+        (!product || objectiveText(row.prodotto) === product) &&
+        categories.includes(category)
+      )
+    })
+
+    if (!evidence.length) {
+      throw new Error(
+        'Nessuna rilevazione manuale per questo obiettivo.'
+      )
+    }
+
+    evidence.forEach(row => {
+      const name = objectiveText(row.prodotto)
+      const rawType = objectiveText(row.tipo).toLowerCase()
+      const type = rawType === 'rilavorazione'
+        ? 'rework'
+        : rawType
+
+      const kg = numeric(row.quantita)
+
+      if (
+        !name ||
+        !['scarto', 'rework'].includes(type) ||
+        kg === null
+      ) {
+        throw new Error(
+          'Completa prodotto, tipo e kg nella raccolta manuale.'
+        )
+      }
+
+      const key = JSON.stringify([name, type])
+
+      const item = groups.get(key) || {
+        id: key,
+        product: name,
+        type,
+        beforeProduction: '',
+        beforeLoss: 0,
+        afterProduction: '',
+        afterLoss: '',
+        driver: '',
+        driverYear: '',
+        driverRef: '',
+      }
+
+      item.beforeLoss += kg
+      groups.set(key, item)
+    })
+
+    rows = [...groups.values()]
+      .sort((a, b) => a.id.localeCompare(b.id))
+  }
+
+  const fingerprint = JSON.stringify({
+    meta,
+    from,
+    to,
+    scope: scope
+      ? { ...scope, captured: undefined }
+      : null,
+    evidence,
+  })
+
+  return {
+    meta,
+    fingerprint,
+    scope,
+    rows,
+    from,
+    to,
+  }
+}
+
+export function objectivePatch(context) {
+  const manual = context.meta.source === 'manuale'
+
+  return {
+    objectiveId: context.meta.id,
+    objectiveSnapshot: context.meta,
+    objectiveFingerprint: context.fingerprint,
+    mode: manual ? 'manuale' : 'stain',
+    scope: context.scope,
+    rows: context.rows || [],
+    manualBeforeFrom: manual ? context.from : '',
+    manualBeforeTo: manual ? context.to : '',
+    source: manual
+      ? `Fase 1 · ${context.meta.product || 'Tutti i prodotti'} · ${(context.meta.categories || []).join(', ')}`
+      : '',
+    before: null,
+    after: null,
+    afterFrom: '',
+    afterTo: '',
+    excluded: [],
+    trendData: null,
+    trendRestoration: '',
+    trendImprovement: '',
+    trendRestorationRef: '',
+    trendImprovementRef: '',
+    driverSnapshot: null,
+    result: null,
+    reviewed: false,
+    reviewedBy: '',
+    reviewedAt: '',
+  }
+}
