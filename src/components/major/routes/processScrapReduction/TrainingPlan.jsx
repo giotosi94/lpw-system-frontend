@@ -23,6 +23,13 @@ function linkedFromPhases(allStepsData) {
         if (doc?.id && !found.has(doc.id)) found.set(doc.id, { id: doc.id, label: doc.label || '', origine: 'Fase 2' })
       })
     })
+    const standards = step?.dati?.standardizzazione_v2
+    if (standards?.blocks?.standards?.applicable === false) return
+    list(standards?.standards).forEach(row => {
+      list(row.documents).forEach(doc => {
+        if (doc?.id && !found.has(doc.id)) found.set(doc.id, { id: doc.id, label: doc.label || '', origine: 'Fase 6' })
+      })
+    })
   })
   return found
 }
@@ -141,7 +148,7 @@ export default function TrainingPlan({ stepData, onChange, allStepsData }) {
       <section className={panel}>
         <h3 className={heading}>FORMAZIONE OPERATORI</h3>
         <p className="text-sm text-gray-600 mb-4">
-          Gli OPL e le SOP collegati alle anomalie della fase 2 compaiono qui. Pubblicali a reparti, linee o persone, segui le letture e verifica in campo che gli operatori eseguano correttamente.
+          Gli OPL e le SOP collegati alle anomalie (fase 2) e ai nuovi standard (fase 6) compaiono qui. Pubblicali, segui le letture e verifica in campo.
         </p>
 
         {totals.assegnati > 0 && (
@@ -168,7 +175,7 @@ export default function TrainingPlan({ stepData, onChange, allStepsData }) {
               {loading ? (
                 <tr><td colSpan="6" className="p-6 text-center text-gray-400">Caricamento...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan="6" className="p-6 text-center text-gray-400">Nessun documento: collega OPL o SOP alle anomalie della fase 2, oppure aggiungine uno qui sotto.</td></tr>
+                <tr><td colSpan="6" className="p-6 text-center text-gray-400">Nessun documento collegato nelle fasi 2 e 6.</td></tr>
               ) : rows.map(row => {
                 const doc = docById.get(row.id)
                 const report = reports[row.id]
