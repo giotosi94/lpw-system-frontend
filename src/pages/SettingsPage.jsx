@@ -1547,6 +1547,7 @@ function PillarIcon({ pillar, size = 40 }) {
 // ──────────────────────────────────────────────────────────
 function PillarForm({ pillar, onClose, onSaved }) {
   const [form, setForm] = useState({
+    mp_info_enabled: pillar?.mp_info_enabled === true,
     sigla: pillar?.sigla || '',
     label: pillar?.label || '',
     descrizione: pillar?.descrizione || '',
@@ -1793,6 +1794,10 @@ function PillarForm({ pillar, onClose, onSaved }) {
             />
           </div>
 
+          <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
+            <input type="checkbox" checked={form.mp_info_enabled} onChange={event => setForm({ ...form, mp_info_enabled: event.target.checked })} />
+            <span><strong>Abilita MP Info</strong><span className="block text-xs text-gray-500">Riceve gli apprendimenti dai Major Kaizen. La valutazione spetta a leader, membri e amministratori.</span></span>
+          </label>
           <div className="flex justify-end gap-2 pt-3 border-t">
             <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg">
               Annulla
