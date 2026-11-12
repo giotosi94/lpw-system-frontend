@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import api from '../../../../services/api'
+import { useAuth } from '../../../../context/AuthContext'
 import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ReferenceLine } from 'recharts'
 import { baselineScope, aggregateSnapshot, compareSnapshots, incomparableProducts, calculateSaving } from './scrapSavingMath'
 
@@ -7,7 +8,7 @@ const field = 'w-full border border-gray-300 rounded px-2 py-2 text-sm bg-white'
 const button = 'border rounded px-3 py-2 text-sm disabled:opacity-50'
 const section = 'border border-gray-200 rounded-lg bg-white p-4 space-y-3'
 const fmt = value => value == null || !Number.isFinite(value) ? 'Non disponibile' : new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 }).format(value)
-const empty = () => ({ mode: 'stain', trendRestoration: '', trendImprovement: '', trendData: null, excluded: [], scope: null, before: null, after: null, afterFrom: '', afterTo: '', manualBeforeFrom: '', manualBeforeTo: '', rows: [], costs: '', costNote: '', annualProduction: '', annualBasis: '', source: '', notes: '', reviewed: false })
+const empty = () => ({ mode: 'stain', trendRestoration: '', trendImprovement: '', trendRestorationRef: '', trendImprovementRef: '', trendData: null, excluded: [], scope: null, before: null, after: null, afterFrom: '', afterTo: '', manualBeforeFrom: '', manualBeforeTo: '', rows: [], costs: '', costNote: '', annualProduction: '', annualBasis: '', source: '', notes: '', reviewed: false, reviewedBy: '', reviewedAt: '' })
 
 
 function outcome(value, positive, negative, unit) {
@@ -83,7 +84,85 @@ function trendSegments(points, restoration, improvement) {
   })
 }
 
-function ScrapInterventionTrend({ form, change, from, to }) {
+
+const DONE_CARL = ['FINISHED', 'CLOSED']
+
+function isoDay(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10)
+}
+
+function carlDoneDate(detail) {
+  const rows = (detail?.storico || []).filter(row => DONE_CARL.includes(row.stato) && row.data)
+  return rows.length ? isoDay(rows[0].data) : ''
+}
+
+function collectInterventions(allStepsData) {
+  const restoreSteps = new Set()
+  const carl = []
+  Object.entries(allStepsData || {}).forEach(([stepId, step]) => {
+    const data = step?.dati || {}
+    if (Array.isArray(data.anomalie)) restoreSteps.add(stepId)
+    ;(Array.isArray(data.anomalie) ? data.anomalie : []).forEach((row, index) => {
+      if (row?.carl?.id) carl.push({ key: `carl:${row.carl.id}`, carlId: row.carl.id, kind: 'ripristino', label: `${row.carl.codice || 'CARL'} · ${row.descrizione || `Anomalia ${index + 1}`}` })
+    })
+    ;(Array.isArray(data.miglioramenti) ? data.miglioramenti : []).forEach(row => {
+      if (row?.carl?.id) carl.push({ key: `carl:${row.carl.id}`, carlId: row.carl.id, kind: 'miglioramento', label: `${row.carl.codice || 'SUG'} · ${row.proposta || row.titolo || 'Miglioramento'}` })
+    })
+  })
+  return { carl, restoreSteps }
+}
+
+function useProjectInterventions(major, allStepsData) {
+  const [items, setItems] = useState([])
+  const { carl, restoreSteps } = collectInterventions(allStepsData)
+  const signature = JSON.stringify([major?._id, carl.map(item => item.key), [...restoreSteps]])
+  useEffect(() => {
+    let active = true
+    const load = async () => {
+      const plans = major?._id
+        ? await api.get('/action-plans/', { params: { parent_id: major._id } }).then(response => response.data || []).catch(() => [])
+        : []
+      const planItems = plans
+        .filter(plan => plan.parent_type === 'major_kaizen' && plan.parent_id === major._id)
+        .map(plan => {
+          const stepId = plan.route_source?.step_id || plan.gant_step_id
+          return { key: `ap:${plan._id}`, kind: restoreSteps.has(stepId) ? 'ripristino' : 'miglioramento', label: `${plan.numero || 'AP'} · ${plan.titolo || ''}`, date: isoDay(plan.data_completamento) }
+        })
+      const carlItems = await Promise.all(carl.map(async item => {
+        try {
+          const response = await api.get(`/carl/cartellini/${item.carlId}`)
+          return { ...item, date: carlDoneDate(response.data) }
+        } catch {
+          return { ...item, date: '', unavailable: true }
+        }
+      }))
+      if (active) setItems([...carlItems, ...planItems])
+    }
+    load()
+    return () => { active = false }
+  }, [signature])
+  return items
+}
+
+function InterventionSelect({ label, kind, items, value, refKey, dateKey, change }) {
+  const options = items.filter(item => item.kind === kind)
+  const selected = options.find(item => item.key === value)
+  return (
+      <label className="block text-sm">{label}
+        <select className={field} value={selected ? selected.key : ''} onChange={event => {
+          const item = options.find(row => row.key === event.target.value)
+          change(item ? { [refKey]: item.key, [dateKey]: item.date } : { [refKey]: '' })
+        }}>
+          <option value="">{options.length ? 'Seleziona intervento' : 'Nessun intervento collegato'}</option>
+          {options.map(item => <option key={item.key} value={item.key} disabled={!item.date}>{item.label}{item.date ? ` · ${item.date.split('-').reverse().join('/')}` : item.unavailable ? ' · stato non disponibile' : ' · non concluso'}</option>)}
+        </select>
+      </label>
+  )
+}
+
+function ScrapInterventionTrend({ form, change, from, to, interventions }) {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const requestRef = useRef(0)
@@ -136,8 +215,14 @@ function ScrapInterventionTrend({ form, change, from, to }) {
       {form.mode !== 'stain' ? <p className="text-sm text-amber-800">Il confronto manuale contiene solo totali: non viene generato un trend senza dati giornalieri.</p> : <>
         <p className="text-sm">Periodo: {from || 'Da definire'} / {to || 'Da definire'}</p>
         <div className="grid md:grid-cols-2 gap-3">
-          <label className="block text-sm">Data ripristino<input type="date" className={field} min={from || undefined} max={to || todayDate()} value={restoration} onChange={event => change({ trendRestoration: event.target.value })} /></label>
-          <label className="block text-sm">Data miglioramento<input type="date" className={field} min={restoration ? dayAfter(restoration) : from || undefined} max={to || todayDate()} value={improvement} onChange={event => change({ trendImprovement: event.target.value })} /></label>
+          <div className="space-y-2">
+            <InterventionSelect label="Ripristino" kind="ripristino" items={interventions} value={form.trendRestorationRef} refKey="trendRestorationRef" dateKey="trendRestoration" change={change} />
+            <label className="block text-sm">Data ripristino<input type="date" className={field} min={from || undefined} max={to || todayDate()} value={restoration} onChange={event => change({ trendRestoration: event.target.value, trendRestorationRef: '' })} /></label>
+          </div>
+          <div className="space-y-2">
+            <InterventionSelect label="Miglioramento" kind="miglioramento" items={interventions} value={form.trendImprovementRef} refKey="trendImprovementRef" dateKey="trendImprovement" change={change} />
+            <label className="block text-sm">Data miglioramento<input type="date" className={field} min={restoration ? dayAfter(restoration) : from || undefined} max={to || todayDate()} value={improvement} onChange={event => change({ trendImprovement: event.target.value, trendImprovementRef: '' })} /></label>
+          </div>
         </div>
         <button type="button" className={button} disabled={loading || !periodValid} onClick={loadTrend}>{loading ? 'Caricamento trend...' : 'Carica / aggiorna trend da STAIN'}</button>
         {!periodValid && <p className="text-sm text-amber-800">Importa il perimetro e scegli un periodo storico continuo di massimo 367 giorni.</p>}
@@ -176,6 +261,8 @@ function ScrapInterventionTrend({ form, change, from, to }) {
 }
 
 export default function ScrapSavings({ stepData, allStepsData, onChange, major }) {
+  const { user } = useAuth() || {}
+  const interventions = useProjectInterventions(major, allStepsData)
   const [form, setForm] = useState(() => ({ ...empty(), ...(stepData?.dati?.saving_economico || {}) }))
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
@@ -300,7 +387,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     const driversReady = Boolean(snapshot.rows.length && snapshot.rows.every(row =>
       row.driver !== '' && row.driver != null && Number.isFinite(Number(String(row.driver).replace(',', '.'))) && Number(String(row.driver).replace(',', '.')) >= 0 && /^\d{4}$/.test(String(row.driverYear || '')) && String(row.driverRef || '').trim()
     ))
-    const reviewed = false
+    const reviewed = Boolean(ready && snapshot.reviewed)
     const payload = {
       ...snapshot,
       formula_version: 'scrap_normalized_v1',
@@ -312,7 +399,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         annualGross: null,
         rows: state.result.rows,
       } : null,
-      validation: ready ? 'calcolato_non_validato' : 'bozza_incompleta',
+      validation: ready ? (reviewed ? 'validato' : 'calcolato_non_validato') : 'bozza_incompleta',
     }
     savingRef.current = true
     if (mountedRef.current) {
@@ -424,7 +511,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         {periodStatus && <p role="status" aria-live="polite" className="text-sm">{periodStatus}</p>}
         {form.rows.length > 0 && form.excluded?.length > 0 && <div role="alert" className="text-sm bg-amber-50 border border-amber-300 text-amber-900 p-3 rounded space-y-1"><p className="font-semibold">Prodotti esclusi dal saving: produzione assente nel periodo indicato</p>{form.excluded.map(item => <p key={item.product}>{item.product}: assente in {item.missing} · perdite prima {fmt(item.beforeLoss)} kg, dopo {fmt(item.afterLoss)} kg</p>)}<p>Le loro perdite non sono valorizzate nel saving.</p></div>}
       </section>
-      <ScrapInterventionTrend form={form} change={change} from={beforeFrom} to={form.afterTo} />
+      <ScrapInterventionTrend form={form} change={change} from={beforeFrom} to={form.afterTo} interventions={interventions} />
       <section className={section}>
         <h3 className="font-bold text-primary">2 · Driver e beneficio economico</h3>
         <p className="text-xs text-gray-600">Driver €/kg dalla versione annuale dei Settings, oppure inserimento manuale documentato. Scarto e rework distinti: non inserire gli stessi kg due volte. Le produzioni per uno stesso prodotto devono coincidere. Nessuna formula manodopera inclusa.</p>
@@ -456,6 +543,11 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
           <div className="bg-gray-50 rounded p-3"><div className="text-xs">{result.gross < 0 ? 'Maggior costo stimato del periodo €' : 'Saving lordo del periodo €'}</div><strong>{fmt(Math.abs(result.gross))}</strong></div>
           {form.costs !== '' && <p className="text-sm">{result.net < 0 ? 'Saldo netto negativo, inclusi costi' : 'Beneficio netto'}: {fmt(Math.abs(result.net))} €</p>}
         </div>)}
+        {form.rows.length > 0 && !issues.length && <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={Boolean(form.reviewed)} onChange={event => change(event.target.checked ? { reviewed: true, reviewedBy: user?.full_name || user?.email || '', reviewedAt: new Date().toISOString() } : { reviewed: false, reviewedBy: '', reviewedAt: '' }, true)} />
+          Risultato verificato
+          {form.reviewed && form.reviewedBy && <span className="text-xs text-gray-500">{form.reviewedBy} · {new Date(form.reviewedAt).toLocaleDateString('it-IT')}</span>}
+        </label>}
       </section>
 
       <div className="flex flex-wrap justify-end items-center gap-3">
