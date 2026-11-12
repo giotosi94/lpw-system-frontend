@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import api from '../../../../services/api'
 import { useAuth } from '../../../../context/AuthContext'
-import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ReferenceLine } from 'recharts'
+import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ReferenceLine, ReferenceArea } from 'recharts'
 import { baselineScope, aggregateSnapshot, compareSnapshots, incomparableProducts, calculateSaving, objectiveLabel, objectiveContext, objectivePatch } from './scrapSavingMath'
 
 const field = 'w-full border border-gray-300 rounded px-2 py-2 text-sm bg-white'
 const button = 'border rounded px-3 py-2 text-sm disabled:opacity-50'
 const section = 'border border-gray-200 rounded-lg bg-white p-4 space-y-3'
 const fmt = value => value == null || !Number.isFinite(value) ? 'Non disponibile' : new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 }).format(value)
-const empty = () => ({ mode: 'stain', objectiveId: '', objectiveSnapshot: null, objectiveFingerprint: '', trendRestoration: '', trendImprovement: '', trendRestorationRef: '', trendImprovementRef: '', trendData: null, excluded: [], scope: null, before: null, after: null, afterFrom: '', afterTo: '', manualBeforeFrom: '', manualBeforeTo: '', rows: [], costs: '', costNote: '', annualProduction: '', annualBasis: '', source: '', notes: '', reviewed: false, reviewedBy: '', reviewedAt: '' })
+const empty = () => ({ verificationPeriod: 'custom', mode: 'stain', objectiveId: '', objectiveSnapshot: null, objectiveFingerprint: '', trendRestoration: '', trendImprovement: '', trendRestorationRef: '', trendImprovementRef: '', trendData: null, excluded: [], scope: null, before: null, after: null, afterFrom: '', afterTo: '', manualBeforeFrom: '', manualBeforeTo: '', rows: [], costs: '', costNote: '', annualProduction: '', annualBasis: '', source: '', notes: '', reviewed: false, reviewedBy: '', reviewedAt: '' })
 
 
 function outcome(value, positive, negative, unit) {
@@ -25,6 +25,12 @@ function dayAfter(value) {
   const d = new Date(`${value}T12:00:00`)
   if (Number.isNaN(d.getTime())) return ''
   d.setDate(d.getDate() + 1)
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+function previousDay(value) {
+  const d = new Date(`${value}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return ''
+  d.setDate(d.getDate() - 1)
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
 function todayDate() {
@@ -72,7 +78,7 @@ function trendSegments(points, restoration, improvement) {
   const ranges = [
     { label: 'Prima del ripristino', includes: date => date < restoration },
     { label: 'Dopo il ripristino', includes: date => date >= restoration && date < improvement },
-    { label: 'Dopo il miglioramento', includes: date => date >= improvement },
+    { label: 'Dopo l’intervento di miglioramento', includes: date => date >= improvement },
   ]
   return ranges.map(range => {
     const selected = points.filter(point => range.includes(point.date))
@@ -163,14 +169,8 @@ function InterventionSelect({ label, kind, items, value, refKey, dateKey, change
 }
 
 function ScrapInterventionTrend({ form, change, from, to, interventions }) {
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
-  const requestRef = useRef(0)
-  const scope = form.scope
+  const scope = form.scope && form.rows.length ? { ...form.scope, products: [...new Set(form.rows.map(row => row.product))] } : form.scope
   const key = form.mode + trendKey(scope, from, to)
-  const keyRef = useRef(key)
-  keyRef.current = key
-  useEffect(() => () => { requestRef.current += 1 }, [])
   const start = Date.parse(`${from}T00:00:00Z`)
   const end = Date.parse(`${to}T00:00:00Z`)
   const periodValid = Boolean(scope && Number.isFinite(start) && Number.isFinite(end) && end >= start && end - start <= 366 * 86400000 && to <= todayDate())
@@ -182,66 +182,41 @@ function ScrapInterventionTrend({ form, change, from, to, interventions }) {
       ? 'Le date degli interventi devono essere comprese nel periodo del trend.' : ''
   let points = []
   let dataError = ''
-  if (form.trendData?.key === key) {
+  if (form.rows.length && form.after && form.trendData?.key === key) {
     try { points = buildScrapTrend(form.trendData.snapshot, scope) }
     catch (error) { dataError = error.message }
   }
   const segments = markerError ? [] : trendSegments(points, restoration, improvement)
-  const baselineRate = segments[0]?.value
+  const baselinePoints = points.filter(point => point.date >= form.scope?.from && point.date <= form.scope?.to)
+  const baselineProduction = baselinePoints.reduce((sum, point) => sum + (point.valid ? point.production : 0), 0)
+  const baselineRate = baselineProduction > 0 && !baselinePoints.some(point => !point.valid && (point.production || point.loss)) ? baselinePoints.reduce((sum, point) => sum + point.loss, 0) / baselineProduction * 100 : null
+  const verificationPoints = points.filter(point => point.date >= form.afterFrom && point.date <= form.afterTo && point.valid)
   const invalid = points.filter(point => !point.valid && (point.loss !== 0 || point.production !== 0)).length
-  const loadTrend = async () => {
-    if (!periodValid || loading) return
-    const request = ++requestRef.current
-    setLoading(true)
-    setMessage('Caricamento del periodo continuo, inclusi i giorni tra prima e dopo...')
-    try {
-      const response = await api.get('/stain/scarti', { params: { linea: scope.line, tipi: scope.types.join(','), dal: from, al: to }, timeout: 180000 })
-      buildScrapTrend(response.data, scope)
-      if (requestRef.current !== request) return
-      if (keyRef.current !== key) { setMessage('Perimetro modificato durante il caricamento: ricarica il trend.'); return }
-      change({ trendData: { key, snapshot: response.data } })
-      setMessage('Trend caricato. Le date degli interventi e lo snapshot vengono salvati automaticamente.')
-    } catch (error) {
-      if (requestRef.current === request) setMessage(typeof error.response?.data?.detail === 'string' ? error.response.data.detail : error.message || 'Caricamento trend non riuscito.')
-    } finally {
-      if (requestRef.current === request) setLoading(false)
-    }
-  }
   const labelDate = value => new Date(value).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', timeZone: 'UTC' })
   return (
     <section className={section}>
-      <h3 className="font-bold text-primary">Trend e verifica degli interventi</h3>
-      <p className="text-sm text-gray-600">Perdita percentuale giornaliera sulla produzione, con gli stessi prodotti, tipi e causali del confronto. Il periodo continuo va dall'inizio del prima alla fine del dopo, inclusi i giorni intermedi.</p>
+      <h3 className="font-bold text-primary">Andamento della perdita</h3>
+      <p className="text-sm text-gray-600">Stesso obiettivo e prodotti del saving. L'area verde indica il periodo di verifica; la linea tratteggiata indica la baseline selezionata. Il trend aggregato puo risentire del mix prodotto; il saving e normalizzato per prodotto.</p>
       {form.mode !== 'stain' ? <p className="text-sm text-amber-800">Il confronto manuale contiene solo totali: non viene generato un trend senza dati giornalieri.</p> : <>
         <p className="text-sm">Periodo: {from || 'Da definire'} / {to || 'Da definire'}</p>
-        <div className="grid md:grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <InterventionSelect label="Ripristino" kind="ripristino" items={interventions} value={form.trendRestorationRef} refKey="trendRestorationRef" dateKey="trendRestoration" change={change} />
-            <label className="block text-sm">Data ripristino<input type="date" className={field} min={from || undefined} max={to || todayDate()} value={restoration} onChange={event => change({ trendRestoration: event.target.value, trendRestorationRef: '' })} /></label>
-          </div>
-          <div className="space-y-2">
-            <InterventionSelect label="Miglioramento" kind="miglioramento" items={interventions} value={form.trendImprovementRef} refKey="trendImprovementRef" dateKey="trendImprovement" change={change} />
-            <label className="block text-sm">Data miglioramento<input type="date" className={field} min={restoration ? dayAfter(restoration) : from || undefined} max={to || todayDate()} value={improvement} onChange={event => change({ trendImprovement: event.target.value, trendImprovementRef: '' })} /></label>
-          </div>
-        </div>
-        <button type="button" className={button} disabled={loading || !periodValid} onClick={loadTrend}>{loading ? 'Caricamento trend...' : 'Carica / aggiorna trend da STAIN'}</button>
+
         {!periodValid && <p className="text-sm text-amber-800">Importa il perimetro e scegli un periodo storico continuo di massimo 367 giorni.</p>}
         {markerError && <p role="alert" className="text-sm text-amber-800">{markerError}</p>}
-        {message && <p role="status" aria-live="polite" className="text-sm">{message}</p>}
         {dataError && <p role="alert" className="text-sm text-red-700">{dataError}</p>}
         {form.trendData && form.trendData.key !== key && <p className="text-sm text-amber-800">Date o filtri modificati: aggiorna il trend. Il precedente non viene mostrato.</p>}
         {points.length > 0 && <>
+          <p className="text-sm">Verifica: {form.afterFrom} / {form.afterTo} · {verificationPoints.length} giorni produttivi validi. La durata del campione va valutata prima di confermare l’efficacia.</p>
           <div className="h-80 w-full" role="img" aria-label="Trend giornaliero della percentuale di perdita con date di ripristino e miglioramento">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={points} margin={{ top: 40, right: 30, bottom: 10, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" />
+                <CartesianGrid strokeDasharray="3 3" /><ReferenceArea x1={Date.parse(`${form.afterFrom}T00:00:00Z`)} x2={Date.parse(`${form.afterTo}T00:00:00Z`)} fill="#15803d" fillOpacity={0.1} label="Periodo del saving" />
                 <XAxis dataKey="timestamp" type="number" scale="time" domain={[start, end]} tickFormatter={labelDate} />
                 <YAxis unit="%" width={65} />
                 <Tooltip labelFormatter={value => new Date(value).toLocaleDateString('it-IT', { timeZone: 'UTC' })} formatter={value => [`${fmt(value)}%`, 'Perdita sulla produzione']} />
                 <Legend />
                 <Line name="Perdita selezionata (%)" type="linear" dataKey="value" stroke="#85583f" strokeWidth={2} dot={{ r: 2 }} connectNulls={false} isAnimationActive={false} />
                 {!markerError && restoration && <ReferenceLine x={Date.parse(`${restoration}T00:00:00Z`)} stroke="#2563eb" strokeWidth={2} strokeDasharray="5 3" label={{ value: 'Ripristino', position: 'insideTopLeft', fill: '#2563eb' }} />}
-                {!markerError && improvement && <ReferenceLine x={Date.parse(`${improvement}T00:00:00Z`)} stroke="#15803d" strokeWidth={2} strokeDasharray="5 3" label={{ value: 'Miglioramento', position: 'insideTopRight', fill: '#15803d' }} />}
+                {!markerError && improvement && <ReferenceLine x={Date.parse(`${improvement}T00:00:00Z`)} stroke="#15803d" strokeWidth={2} strokeDasharray="5 3" label={{ value: 'Intervento di miglioramento', position: 'insideTopRight', fill: '#15803d' }} />}
                 {baselineRate != null && <ReferenceLine y={baselineRate} stroke="#6b7280" strokeDasharray="4 4" label={{ value: `Prima: ${fmt(baselineRate)}%`, position: 'insideTopRight' }} />}
               </LineChart>
             </ResponsiveContainer>
@@ -249,11 +224,11 @@ function ScrapInterventionTrend({ form, change, from, to, interventions }) {
           {!points.some(point => point.valid) && <p className="text-sm text-amber-800">Nessun giorno con produzione e perdite valide nel perimetro.</p>}
           {invalid > 0 && <p className="text-sm text-amber-800">{invalid} giorni con perdita senza produzione o quantitativi incoerenti: percentuale non calcolata. I riepiloghi dei periodi interessati non sono disponibili.</p>}
           {!restoration || !improvement ? <p className="text-sm text-gray-600">Indica entrambe le date per confrontare i tre periodi.</p> : null}
-          {segments.length > 0 && <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr>{['Periodo', 'Giorni produttivi validi', 'Perdita ponderata', 'Riduzione vs prima'].map(label => <th key={label} className="text-left border-b p-2">{label}</th>)}</tr></thead><tbody>{segments.map((segment, index) => {
-            const reduction = index > 0 && baselineRate > 0 && segment.value != null ? (baselineRate - segment.value) / baselineRate * 100 : null
-            return <tr key={segment.label}><td className="p-2">{segment.label}</td><td className="p-2">{segment.count}</td><td className="p-2">{segment.value == null ? 'Non disponibile' : `${fmt(segment.value)}%`}</td><td className="p-2">{index === 0 ? 'Riferimento' : reduction == null ? 'Non disponibile' : `${fmt(reduction)}%`}</td></tr>
+          {segments.length > 0 && <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr>{['Periodo', 'Giorni produttivi validi', 'Perdita ponderata', 'Variazione rispetto alla baseline'].map(label => <th key={label} className="text-left border-b p-2">{label}</th>)}</tr></thead><tbody>{segments.map((segment, index) => {
+            const reduction = baselineRate > 0 && segment.value != null ? (baselineRate - segment.value) / baselineRate * 100 : null
+            return <tr key={segment.label}><td className="p-2">{segment.label}</td><td className="p-2">{segment.count}</td><td className="p-2">{segment.value == null ? 'Non disponibile' : `${fmt(segment.value)}%`}</td><td className="p-2">{reduction == null ? 'Non disponibile' : `${reduction >= 0 ? 'Riduzione' : 'Aumento'} ${fmt(Math.abs(reduction))}%`}</td></tr>
           })}</tbody></table></div>}
-          <p className="text-xs text-gray-600">Percentuale ponderata = kg persi / kg prodotti nel periodo, non media delle percentuali giornaliere. Il giorno dell'intervento appartiene al periodo successivo. Giorni senza produzione: interruzione della linea, non zero. Riduzione negativa: peggioramento. Variazioni del mix prodotto possono influire sul risultato: per una verifica omogenea seleziona lo stesso prodotto. Il trend mostra l'associazione temporale, non dimostra da solo la causalita.</p>
+          <p className="text-xs text-gray-600">Percentuale ponderata = kg persi / kg prodotti nel periodo, non media delle percentuali giornaliere. Il giorno dell'intervento appartiene al periodo successivo. Giorni senza produzione: interruzione della linea, non zero. Variazione rispetto alla baseline selezionata. Variazioni del mix prodotto possono influire sul risultato: per una verifica omogenea seleziona lo stesso prodotto. Il trend mostra l'associazione temporale, non dimostra da solo la causalita.</p>
         </>}
       </>}
     </section>
@@ -312,7 +287,19 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     }
   }, [stepData?.dati])
   const change = (patch, preserveReview = false) => {
-    const next = { ...formRef.current, ...patch, ...(preserveReview ? {} : { reviewed: false, reviewedBy: '', reviewedAt: '' }) }
+    let linked = { ...patch }
+    const current = formRef.current
+    const period = linked.verificationPeriod || current.verificationPeriod || 'custom'
+    const restoration = linked.trendRestoration ?? current.trendRestoration
+    const improvement = linked.trendImprovement ?? current.trendImprovement
+    if (period !== 'custom' && ['verificationPeriod', 'trendRestoration', 'trendImprovement'].some(key => key in linked)) {
+      linked.afterFrom = period === 'improvement' ? improvement || '' : restoration || ''
+      if (period === 'restoration') linked.afterTo = improvement ? previousDay(improvement) : ''
+    }
+    if (!('rows' in linked) && ['afterFrom', 'afterTo'].some(key => key in linked && linked[key] !== current[key])) {
+      linked = { ...linked, after: null, rows: current.mode === 'manuale' ? current.rows.map(row => ({ ...row, afterLoss: '', afterProduction: '' })) : [], excluded: [], result: null }
+    }
+    const next = { ...current, ...linked, ...(preserveReview ? {} : { reviewed: false, reviewedBy: '', reviewedAt: '' }) }
     formRef.current = next
     dirty.current = true
     revision.current += 1
@@ -326,7 +313,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     const objective = objectives.find(row => row.id === id)
     try {
       const context = objectiveContext(baseline, objective)
-      change({ ...objectivePatch(context), before: context.scope ? JSON.parse(JSON.stringify(baseline.stain_snapshot)) : null })
+      change({ ...objectivePatch(context), verificationPeriod: 'custom', before: context.scope ? JSON.parse(JSON.stringify(baseline.stain_snapshot)) : null })
       setPeriodStatus(context.meta.source === 'manuale' ? 'Perdite prima recuperate. Inserisci produzione e dati dopo per lo stesso perimetro.' : 'Obiettivo acquisito. Seleziona il periodo dopo.')
     } catch (error) {
       change({ ...objectivePatch({ meta: { id, source: objective?.fonte }, fingerprint: '', scope: null, rows: [], from: '', to: '' }), objectiveSnapshot: null })
@@ -366,6 +353,9 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
     if (objectiveStale) issues.push('Obiettivo o dati della Fase 1 modificati: importa nuovamente obiettivo e confronto.')
     if (form.mode === 'manuale' && currentObjective && form.rows.some(row => !currentObjective.rows.some(item => item.product === row.product && item.type === row.type))) issues.push('Riga manuale fuori dal perimetro obiettivo.')
     if (periodError) issues.push(periodError)
+    if (form.verificationPeriod === 'restoration' && (!form.trendRestoration || !form.trendImprovement || form.trendImprovement <= form.trendRestoration)) issues.push('Definisci ripristino e miglioramento in ordine cronologico.')
+    if (form.verificationPeriod === 'improvement' && !form.trendImprovement) issues.push('Indica la data del miglioramento.')
+    if (form.verificationPeriod === 'all' && !form.trendRestoration) issues.push('Indica la data del ripristino.')
   if (scopeStale) issues.push('Il perimetro della Fase 1 è cambiato dopo l’importazione: importa di nuovo linea, filtri e periodo prima di calcolare il saving.')
 
   if (!beforeFrom || !beforeTo || !form.afterFrom || !form.afterTo || beforeFrom > beforeTo || form.afterFrom > form.afterTo || form.afterFrom <= beforeTo) issues.push('Definisci periodi validi, non sovrapposti: il dopo deve iniziare dopo la baseline.')
@@ -386,20 +376,30 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   }
   const load = async () => {
     if (periodError || objectiveBlocked) { setPeriodStatus(periodError || objectiveError || 'Importa nuovamente obiettivo.'); return }
+    const span = Date.parse(`${form.afterTo}T00:00:00Z`) - Date.parse(`${beforeFrom}T00:00:00Z`)
+    if (span > 366 * 86400000) { setPeriodStatus('Grafico e saving richiedono un periodo continuo di massimo 367 giorni.'); return }
     const requestRevision = revision.current
     setBusy(true)
     setPeriodStatus('Lettura STAIN in corso...')
     try {
       const params = { linea: form.scope.line, tipi: form.scope.types.join(',') }
-      const [beforeResponse, afterResponse] = await Promise.all([
-        api.get('/stain/scarti', { params: { ...params, dal: beforeFrom, al: beforeTo }, timeout: 180000 }),
-        api.get('/stain/scarti', { params: { ...params, dal: form.afterFrom, al: form.afterTo }, timeout: 180000 }),
-      ])
+      const response = await api.get('/stain/scarti', { params: { ...params, dal: beforeFrom, al: form.afterTo }, timeout: 180000 })
+      const continuous = response.data
+      const slice = (from, to) => ({ ...continuous, dal: from, al: to,
+        produzione: (continuous.produzione || []).filter(row => row.data >= from && row.data <= to),
+        dettaglio: (continuous.dettaglio || []).filter(row => row.data >= from && row.data <= to),
+      })
+      const beforeResponse = { data: slice(beforeFrom, beforeTo) }
+      const afterResponse = { data: slice(form.afterFrom, form.afterTo) }
       if (requestRevision !== revision.current || !mountedRef.current) { setPeriodStatus('Dati modificati: ricarica il confronto.'); return }
       const excluded = incomparableProducts(beforeResponse.data, afterResponse.data, form.scope)
       const rows = compareSnapshots(beforeResponse.data, afterResponse.data, form.scope, form.rows)
-      change({ before: beforeResponse.data, after: afterResponse.data, rows, excluded })
-      setPeriodStatus(`Entrambi i periodi caricati: ${rows.length} righe${excluded.length ? `, ${excluded.length} prodotti esclusi` : ''}. Ora applica i driver economici.`)
+      const comparableScope = { ...form.scope, products: [...new Set(rows.map(row => row.product))] }
+      buildScrapTrend(continuous, comparableScope)
+      change({ before: beforeResponse.data, after: afterResponse.data, rows, excluded,
+        trendData: { key: form.mode + trendKey(comparableScope, beforeFrom, form.afterTo), snapshot: continuous },
+      })
+      setPeriodStatus(`Grafico e confronto aggiornati: ${rows.length} righe${excluded.length ? `, ${excluded.length} prodotti esclusi` : ''}. Ora applica i driver economici.`)
     } catch (error) { setPeriodStatus(error.response?.data?.detail || error.message || 'Lettura STAIN non riuscita') }
     finally { setBusy(false) }
   }
@@ -519,7 +519,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   const input = (label, key, type = 'text') => {
     const beforeDate = key === 'comparisonFrom' || key === 'comparisonTo'
     const value = beforeDate ? (key === 'comparisonFrom' ? beforeFrom : beforeTo) || '' : form[key]
-    return <label className="text-sm block">{label}<input className={field} type={type} disabled={busy} min={   type === 'number'     ? '0'     : key === 'afterFrom'       ? dayAfter(beforeTo) || undefined       : key === 'afterTo'         ? form.afterFrom && form.afterFrom > beforeTo           ? form.afterFrom           : dayAfter(beforeTo) || undefined         : undefined } max={type === 'date' ? today : undefined} step={type === 'number' ? 'any' : undefined} value={value} onChange={event => {
+    return <label className="text-sm block">{label}<input className={field} type={type} disabled={busy || (key === 'afterFrom' && form.verificationPeriod && form.verificationPeriod !== 'custom') || (key === 'afterTo' && form.verificationPeriod === 'restoration')} min={   type === 'number'     ? '0'     : key === 'afterFrom'       ? dayAfter(beforeTo) || undefined       : key === 'afterTo'         ? form.afterFrom && form.afterFrom > beforeTo           ? form.afterFrom           : dayAfter(beforeTo) || undefined         : undefined } max={type === 'date' ? today : undefined} step={type === 'number' ? 'any' : undefined} value={value} onChange={event => {
       const value = event.target.value
       if (beforeDate) {
         change({ scope: { ...form.scope, [key === 'comparisonFrom' ? 'from' : 'to']: value }, before: null, after: null, rows: [] })
@@ -553,19 +553,35 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         {form.mode === 'stain' ? <>
           {!objectives.length && <button type="button" disabled={busy} className={button} onClick={capture}>Importa linea, filtri e periodo dalla Fase 1</button>}
           {scopeStale && <div role="alert" className="text-sm bg-amber-50 border border-amber-300 text-amber-900 p-3 rounded space-y-1"><p className="font-semibold">Il perimetro della Fase 1 è diverso da quello usato qui.</p><p>Fase 1 - Prodotti: {phaseScope.products.join(', ') || 'Tutti'} · Causali: {phaseScope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Qui - Prodotti: {form.scope.products.join(', ') || 'Tutti'} · Causali: {form.scope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Premi Importa linea, filtri e periodo dalla Fase 1. Il confronto dopo verrà azzerato e andrà ricaricato.</p></div>}
-          {form.scope && <div className="text-sm bg-gray-50 p-3 rounded"><p>{form.scope.line} · {form.scope.from} / {form.scope.to}</p><p>Prodotti: {form.scope.products.join(', ') || 'Tutti'} · Causali: {form.scope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Confronto indipendente: modificare queste date non cambia la Fase 1.</p></div>}
+          {form.scope && <div className="text-sm bg-gray-50 p-3 rounded"><p>{form.scope.line} · {form.scope.from} / {form.scope.to}</p><p>Prodotti: {form.scope.products.join(', ') || 'Tutti'} · Causali: {form.scope.priorities.join(', ') || 'Tutte le causali dei tipi selezionati'}</p><p>Baseline del confronto. Le modifiche non cambiano la Fase 1.</p></div>}
         </> : <><div className="grid md:grid-cols-2 gap-3">{input('Baseline da', 'manualBeforeFrom', 'date')}{input('Baseline a', 'manualBeforeTo', 'date')}</div>{input('Fonte e perimetro manuale (linea, prodotti, causali, evidenze)', 'source')}{form.objectiveId && <p className="text-xs text-gray-600">Inserisci solo perdite del perimetro selezionato. La produzione non viene ricostruita dalla raccolta manuale.</p>}</>}
-        <p className="text-sm text-gray-600">Confronta due periodi storici: prima degli interventi e dopo gli interventi. Puoi cambiare entrambi qui. Le date vengono controllate al caricamento, senza essere riscritte automaticamente.</p>
+        <p className="text-sm text-gray-600">Scegli gli interventi e il periodo da verificare. Il saving usa questi stessi estremi.</p>
         {form.mode === 'stain' && form.scope && <div className="grid md:grid-cols-2 gap-3">{input('Periodo prima da', 'comparisonFrom', 'date')}{input('Periodo prima a', 'comparisonTo', 'date')}</div>}
-        <div className="grid md:grid-cols-2 gap-3">{input('Periodo dopo da', 'afterFrom', 'date')}{input('Periodo dopo a', 'afterTo', 'date')}</div>
-        {form.mode === 'stain' && <button type="button" disabled={busy || !form.scope || Boolean(periodError) || scopeStale || objectiveBlocked} className={button} onClick={load}>{busy ? 'Caricamento...' : 'Carica confronto da STAIN'}</button>}
+        <div className="grid md:grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <InterventionSelect label="Ripristino" kind="ripristino" items={interventions} value={form.trendRestorationRef} refKey="trendRestorationRef" dateKey="trendRestoration" change={change} />
+            <label className="block text-sm">Data ripristino<input type="date" className={field} min={undefined} max={today} value={form.trendRestoration || ''} onChange={event => change({ trendRestoration: event.target.value, trendRestorationRef: '' })} /></label>
+          </div>
+          <div className="space-y-2">
+            <InterventionSelect label="Miglioramento" kind="miglioramento" items={interventions} value={form.trendImprovementRef} refKey="trendImprovementRef" dateKey="trendImprovement" change={change} />
+            <label className="block text-sm">Data miglioramento<input type="date" className={field} min={undefined} max={today} value={form.trendImprovement || ''} onChange={event => change({ trendImprovement: event.target.value, trendImprovementRef: '' })} /></label>
+          </div>
+        </div>
+        <label className="block text-sm">Periodo da verificare<select className={field} disabled={busy} value={form.verificationPeriod || 'custom'} onChange={event => change({ verificationPeriod: event.target.value })}>
+<option value="custom">Periodo personalizzato</option>
+<option value="restoration" disabled={!form.trendRestoration || !form.trendImprovement}>Dopo il ripristino, prima del miglioramento</option>
+<option value="improvement" disabled={!form.trendImprovement}>Dopo l'intervento di miglioramento</option>
+<option value="all" disabled={!form.trendRestoration}>Intero periodo dal ripristino</option>
+</select></label><p className="text-xs text-gray-600">Un solo periodo per grafico e saving. Dopo una modifica ricarica il confronto.</p>
+<div className="grid md:grid-cols-2 gap-3">{input('Periodo dopo da', 'afterFrom', 'date')}{input('Periodo dopo a', 'afterTo', 'date')}</div>
+        {form.mode === 'stain' && <button type="button" disabled={busy || !form.scope || Boolean(periodError) || scopeStale || objectiveBlocked} className={button} onClick={load}>{busy ? 'Caricamento...' : 'Aggiorna grafico e saving da STAIN'}</button>}
         {periodError && <p role="alert" className="text-sm text-amber-800">{periodError}</p>}
         {periodStatus && <p role="status" aria-live="polite" className="text-sm">{periodStatus}</p>}
         {form.rows.length > 0 && form.excluded?.length > 0 && <div role="alert" className="text-sm bg-amber-50 border border-amber-300 text-amber-900 p-3 rounded space-y-1"><p className="font-semibold">Prodotti esclusi dal saving: produzione assente nel periodo indicato</p>{form.excluded.map(item => <p key={item.product}>{item.product}: assente in {item.missing} · perdite prima {fmt(item.beforeLoss)} kg, dopo {fmt(item.afterLoss)} kg</p>)}<p>Le loro perdite non sono valorizzate nel saving.</p></div>}
       </section>
       <ScrapInterventionTrend form={form} change={change} from={beforeFrom} to={form.afterTo} interventions={interventions} />
       <section className={section}>
-        <h3 className="font-bold text-primary">2 · Driver e beneficio economico</h3>
+        <h3 className="font-bold text-primary">2 · Risultato del periodo selezionato</h3><p className="text-sm">Baseline: {beforeFrom || "Da definire"} / {beforeTo || "Da definire"} · Verifica: {form.afterFrom || "Da definire"} / {form.afterTo || "Da definire"}</p>
         <p className="text-xs text-gray-600">Driver €/kg dalla versione annuale dei Settings, oppure inserimento manuale documentato. Scarto e rework distinti: non inserire gli stessi kg due volte. Le produzioni per uno stesso prodotto devono coincidere. Nessuna formula manodopera inclusa.</p>
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-sm flex-1">Versione driver economici<select className={field} disabled={busy} value={driverVersion} onChange={event => change({ selectedDriverVersion: event.target.value })}><option value="">Seleziona anno e versione</option>{driverVersions.map(version => <option key={version.id} value={version.id}>{version.year} · {version.filename} · {new Date(version.created_at).toLocaleString('it-IT')}</option>)}</select></label>
