@@ -13,7 +13,7 @@ const QUINTA_M = [
   { value: 'Misurazione', label: 'Misurazione' },
 ]
 
-export default function ActionPlanFormShared({ plan, onClose, onSaved, prefilledKaizen = null, prefilledParent = null, routeOptions = [] }) {
+export default function ActionPlanFormShared({ plan, onClose, onSaved, prefilledKaizen = null, prefilledParent = null, routeOptions = [], lockRouteSource = false, beforeSubmit = null }) {
 const [form, setForm] = useState({
   route_source: plan?.route_source || prefilledParent?.route_source || null,
   titolo: plan?.titolo || prefilledParent?.titolo || '',
@@ -90,6 +90,7 @@ const [form, setForm] = useState({
 
   async function handleSubmit(e) {
     e.preventDefault()
+    if (saving) return
     if (!form.data_scadenza) {
       alert('La scadenza è obbligatoria')
       return
@@ -100,6 +101,7 @@ const [form, setForm] = useState({
     }
     setSaving(true)
     try {
+      if (beforeSubmit) await beforeSubmit()
       const payload = {
         ...form,
         data_inizio: form.data_inizio
@@ -180,7 +182,7 @@ const [form, setForm] = useState({
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {form.parent_type === 'major_kaizen' && (routeOptions.length > 0 || form.route_source) && (
             <label className="block text-sm">Anomalia collegata
-              <select className="w-full border rounded-lg px-3 py-2" value={form.route_source?.anomaly_id || ''} onChange={event => {
+              <select disabled={lockRouteSource} className="w-full border rounded-lg px-3 py-2" value={form.route_source?.anomaly_id || ''} onChange={event => {
                 const selected = routeOptions.find(item => item.id === event.target.value)
                 setForm(current => ({ ...current, route_source: selected ? { step_id: current.gant_step_id, anomaly_id: selected.id } : null, macchina: selected?.macchina || current.macchina }))
               }}>
