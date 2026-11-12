@@ -132,15 +132,27 @@ export default function SustainmentPlan({ stepData, onChange, allStepsData = {},
     api.get('/reparti/').then(response => setDepartments(list(response.data))).catch(() => setLoadError('Anagrafica linee non disponibile: ricarica la pagina.'))
   }, [])
   const lineOptions = departments.filter(dep => dep.attivo !== false).flatMap(dep => list(dep.linee).filter(line => line.attivo !== false).map(line => ({ key: `${dep._id || dep.id || dep.nome}:${line.id || line.nome}`, department: dep.nome, name: line.nome, machines: list(line.macchine).filter(machine => machine.attivo !== false) })))
+  const [plans, setPlans] = useState([])
+  useEffect(() => {
+    if (!major?._id) return
+    api.get('/action-plans/', { params: { parent_id: major._id } })
+      .then(response => setPlans(list(response.data).filter(plan => plan.parent_type === 'major_kaizen' && plan.parent_id === major._id && plan.stato !== 'Annullato')))
+      .catch(() => setPlans([]))
+  }, [major?._id])
   const sources = useMemo(() => {
     const result = []
     Object.entries(allStepsData).forEach(([stepId, value]) => {
+      list(value?.dati?.anomalie).forEach(row => {
+        if (row.carl?.id && row.descrizione) result.push({ id: `${stepId}:${row.id}`, group: 'Ripristini CARL', label: row.descrizione, ref: row.carl.codice || '', state: row.carl.stato_label || '', documents: list(row.documenti) })
+      })
       list(value?.dati?.miglioramenti).forEach(row => {
-        if (row.proposta) result.push({ id: `${stepId}:${row.id}`, label: row.proposta, ref: row.carl?.codice || '' })
+        if (row.proposta) result.push({ id: `${stepId}:${row.id}`, group: 'Miglioramenti CARL', label: row.proposta, ref: row.carl?.codice || '', state: row.carl?.stato_label || 'Bozza', documents: [] })
       })
     })
+    plans.forEach(plan => result.push({ id: `ap:${plan._id}`, group: 'Action Plan', label: plan.titolo || plan.numero, ref: plan.numero || '', state: plan.stato || '', documents: [] }))
     return result
-  }, [allStepsData])
+  }, [allStepsData, plans])
+  const groups = [...new Set(sources.map(source => source.group))]
   const patch = (key, id, values) => mutate(current => ({ ...current, [key]: current[key].map(row => row.id === id ? { ...row, ...values } : row) }))
   const add = (key, values) => mutate(current => ({ ...current, [key]: [...current[key], { id: uid(), ...values }] }))
   const remove = (key, id) => { if (window.confirm('Rimuovere questa riga dal progetto?')) mutate(current => ({ ...current, [key]: current[key].filter(row => row.id !== id) })) }
@@ -172,7 +184,13 @@ export default function SustainmentPlan({ stepData, onChange, allStepsData = {},
   const initial = { titolo: creating?.titolo || '', reparto: major?.reparto || '', linea: major?.linea || '', macchina: major?.macchina || '' }
   const sourceField = (row, key) => <div className="space-y-2">
     <Field label="Contromisura / miglioramento" value={row.improvement} onChange={value => patch(key, row.id, { improvement: value, sourceId: '' })} />
-    {sources.length > 0 && <label className="block text-xs">Riprendi un SUG della Fase 4<select className={input} value={row.sourceId || ''} onChange={event => { const source = sources.find(item => item.id === event.target.value); if (source) patch(key, row.id, { sourceId: source.id, improvement: source.label, reference: source.ref }) }}><option value="">Seleziona oppure descrivi sopra</option>{sources.map(source => <option key={source.id} value={source.id}>{source.label}</option>)}</select></label>}
+      {sources.length > 0 && <label className="block text-xs">Soluzione del progetto<select className={input} value={row.sourceId || ''} onChange={event => {
+        const source = sources.find(item => item.id === event.target.value)
+        if (!source) return
+        const values = { sourceId: source.id, improvement: source.label, reference: source.ref }
+        if (key === 'standards' && !list(row.documents).length && source.documents.length) values.documents = source.documents.filter(doc => doc?.id).map(doc => ({ id: doc.id, label: doc.label || '' }))
+        patch(key, row.id, values)
+      }}><option value="">Seleziona oppure descrivi sopra</option>{row.sourceId && !sources.some(source => source.id === row.sourceId) && <option value={row.sourceId}>Soluzione non più disponibile</option>}{groups.map(group => <optgroup key={group} label={group}>{sources.filter(source => source.group === group).map(source => <option key={source.id} value={source.id}>{[source.ref, source.label].filter(Boolean).join(' · ')}{source.state ? ` (${source.state})` : ''}</option>)}</optgroup>)}</select></label>}
   </div>
   const statusText = { saved: 'Salvato', dirty: 'Modifiche da salvare...', saving: 'Salvataggio...', error: 'Errore: modifiche ancora nella pagina' }[status]
   return (
