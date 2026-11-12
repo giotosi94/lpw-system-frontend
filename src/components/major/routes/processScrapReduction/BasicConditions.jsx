@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
 import api from '../../../../services/api'
 import ImageUpload from '../../../ImageUpload'
+import ActionPlanFormShared from '../../../ActionPlanFormShared'
 import KaizenAzioniList from '../../../kaizen/KaizenAzioniList'
 import OplNativaModal from '../../../opl/OplNativaModal'
 import OplImportModal from '../../../opl/OplImportModal'
@@ -34,7 +35,7 @@ function newArea() {
 }
 
 function newAnomaly() {
-  return { id: createId('anomaly'), macchina: '', componente: '', descrizione: '', foto_prima: [], foto_dopo: [], verifica: '', documenti: [], carl: null, manutenzione: false }
+  return { id: createId('anomaly'), macchina: '', componente: '', descrizione: '', foto_prima: [], foto_dopo: [], verifica: '', documenti: [], carl: null, manutenzione: false, action_plan: false, area_id: '', perdita: '' }
 }
 
 function newStandard() {
@@ -66,6 +67,7 @@ function buildForm(data) {
       foto_dopo: list(item.foto_dopo),
       carl: item.carl || null,
       manutenzione: Boolean(item.manutenzione || item.carl),
+      action_plan: Boolean(item.action_plan || item.action_plan_id),
       documenti: list(item.documenti).length
         ? list(item.documenti)
         : item.documento_id ? [{ id: item.documento_id, label: item.documento_label || '' }] : [],
@@ -132,6 +134,12 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
   const [sending, setSending] = useState('')
   const [carlError, setCarlError] = useState('')
   const [carlDetail, setCarlDetail] = useState(null)
+  const [carlDraft, setCarlDraft] = useState(null)
+  const [apDraft, setApDraft] = useState(null)
+  const [linkedPlans, setLinkedPlans] = useState([])
+  const [plansVersion, setPlansVersion] = useState(0)
+  const [openingAP, setOpeningAP] = useState('')
+  const sendLock = useRef(false)
 
   const formRef = useRef(form)
   const baseRef = useRef(stepData?.dati || {})
@@ -157,10 +165,11 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     savingRef.current = true
     setStatus('saving')
     try {
-      await onChangeRef.current({
+      const result = await onChangeRef.current({
         dati: { ...baseRef.current, ...toData(snapshot) },
         output_compilati: outputs(snapshot),
       })
+      if (result === false) throw new Error('Salvataggio non riuscito')
       if (revisionRef.current === revision) {
         dirtyRef.current = false
         setStatus('saved')
@@ -168,8 +177,10 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
         setStatus('dirty')
         timerRef.current = setTimeout(() => persist(), SAVE_DELAY)
       }
+      return true
     } catch {
       setStatus('error')
+      return false
     } finally {
       savingRef.current = false
     }
@@ -290,7 +301,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
   const addAnomaly = () => mutate(current => ({ ...current, anomalie: [...current.anomalie, newAnomaly()] }))
   const addAnomaliesFromAreas = () => mutate(current => ({
     ...current,
-    anomalie: [...current.anomalie, ...missingZones.map(area => ({ ...newAnomaly(), macchina: area.macchina, componente: area.componente }))],
+    anomalie: [...current.anomalie, ...missingZones.map(area => ({ ...newAnomaly(), macchina: area.macchina, componente: area.componente, area_id: area.id, perdita: area.perdita }))],
   }))
   const patchAnomaly = (id, patch) => mutate(current => ({
     ...current,
@@ -319,29 +330,68 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     refreshCarl()
   }, [refreshCarl])
 
-  const sendToCarl = async (item, index, priorita) => {
+  const ensureSaved = async () => {
+    while (savingRef.current) await new Promise(resolve => setTimeout(resolve, 100))
+    if (dirtyRef.current && await persist() !== true) throw new Error('Salva prima le modifiche della fase')
+    if (dirtyRef.current) return ensureSaved()
+  }
+  const openCarlDraft = (item, index, priorita) => {
+    setCarlError('')
+    setCarlDraft({ id: item.id, index, titolo: item.carl_bozza?.titolo || item.descrizione || `Anomalia ${index + 1}`, descrizione: item.carl_bozza?.descrizione ?? item.descrizione, macchina: item.carl_bozza?.macchina ?? item.macchina, componente: item.carl_bozza?.componente ?? item.componente, priorita: item.carl_bozza?.priorita || priorita })
+  }
+  const updateCarlDraft = patch => {
+    const next = { ...carlDraft, ...patch }
+    setCarlDraft(next)
+    patchAnomaly(next.id, { carl_bozza: next })
+  }
+  const sendToCarl = async event => {
+    event.preventDefault()
+    if (sendLock.current || !carlDraft) return
+    const draft = carlDraft
+    const item = formRef.current.anomalie.find(row => row.id === draft.id)
+    if (!item || item.carl) return
+    sendLock.current = true
     setSending(item.id)
     setCarlError('')
     try {
-      const machine = machines.find(entry => entry.nome === item.macchina)
+      await ensureSaved()
+      const machine = machines.find(entry => entry.nome === draft.macchina)
       const response = await api.post('/carl/cartellini', {
-        titolo: (item.descrizione || '').trim() || `Anomalia ${index + 1}`,
-        descrizione: [item.descrizione, [item.macchina, item.componente].filter(Boolean).join(' · ')].filter(Boolean).join('\n'),
-        priorita,
+        titolo: draft.titolo.trim(),
+        descrizione: [draft.descrizione, [draft.macchina, draft.componente].filter(Boolean).join(' / ')].filter(Boolean).join('\n'),
+        priorita: draft.priorita,
         macchina_carl: machine?.carl_code || '',
         linea_carl: carlLine,
-        riferimento: `${major?.numero || ''} · Anomalia ${index + 1}`,
+        riferimento: `${major?.numero || ''} / Anomalia ${draft.index + 1}`,
       })
-      patchAnomaly(item.id, { carl: carlSnapshot(response.data) })
+      patchAnomaly(item.id, { carl: carlSnapshot(response.data), carl_bozza: draft })
       setCarlStates(current => ({ ...current, [response.data.id]: response.data }))
+      setCarlDraft(null)
+      await ensureSaved()
     } catch (err) {
-      if (err.response?.status === 503) setCarlOn(false)
-      setCarlError(err.response?.data?.detail || 'Invio a CARL non riuscito')
+      setCarlError(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : err.message || 'Invio a CARL non riuscito')
     } finally {
+      sendLock.current = false
       setSending('')
     }
   }
-
+  const openAnomalyAP = async item => {
+    if (openingAP) return
+    setOpeningAP(item.id)
+    try {
+      await ensureSaved()
+      const response = await api.get('/action-plans/', { params: { parent_id: major?._id } })
+      const plans = (response.data || []).filter(plan => plan.parent_type === 'major_kaizen' && plan.parent_id === major?._id && plan.gant_step_id === step?.step_id)
+      setLinkedPlans(plans)
+      const existing = plans.find(plan => plan.route_source?.anomaly_id === item.id || plan._id === item.action_plan_id)
+      setApDraft({ id: item.id, plan: existing || null, parent: { ...planningParent, titolo: item.descrizione, macchina: item.macchina, gant_step_id: step?.step_id, route_source: { step_id: step?.step_id, anomaly_id: item.id } } })
+    } catch (err) {
+      alert(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : err.message || 'Lettura Action Plan non riuscita')
+    } finally {
+      setOpeningAP('')
+    }
+  }
+  const acceptPlans = useCallback(plans => setLinkedPlans(plans), [])
   const linkedDocIds = [...new Set(form.anomalie.flatMap(item => item.documenti.map(doc => doc.id)))]
 
   const addDocument = (anomalyId, doc) => {
@@ -445,7 +495,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
       <section className={panel}>
         <h3 className={heading}>PASSO 2 - ISPEZIONE E RIPRISTINO</h3>
         <p className="text-sm text-gray-600 mb-3">
-          Registra le anomalie trovate con pulizia e ispezione. Gli interventi di ripristino si gestiscono negli Action Plan della fase qui sotto.
+                      Registra le anomalie trovate con pulizia e ispezione.
         </p>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={addAnomaly} className={addButton}><Plus size={16} /> Aggiungi anomalia</button>
@@ -463,7 +513,17 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
                 <h4 className="text-sm font-bold text-gray-700">Anomalia {index + 1}</h4>
                 <button type="button" aria-label="Elimina anomalia" onClick={() => removeAnomaly(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded"><Trash2 size={15} /></button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              <label className="block text-sm mb-3">Area di riferimento
+                  <select className={input} value={item.area_id || ''} onChange={event => {
+                    const area = form.aree.find(row => row.id === event.target.value)
+                    patchAnomaly(item.id, area ? { area_id: area.id, perdita: area.perdita, macchina: area.macchina, componente: area.componente } : { area_id: '', perdita: '' })
+                  }}>
+                    <option value="">Seleziona area</option>
+                    {item.area_id && !form.aree.some(area => area.id === item.area_id) && <option value={item.area_id}>Area non disponibile</option>}
+                    {form.aree.map(area => <option key={area.id} value={area.id}>{[area.perdita, area.macchina, area.componente].filter(Boolean).join(' / ') || 'Area da completare'}</option>)}
+                  </select>
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <label className="block text-sm">Macchina
                   <div className="mt-1"><OptionSelect label="Macchina" value={item.macchina} options={machineNames} onChange={value => patchAnomaly(item.id, { macchina: value, componente: '' })} /></div>
                 </label>
@@ -478,11 +538,18 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
                 <ImageUpload images={item.foto_prima} onChange={value => patchAnomaly(item.id, { foto_prima: value })} label="Foto prima" maxImages={4} showHelp={false} />
                 <ImageUpload images={item.foto_dopo} onChange={value => patchAnomaly(item.id, { foto_dopo: value })} label="Foto dopo" maxImages={4} showHelp={false} />
               </div>
-              <label className="mt-4 flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={item.manutenzione} disabled={Boolean(item.carl)} onChange={event => patchAnomaly(item.id, { manutenzione: event.target.checked })} />
-                Intervento manutenzione (CARL)
-                {item.carl && <span className="text-xs text-gray-500">· {item.carl.codice}</span>}
-              </label>
+                <div className="mt-4 flex flex-wrap items-center gap-4 text-sm">
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={item.manutenzione} disabled={Boolean(item.carl)} onChange={event => patchAnomaly(item.id, { manutenzione: event.target.checked })} />
+                    CARL
+                    {item.carl && <span className="text-xs text-gray-500">{item.carl.codice}</span>}
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={item.action_plan || linkedPlans.some(plan => plan.route_source?.anomaly_id === item.id)} disabled={Boolean(item.action_plan_id) || linkedPlans.some(plan => plan.route_source?.anomaly_id === item.id)} onChange={event => patchAnomaly(item.id, { action_plan: event.target.checked })} />
+                    Action Plan LPW
+                  </label>
+                  {(item.action_plan || linkedPlans.some(plan => plan.route_source?.anomaly_id === item.id)) && <button type="button" className={smallButton} disabled={Boolean(openingAP) || !item.descrizione.trim()} onClick={() => openAnomalyAP(item)}>{openingAP === item.id ? 'Caricamento...' : item.action_plan_id || linkedPlans.some(plan => plan.route_source?.anomaly_id === item.id) ? 'Modifica Action Plan' : 'Prepara Action Plan'}</button>}
+                </div>
               <label className="block text-sm mt-4">Verifica del ripristino: come hai controllato (foto, misura, prova funzionale)
                 <textarea rows={2} className={`${input} mt-1`} value={item.verifica} onChange={event => patchAnomaly(item.id, { verifica: event.target.value })} />
               </label>
@@ -522,6 +589,9 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
         <h3 className={heading}>PASSO 3 - ACTION PLAN</h3>
         <KaizenAzioniList
           parent={planningParent}
+          refreshKey={plansVersion}
+          onPlansLoaded={acceptPlans}
+          routeOptions={form.anomalie.filter(item => item.descrizione.trim())}
           defaultStepId={step?.step_id || ''}
         />
       </section>
@@ -555,7 +625,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
                       current={item.carl ? carlStates[item.carl.id] || item.carl : null}
                       sending={sending === item.id}
                       disabled={Boolean(sending)}
-                      onSend={priorita => sendToCarl(item, index, priorita)}
+                      onSend={priorita => openCarlDraft(item, index, priorita)}
                       onOpen={() => setCarlDetail(item.carl)}
                     />
                   ))}
@@ -597,7 +667,35 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
         <SopUploadModal initial={createInitial} onClose={() => setCreating(null)} onSaved={doc => handleCreated(doc?.id)} />
       )}
       {previewDoc && <PreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />}
-      {carlDetail && <CarlDetailModal item={carlDetail} onClose={() => setCarlDetail(null)} />}
+              {apDraft && <ActionPlanFormShared
+          plan={apDraft.plan}
+          prefilledParent={apDraft.parent}
+          lockRouteSource={true}
+          beforeSubmit={ensureSaved}
+          onClose={() => setApDraft(null)}
+          onSaved={async saved => {
+            patchAnomaly(apDraft.id, { action_plan: true, action_plan_id: saved._id })
+            setLinkedPlans(current => [...current.filter(plan => plan._id !== saved._id), saved])
+            setApDraft(null)
+            setPlansVersion(current => current + 1)
+            try { await ensureSaved() } catch { setStatus('error') }
+          }}
+        />}
+        {carlDraft && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div role="dialog" aria-modal="true" aria-label="Prepara CARL" className="w-full max-w-xl rounded-xl bg-white shadow-xl">
+            <div className="flex items-center justify-between bg-primary text-white rounded-t-xl px-5 py-3"><h2 className="font-semibold">Prepara CARL</h2><button type="button" disabled={Boolean(sending)} aria-label="Chiudi" onClick={() => setCarlDraft(null)}><X size={18} /></button></div>
+            <form onSubmit={sendToCarl} className="p-5 space-y-3 max-h-[80vh] overflow-y-auto">
+              {carlError && <p role="alert" className="text-sm text-red-700">{carlError}</p>}
+              <label className="block text-sm">Titolo<input required maxLength={300} className={input} value={carlDraft.titolo} onChange={event => updateCarlDraft({ titolo: event.target.value })} /></label>
+              <label className="block text-sm">Descrizione<textarea maxLength={3500} rows={4} className={input} value={carlDraft.descrizione} onChange={event => updateCarlDraft({ descrizione: event.target.value })} /></label>
+              <label className="block text-sm">Macchina<OptionSelect label="Macchina CARL" value={carlDraft.macchina} options={machineNames} onChange={value => updateCarlDraft({ macchina: value, componente: '' })} /></label>
+              <label className="block text-sm">Componente<ComponentInput value={carlDraft.componente} options={componentsOf(carlDraft.macchina)} onChange={value => updateCarlDraft({ componente: value })} /></label>
+              <label className="block text-sm">Priorita<select className={input} value={carlDraft.priorita} onChange={event => updateCarlDraft({ priorita: event.target.value })}>{['bassa', 'media', 'alta', 'urgente'].map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+              <div className="flex justify-end gap-2"><button type="button" className={smallButton} disabled={Boolean(sending)} onClick={() => setCarlDraft(null)}>Chiudi</button><button type="submit" className={addButton} disabled={Boolean(sending) || !carlDraft.titolo.trim()}>{sending ? 'Invio...' : 'Conferma e invia a CARL'}</button></div>
+            </form>
+          </div>
+        </div>}
+        {carlDetail && <CarlDetailModal item={carlDetail} onClose={() => setCarlDetail(null)} />}
     </div>
   )
 }
@@ -738,7 +836,7 @@ function MaintenanceRow({ item, index, current, sending, disabled, onSend, onOpe
               <option value="urgente">Urgente</option>
             </select>
             <button type="button" disabled={disabled || !(item.descrizione || '').trim()} onClick={() => onSend(priorita)} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50">
-              {sending ? 'Invio...' : 'Invia a CARL'}
+              {sending ? 'Invio...' : 'Prepara CARL'}
             </button>
           </div>
         )}
