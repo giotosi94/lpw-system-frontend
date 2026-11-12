@@ -34,20 +34,14 @@ function EcrsTable({ rows, onChange, onCreatePlan }) {
     if (!confirm('Eliminare la riga?')) return
     onChange(rows.filter(row => row.id !== id))
   }
-  if (!open) {
-    return (
-      <button type="button" onClick={() => setOpen(true)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">
-        Analizza il metodo (ECRS)
-      </button>
-    )
-  }
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-gray-700">Analisi del metodo (ECRS)</h4>
-        {rows.length === 0 && <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-500 hover:underline">Chiudi</button>}
-      </div>
-      <p className="text-sm text-gray-600">Elenca le operazioni che generano scarto e scegli come cambiarle.</p>
+    <section className="rounded-lg border border-gray-200 bg-white p-4 md:p-5 space-y-3">
+      <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold">ANALISI DEL METODO (ECRS) · FACOLTATIVA</h3>
+      <p className="text-sm text-gray-600">Usala solo se un’operazione genera scarto e vuoi cambiarne il metodo. Non è richiesta per completare la fase.</p>
+      <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">
+        {open ? 'Chiudi analisi ECRS' : 'Apri analisi ECRS'}
+      </button>
+      {open && <div className="space-y-3">
       {rows.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-sm">
@@ -91,7 +85,8 @@ function EcrsTable({ rows, onChange, onCreatePlan }) {
       <button type="button" onClick={add} className="inline-flex items-center gap-1 rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50">
         <Plus size={15} /> Aggiungi operazione
       </button>
-    </div>
+      </div>}
+    </section>
   )
 }
 
@@ -485,7 +480,6 @@ export default function AnomalyAnalysis({ stepData, onChange, major, allStepsDat
           onChange={rows => mutate(state => ({ ...state, ecrs: rows }))}
           onCreatePlan={openEcrsPlan}
         />
-        <h4 className="text-sm font-semibold text-gray-700">Action Plan LPW</h4>
         <KaizenAzioniList key={listVersion} routeOptions={selected} parent={parent} defaultStepId={step?.step_id || ''} />
       </section>
 
