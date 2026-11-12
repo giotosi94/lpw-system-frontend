@@ -17,6 +17,7 @@ function roots(analysis) {
 
 export default function CarlImprovements({ items, anomalies, analyses, major, onChange, onPersist }) {
   const [draft, setDraft] = useState({ anomaly: '', cause: '', proposta: '', origine: 'sug', priorita: 'media' })
+  const [showForm, setShowForm] = useState(false)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [states, setStates] = useState({})
@@ -54,6 +55,7 @@ export default function CarlImprovements({ items, anomalies, analyses, major, on
       carl: null,
     }])
     setDraft(current => ({ ...current, proposta: '' }))
+    setShowForm(false)
   }
 
   const send = async item => {
@@ -105,9 +107,18 @@ export default function CarlImprovements({ items, anomalies, analyses, major, on
 
   const causes = roots(analyses[draft.anomaly])
   return (
-    <div className="border rounded-lg p-4 space-y-3 bg-white">
-      <h4 className="font-semibold text-sm">Suggerimenti manutenzione CARL</h4>
-      <p className="text-xs text-gray-600">Test in produzione: destinatario GTOSI. Foto conservate in LPW, non inviate. Linea e macchina non sono ancora collegate automaticamente da questa sezione.</p>
+    <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-5 space-y-3">
+      <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold">MIGLIORAMENTI CARL</h3>
+      <p className="text-sm text-gray-600">Inserisci il miglioramento e invialo a CARL. Lo stato si aggiorna da CARL.</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <button type="button" disabled={Boolean(busy)} onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">+ Aggiungi miglioramento</button>
+        {ids && <button type="button" disabled={Boolean(busy)} onClick={refresh} className="rounded border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50">Aggiorna stati</button>}
+      </div>
+      <details className="text-xs text-gray-500"><summary className="cursor-pointer">Limiti del test CARL</summary><p className="mt-1">Destinatario GTOSI. Foto conservate in LPW, non inviate. Linea e macchina non collegate automaticamente da questa sezione.</p></details>
+      {showForm && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onKeyDown={event => { if (event.key === 'Escape') setShowForm(false) }}>
+        <div role="dialog" aria-modal="true" aria-label="Aggiungi miglioramento CARL" className="w-full max-w-2xl rounded-xl bg-white shadow-xl">
+          <div className="flex items-center justify-between rounded-t-xl bg-primary px-5 py-3 text-white"><h2 className="font-semibold">Aggiungi miglioramento CARL</h2><button type="button" aria-label="Chiudi" onClick={() => setShowForm(false)} className="rounded px-2 py-1 hover:bg-white/10">×</button></div>
+          <div className="max-h-[75vh] overflow-y-auto p-5 space-y-3">
       <div className="grid gap-2 md:grid-cols-2">
         <label className="text-sm">Anomalia
           <select className={field} value={draft.anomaly} onChange={event => setDraft({ ...draft, anomaly: event.target.value, cause: '' })}>
@@ -135,31 +146,41 @@ export default function CarlImprovements({ items, anomalies, analyses, major, on
       <label className="block text-sm">Miglioramento proposto
         <textarea className={field} rows={3} maxLength={4000} value={draft.proposta} onChange={event => setDraft({ ...draft, proposta: event.target.value })} />
       </label>
-      <button type="button" disabled={Boolean(busy) || !draft.cause || !draft.proposta.trim()} onClick={add} className="border rounded px-3 py-2 text-sm disabled:opacity-50">Aggiungi miglioramento</button>
+      {!causes.length && draft.anomaly && <p className="text-xs text-amber-800">Conferma una causa nei 5 Perché per aggiungere il miglioramento.</p>}
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={() => setShowForm(false)} className="rounded border border-gray-300 px-3 py-2 text-sm">Annulla</button>
+        <button type="button" disabled={Boolean(busy) || !draft.cause || !draft.proposta.trim()} onClick={add} className="bg-primary text-white rounded px-4 py-2 text-sm disabled:opacity-50">Salva miglioramento</button>
+      </div>
+      <p className="text-xs text-gray-500">Il salvataggio crea una bozza LPW. L’invio a CARL si conferma dal riepilogo.</p>
+          </div>
+        </div>
+      </div>}
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-      <ul className="divide-y">
-        {items.map(item => {
-          const current = states[item.carl?.id] || item.carl
-          return (
-            <li key={item.id} className="py-3 space-y-1">
-              <div className="text-xs text-gray-500">{item.origine === 'sug' ? 'SUG' : 'SUG - Minipillar'} · {item.anomalia}</div>
-              <div className="text-xs">Causa: {item.causa}</div>
-              <div className="text-sm whitespace-pre-wrap">{item.proposta}</div>
-              {current ? (
-                <button type="button" onClick={() => open(item)} className="text-sm text-primary underline">{current.codice} · {current.stato_label}</button>
-              ) : item.invii_bloccati ? (
-                <p className="text-xs text-amber-800">Invio avviato: verificare esito in CARL. Non reinviare.</p>
-              ) : (
-                <div className="flex gap-2">
-                  <button type="button" disabled={Boolean(busy)} onClick={() => send(item)} className="bg-primary text-white rounded px-3 py-1.5 text-sm disabled:opacity-50">{busy === item.id ? 'Invio...' : 'Invia a CARL · GTOSI'}</button>
-                  <button type="button" disabled={Boolean(busy)} onClick={() => onChange(items.filter(row => row.id !== item.id))} className="border rounded px-3 py-1.5 text-sm">Rimuovi bozza</button>
-                </div>
-              )}
-            </li>
-          )
-        })}
-      </ul>
-      {ids && <button type="button" onClick={refresh} className="border rounded px-3 py-1.5 text-sm">Aggiorna stati</button>}
+      {items.length === 0 ? <p className="p-4 text-center text-sm text-gray-400">Nessun miglioramento inserito.</p> : <div className="overflow-x-auto">
+        <table className="w-full min-w-[850px] text-sm">
+          <thead><tr className="text-left text-gray-600 border-b">
+            <th className="p-2 font-medium">Miglioramento</th>
+            <th className="p-2 font-medium">Anomalia / causa</th>
+            <th className="p-2 font-medium">Origine / priorità</th>
+            <th className="p-2 font-medium">Cartellino CARL</th>
+            <th className="p-2 font-medium">Stato</th>
+          </tr></thead>
+          <tbody>{items.map(item => {
+            const current = states[item.carl?.id] || item.carl
+            const badge = { REQUEST: 'bg-amber-100 text-amber-800', AWAITINGREAL: 'bg-blue-100 text-blue-800', FINISHED: 'bg-green-100 text-green-800', CLOSED: 'bg-gray-200 text-gray-700', DENIED: 'bg-red-100 text-red-700' }
+            return <tr key={item.id} className="border-b align-top">
+              <td className="p-2 font-medium text-gray-800 whitespace-pre-wrap break-words">{item.proposta}</td>
+              <td className="p-2 text-xs"><div>{item.anomalia}</div><div className="mt-1 text-gray-500">Causa: {item.causa}</div></td>
+              <td className="p-2 text-xs"><div>{item.origine === 'sug' ? 'SUG' : 'SUG - Minipillar'}</div><div className="mt-1 text-gray-500 capitalize">{item.priorita}</div></td>
+              <td className="p-2">{current ? <button type="button" onClick={() => open(item)} className="font-mono text-xs font-semibold text-primary hover:underline">{current.codice || item.carl?.codice || 'Apri cartellino'}</button> : item.invii_bloccati ? <span className="text-xs text-amber-800">Verifica esito in CARL. Non reinviare.</span> : <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={Boolean(busy)} onClick={() => send(item)} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{busy === item.id ? 'Invio...' : 'Invia a CARL · GTOSI'}</button>
+                <button type="button" disabled={Boolean(busy)} onClick={() => onChange(items.filter(row => row.id !== item.id))} className="rounded border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50">Rimuovi bozza</button>
+              </div>}</td>
+              <td className="p-2">{current ? <span className={`inline-block rounded px-1.5 py-0.5 text-xs ${badge[current.stato] || 'bg-gray-100 text-gray-700'}`}>{current.stato_label || item.carl?.stato_label || 'Stato non disponibile'}</span> : <span className="text-xs text-amber-700">{item.invii_bloccati ? 'Esito da verificare' : 'Da inviare'}</span>}</td>
+            </tr>
+          })}</tbody>
+        </table>
+      </div>}
       {detail && (
         <section aria-label="Storico CARL" className="border rounded p-3 space-y-2">
           <div className="flex justify-between"><strong>{detail.codice} · {detail.stato_label}</strong><button type="button" onClick={() => setDetail(null)}>Chiudi</button></div>
