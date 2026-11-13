@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Plus, ArrowUp, ArrowDown, Copy, X } from 'lucide-react'
+import { Plus, GripVertical, Edit2, ChevronDown, ChevronRight, Copy, X } from 'lucide-react'
 import api from '../../services/api'
 
 const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2)}`
@@ -25,6 +25,10 @@ export default function LineaStructure({ reparto, linea, allReparti = [], onChan
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const lock = useRef(false)
+  const drag = useRef(null)
+  const [opened, setOpened] = useState({})
+  const [dropTarget, setDropTarget] = useState('')
+  const toggle = key => setOpened(current => ({ ...current, [key]: !current[key] }))
   const areas = getAreas(linea)
   const save = async next => {
     if (lock.current) return false
@@ -44,14 +48,62 @@ export default function LineaStructure({ reparto, linea, allReparti = [], onChan
     } finally { lock.current = false; setBusy(false) }
   }
   const changeArea = (id, update) => areas.map(area => area.id === id ? update(area) : area)
-  const move = (nodes, index, delta) => {
+  const reorder = (nodes, sourceId, targetId) => {
+    const from = nodes.findIndex(node => node.id === sourceId)
+    const to = nodes.findIndex(node => node.id === targetId)
+    if (from < 0 || to < 0 || from === to) return nodes
     const next = [...nodes]
-    const target = index + delta
-    if (target < 0 || target >= next.length) return nodes
-    const item = next.splice(index, 1)[0]
-    next.splice(target, 0, item)
+    const [node] = next.splice(from, 1)
+    next.splice(to, 0, node)
     return next
   }
+  const groupNodes = group => {
+    if (group === 'areas') return areas
+    for (const area of areas) {
+      if (group === `machines:${area.id}`) return area.macchine || []
+      for (const machine of area.macchine || []) if (group === `components:${machine.id}`) return machine.componenti || []
+    }
+    return []
+  }
+  const persistOrder = (group, next) => {
+    if (group === 'areas') return save(next)
+    return save(areas.map(area => group === `machines:${area.id}` ? { ...area, macchine: next } : {
+      ...area, macchine: (area.macchine || []).map(machine => group === `components:${machine.id}` ? { ...machine, componenti: next } : machine),
+    }))
+  }
+  const dragHandle = (group, node) => <button type="button" draggable={!busy} disabled={busy} aria-label={`Riordina ${node.nome}`} title="Trascina per riordinare. Da tastiera: Alt + freccia su o giù." className="p-1 shrink-0 text-gray-400 cursor-grab active:cursor-grabbing hover:text-gray-700 rounded focus-visible:outline focus-visible:outline-2" onClick={event => event.stopPropagation()} onDragStart={event => {
+    event.stopPropagation()
+    drag.current = { group, id: node.id }
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', node.id)
+  }} onDragEnd={() => { drag.current = null; setDropTarget('') }} onKeyDown={event => {
+    if (!event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key) || busy) return
+    event.preventDefault()
+    event.stopPropagation()
+    const nodes = groupNodes(group)
+    const index = nodes.findIndex(item => item.id === node.id)
+    const target = index + (event.key === 'ArrowUp' ? -1 : 1)
+    if (target >= 0 && target < nodes.length) persistOrder(group, reorder(nodes, node.id, nodes[target].id))
+  }}><GripVertical size={14} /></button>
+  const dropProps = (group, node) => ({
+    onDragOver: event => {
+      if (!busy && drag.current?.group === group && drag.current.id !== node.id) {
+        event.preventDefault()
+        event.stopPropagation()
+        event.dataTransfer.dropEffect = 'move'
+        setDropTarget(`${group}:${node.id}`)
+      }
+    },
+    onDrop: event => {
+      event.preventDefault()
+      event.stopPropagation()
+      const source = drag.current
+      drag.current = null
+      setDropTarget('')
+      if (!busy && source?.group === group && source.id !== node.id) persistOrder(group, reorder(groupNodes(group), source.id, node.id))
+    },
+  })
+  const editButton = (kind, area, machine, node) => <button type="button" disabled={busy} title={`Modifica ${kind.toLowerCase()}`} aria-label={`Modifica ${node.nome}`} className="ml-auto shrink-0 p-1.5 rounded text-amber-700 hover:bg-amber-50 disabled:opacity-40" onClick={event => { event.stopPropagation(); start(kind, area, machine, node) }}><Edit2 size={14} /></button>
   const start = (kind, area, machine, node) => setEditor({ kind, areaId: area?.id, machineId: machine?.id, node: node || null })
   const commit = form => {
     const value = { ...(editor.node || {}), ...form, id: editor.node?.id || uid(), nome: form.nome.trim() }
@@ -68,35 +120,47 @@ export default function LineaStructure({ reparto, linea, allReparti = [], onChan
       macchine: (item.macchine || []).map(machine => machine.id === machineId ? { ...machine, componenti: [...(machine.componenti || []), component] } : machine),
     })))
   }
-  const orderButtons = (index, nodes, update) => <span className="inline-flex gap-1">
-    <button type="button" className={button} disabled={busy || index === 0} aria-label="Sposta su" onClick={() => update(move(nodes, index, -1))}><ArrowUp size={12} /></button>
-    <button type="button" className={button} disabled={busy || index === nodes.length - 1} aria-label="Sposta giù" onClick={() => update(move(nodes, index, 1))}><ArrowDown size={12} /></button>
-  </span>
   return <div className="space-y-2 p-2">
     <div className="flex flex-wrap justify-between items-center gap-2">
       <span className="text-xs text-gray-500">Linea → Area → Macchina → Componente</span>
       <button type="button" disabled={busy} className={button} onClick={() => setCopyOpen(true)}><Copy size={12} className="inline mr-1" />Copia aree da una linea</button>
     </div>
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-    {areas.map((area, index) => <details key={area.id} className={`border-l-2 border-gray-300 pl-2 ${area.attivo === false ? 'opacity-60' : ''}`}>
-      <summary className="cursor-pointer bg-gray-50 rounded p-2 text-sm"><strong>{area.nome}</strong><span className="text-xs text-gray-500 ml-2">Area · {(area.macchine || []).length} macchine{area.attivo === false ? ' · Disattiva' : ''}</span></summary>
-      <div className="space-y-2 p-2">
-        <div className="flex flex-wrap items-center gap-2">{orderButtons(index, areas, next => save(next))}<button type="button" disabled={busy} className={button} onClick={() => start('Area', null, null, area)}>Modifica area</button>{area.carl_code && <span className="text-xs text-gray-500">CARL {area.carl_code}</span>}</div>
+    {areas.map(area => <div key={area.id} className={`border-l-2 border-gray-300 pl-2 ${area.attivo === false ? 'opacity-60' : ''}`}>
+      <div {...dropProps('areas', area)} className={`flex items-center gap-1 rounded p-2 text-sm ${dropTarget === `areas:${area.id}` ? 'bg-blue-100 ring-1 ring-blue-300' : 'bg-gray-50'}`}>
+        {dragHandle('areas', area)}
+        <button type="button" aria-expanded={Boolean(opened[`area:${area.id}`])} onClick={() => toggle(`area:${area.id}`)} className="flex items-center gap-1 flex-1 min-w-0 text-left">
+          {opened[`area:${area.id}`] ? <ChevronDown size={14} className="shrink-0" /> : <ChevronRight size={14} className="shrink-0" />}
+          <strong className="break-words">{area.nome}</strong><span className="text-xs text-gray-500 ml-1">Area · {(area.macchine || []).length} macchine{area.attivo === false ? ' · Disattiva' : ''}</span>
+        </button>
+        {editButton('Area', null, null, area)}
+      </div>
+      {opened[`area:${area.id}`] && <div className="space-y-2 p-2">
+        {area.carl_code && <p className="text-xs text-gray-500">CARL {area.carl_code}</p>}
         {(area.componenti_da_assegnare || []).length > 0 && <div className="rounded border border-amber-200 bg-amber-50 p-2 space-y-2">
           <p className="text-xs text-amber-900">Componenti precedenti conservati: scegli la macchina a cui assegnarli.</p>
           {area.componenti_da_assegnare.map(component => <label key={component.id} className="flex flex-wrap items-center gap-2 text-xs"><span>{component.nome}</span><select aria-label={`Macchina per ${component.nome}`} disabled={busy} value="" onChange={event => assign(area, component, event.target.value)} className="border rounded bg-white p-1"><option value="">Assegna a macchina...</option>{(area.macchine || []).filter(machine => machine.attivo !== false).map(machine => <option key={machine.id} value={machine.id}>{machine.nome}</option>)}</select></label>)}
         </div>}
-        {(area.macchine || []).map((machine, machineIndex) => <details key={machine.id} className={`border-l-2 border-gray-200 pl-2 ${machine.attivo === false ? 'opacity-60' : ''}`}>
-          <summary className="cursor-pointer p-2 text-sm bg-gray-50 rounded">{machine.nome}<span className="ml-2 text-xs text-gray-500">Macchina · {(machine.componenti || []).length} componenti{machine.attivo === false ? ' · Disattiva' : ''}</span></summary>
-          <div className="p-2 space-y-2">
-            <div className="flex flex-wrap gap-2 items-center">{orderButtons(machineIndex, area.macchine, next => save(changeArea(area.id, value => ({ ...value, macchine: next }))))}<button type="button" disabled={busy} className={button} onClick={() => start('Macchina', area, null, machine)}>Modifica macchina</button>{machine.carl_code && <span className="text-xs text-gray-500">CARL {machine.carl_code}</span>}</div>
-            {(machine.componenti || []).map(component => <div key={component.id} className={`flex items-center justify-between gap-2 border-b py-1 text-xs ${component.attivo === false ? 'opacity-60' : ''}`}><span>{component.nome}{component.attivo === false ? ' · Disattivo' : ''}</span><button type="button" disabled={busy} className={button} onClick={() => start('Componente', area, machine, component)}>Modifica</button></div>)}
-            <button type="button" disabled={busy} className={button} onClick={() => start('Componente', area, machine)}><Plus size={12} className="inline mr-1" />Aggiungi componente</button>
+        {(area.macchine || []).map(machine => <div key={machine.id} className={`border-l-2 border-gray-200 pl-2 ${machine.attivo === false ? 'opacity-60' : ''}`}>
+          <div {...dropProps(`machines:${area.id}`, machine)} className={`flex items-center gap-1 rounded p-2 text-sm ${dropTarget === `machines:${area.id}:${machine.id}` ? 'bg-blue-100 ring-1 ring-blue-300' : 'bg-gray-50'}`}>
+            {dragHandle(`machines:${area.id}`, machine)}
+            <button type="button" aria-expanded={Boolean(opened[`machine:${machine.id}`])} onClick={() => toggle(`machine:${machine.id}`)} className="flex items-center gap-1 flex-1 min-w-0 text-left">
+              {opened[`machine:${machine.id}`] ? <ChevronDown size={14} className="shrink-0" /> : <ChevronRight size={14} className="shrink-0" />}
+              <span className="break-words">{machine.nome}</span><span className="ml-1 text-xs text-gray-500">Macchina · {(machine.componenti || []).length} componenti{machine.attivo === false ? ' · Disattiva' : ''}</span>
+            </button>
+            {editButton('Macchina', area, null, machine)}
           </div>
-        </details>)}
+          {opened[`machine:${machine.id}`] && <div className="p-2 space-y-2">
+            {machine.carl_code && <p className="text-xs text-gray-500">CARL {machine.carl_code}</p>}
+            {(machine.componenti || []).map(component => <div key={component.id} {...dropProps(`components:${machine.id}`, component)} className={`flex items-center gap-1 border-b py-1 text-xs ${component.attivo === false ? 'opacity-60' : ''} ${dropTarget === `components:${machine.id}:${component.id}` ? 'bg-blue-100 ring-1 ring-blue-300' : ''}`}>
+              {dragHandle(`components:${machine.id}`, component)}<span className="flex-1 break-words">{component.nome}{component.attivo === false ? ' · Disattivo' : ''}</span>{editButton('Componente', area, machine, component)}
+            </div>)}
+            <button type="button" disabled={busy} className={button} onClick={() => start('Componente', area, machine)}><Plus size={12} className="inline mr-1" />Aggiungi componente</button>
+          </div>}
+        </div>)}
         <button type="button" disabled={busy} className={button} onClick={() => start('Macchina', area)}><Plus size={12} className="inline mr-1" />Aggiungi macchina</button>
-      </div>
-    </details>)}
+      </div>}
+    </div>)}
     <button type="button" disabled={busy} className="w-full border border-dashed rounded py-2 text-xs text-gray-600" onClick={() => start('Area')}><Plus size={12} className="inline mr-1" />Aggiungi area</button>
     {busy && <p role="status" className="text-xs text-gray-500">Salvataggio...</p>}
     {editor && <StructureNodeForm key={`${editor.kind}-${editor.node?.id || 'new'}`} editor={editor} busy={busy} error={error} onClose={() => { if (!busy) setEditor(null) }} onSave={commit} />}
