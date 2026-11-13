@@ -267,7 +267,6 @@ function RepartiTreePlaceholder() {
   useEffect(() => { load() }, [])
 
   async function load() {
-    setLoading(true)
     try {
       const res = await api.get('/reparti/?include_inactive=true')
       setReparti(res.data)
