@@ -1,3 +1,4 @@
+import LineaStructure, { getAreas, cloneAreas, structureCounts } from '../components/settings/LineaStructure'
 import React, { useState, useEffect } from 'react'
 import { Settings, Plus, Edit2, Trash2, Eye, EyeOff, X, Save, Search, GripVertical, ChevronRight, ChevronDown, Info, Factory, Cpu, Upload, Copy, CopyPlus } from 'lucide-react'
 import api from '../services/api'
@@ -21,10 +22,10 @@ const SECTIONS = [
       },
       {
         id: 'reparti_linee',
-        label: 'Reparti / Linee / Macchine',
+        label: 'Reparti / Linee / Aree',
         color: 'indigo',
         isRepartiTree: true,
-        description: 'Struttura gerarchica della fabbrica: reparto, linea, macchina e componenti',
+        description: 'Struttura gerarchica della fabbrica: reparto, linea, area, macchina e componenti',
         usedIn: ['Action Plan', 'Kaizen', 'Documenti', 'Filtri'],
       },
     ],
@@ -300,7 +301,7 @@ function RepartiTreePlaceholder() {
   }
 
   async function handleDeleteReparto(reparto) {
-    if (!confirm(`Eliminare il reparto "${reparto.nome}" e tutte le sue linee/macchine?`)) return
+    if (!confirm(`Eliminare il reparto "${reparto.nome}" e tutta la struttura collegata?`)) return
     try {
       await api.delete(`/reparti/${reparto._id}`)
       load()
@@ -325,14 +326,14 @@ function RepartiTreePlaceholder() {
         r.codice?.toLowerCase().includes(search.toLowerCase()) ||
         r.linee?.some(l =>
           l.nome?.toLowerCase().includes(search.toLowerCase()) ||
-          l.macchine?.some(m => m.nome?.toLowerCase().includes(search.toLowerCase()))
+          getAreas(l).some(area => [area.nome, ...(area.macchine || []).flatMap(machine => [machine.nome, ...(machine.componenti || []).map(component => component.nome)])].some(value => String(value || '').toLowerCase().includes(search.toLowerCase())))
         )
       )
     : reparti
 
   const totLinee = reparti.reduce((sum, r) => sum + (r.linee?.length || 0), 0)
   const totMacchine = reparti.reduce(
-    (sum, r) => sum + (r.linee?.reduce((s, l) => s + (l.macchine?.length || 0), 0) || 0),
+    (sum, r) => sum + (r.linee?.reduce((s, l) => s + structureCounts(l).machines, 0) || 0),
     0
   )
 
@@ -344,7 +345,7 @@ function RepartiTreePlaceholder() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cerca reparto, linea o macchina..."
+            placeholder="Cerca reparto, linea, area o macchina..."
             className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm"
           />
         </div>
@@ -422,7 +423,7 @@ function RepartoCard({ reparto, allReparti = [], expanded, onToggle, expandedLin
   const [dragEnabledLineaId, setDragEnabledLineaId] = useState(null)
   const [dragOverLineaId, setDragOverLineaId] = useState(null)
   const linee = reparto.linee || []
-  const totMacchine = linee.reduce((s, l) => s + (l.macchine?.length || 0), 0)
+  const totMacchine = linee.reduce((s, l) => s + structureCounts(l).machines, 0)
 
   async function saveLineeOrder(newLinee) {
     try {
@@ -474,7 +475,7 @@ function RepartoCard({ reparto, allReparti = [], expanded, onToggle, expandedLin
   }
 
   async function handleDeleteLinea(linea) {
-    if (!confirm(`Eliminare la linea "${linea.nome}" e tutte le sue macchine?`)) return
+    if (!confirm(`Eliminare la linea "${linea.nome}" e tutte le sue aree, macchine e componenti?`)) return
     try {
       await api.delete(`/reparti/${reparto._id}/linee/${linea.id}`)
       onChange()
@@ -584,293 +585,19 @@ function RepartoCard({ reparto, allReparti = [], expanded, onToggle, expandedLin
 }
 
 function LineaCard({ reparto, allReparti = [], linea, expanded, onToggle, onEdit, onDelete, onDuplicate, onChange, onGrabStart, onGrabEnd }) {
-  const [showMacchinaForm, setShowMacchinaForm] = useState(false)
-  const [editingMacchina, setEditingMacchina] = useState(null)
-  const [draggedMacchinaId, setDraggedMacchinaId] = useState(null)
-  const [dragEnabledMacchinaId, setDragEnabledMacchinaId] = useState(null)
-  const [dragOverMacchinaId, setDragOverMacchinaId] = useState(null)
-  const [showCopyModal, setShowCopyModal] = useState(false)
-  const macchine = linea.macchine || []
-
-  async function handleDeleteMacchina(macchina) {
-    if (!confirm(`Eliminare la macchina "${macchina.nome}"?`)) return
-    try {
-      await api.delete(`/reparti/${reparto._id}/linee/${linea.id}/macchine/${macchina.id}`)
-      onChange()
-    } catch (err) {
-      alert('Errore: ' + (err.response?.data?.detail || err.message))
-    }
-  }
-
-  async function saveMacchine(newMacchine) {
-    try {
-      await api.put(`/reparti/${reparto._id}/linee/${linea.id}`, {
-        id: linea.id,
-        nome: linea.nome,
-        codice: linea.codice || null,
-        carl_code: linea.carl_code || null,
-        descrizione: linea.descrizione || '',
-        attivo: linea.attivo !== false,
-        macchine: newMacchine,
-      })
-      onChange()
-    } catch (err) {
-      alert('Errore riordino macchine: ' + (err.response?.data?.detail || err.message))
-    }
-  }
-
-  function resetMacchinaDrag() {
-    setDraggedMacchinaId(null)
-    setDragEnabledMacchinaId(null)
-    setDragOverMacchinaId(null)
-  }
-
-  function handleMacchinaDrop(targetId) {
-    if (!draggedMacchinaId || draggedMacchinaId === targetId) { resetMacchinaDrag(); return }
-    const from = macchine.findIndex(m => m.id === draggedMacchinaId)
-    const to = macchine.findIndex(m => m.id === targetId)
-    if (from === -1 || to === -1) { resetMacchinaDrag(); return }
-    const reordered = [...macchine]
-    const [moved] = reordered.splice(from, 1)
-    reordered.splice(to, 0, moved)
-    resetMacchinaDrag()
-    saveMacchine(reordered)
-  }
-
-  async function copyFromLinea(sourceLinea, mode) {
-    const cloned = (sourceLinea.macchine || []).map(m => ({ ...m, id: genLocalId(), carl_code: '', componenti: (m.componenti || []).map(c => ({ ...c, id: genLocalId() })) }))
-    const newMacchine = mode === 'replace' ? cloned : [...macchine, ...cloned]
-    setShowCopyModal(false)
-    await saveMacchine(newMacchine)
-  }
-
-  return (
-    <div className={`border-l-2 border-blue-300 ml-2 rounded transition-all ${!linea.attivo ? 'opacity-50' : ''}`}>
-      <div className="bg-blue-50 px-3 py-1.5 flex items-center gap-2 rounded-r">
-        <GripVertical
-          size={14}
-          className="text-blue-400 flex-shrink-0 cursor-grab active:cursor-grabbing"
-          title="Trascina per riordinare la linea"
-          onMouseDown={() => onGrabStart && onGrabStart()}
-          onMouseUp={() => onGrabEnd && onGrabEnd()}
-        />
-        <button onClick={onToggle} className="p-0.5 hover:bg-blue-100 rounded">
-          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-blue-900 text-sm">{linea.nome}</span>
-            {linea.codice && (
-              <span className="font-mono text-[10px] px-1 py-0.5 bg-blue-200 text-blue-700 rounded">
-                {linea.codice}
-              </span>
-            )}
-            {linea.carl_code && (
-              <span className="font-mono text-[10px] px-1 py-0.5 bg-white border border-blue-200 text-blue-700 rounded" title="Codice CARL">
-                CARL {linea.carl_code}
-              </span>
-            )}
-            <span className="text-[10px] text-gray-500">{macchine.length} macchine</span>
-          </div>
-          {linea.descrizione && (
-            <div className="text-[10px] text-gray-600 truncate">{linea.descrizione}</div>
-          )}
-        </div>
-        <div className="flex items-center gap-0.5 flex-shrink-0">
-          <button onClick={() => setShowCopyModal(true)} className="p-0.5 hover:bg-indigo-100 rounded text-indigo-600" title="Copia struttura da un'altra linea">
-            <Copy size={12} />
-          </button>
-          {onDuplicate && (
-            <button onClick={onDuplicate} className="p-0.5 hover:bg-blue-100 rounded text-blue-600" title="Duplica questa linea">
-              <CopyPlus size={12} />
-            </button>
-          )}
-          <button onClick={onEdit} className="p-0.5 hover:bg-yellow-100 rounded text-yellow-600" title="Modifica">
-            <Edit2 size={12} />
-          </button>
-          <button onClick={onDelete} className="p-0.5 hover:bg-red-100 rounded text-red-600" title="Elimina">
-            <Trash2 size={12} />
-          </button>
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="p-2 bg-white space-y-1 ml-2">
-          {macchine.length === 0 ? (
-            <div className="text-center py-2 text-[10px] text-gray-400 italic">
-              Nessuna macchina
-            </div>
-          ) : (
-            macchine.map(m => (
-              <div
-                key={m.id}
-                draggable={dragEnabledMacchinaId === m.id}
-                onDragStart={(e) => { e.stopPropagation(); setDraggedMacchinaId(m.id) }}
-                onDragEnter={() => { if (draggedMacchinaId && draggedMacchinaId !== m.id) setDragOverMacchinaId(m.id) }}
-                onDragOver={(e) => { if (draggedMacchinaId) e.preventDefault() }}
-                onDrop={(e) => { e.stopPropagation(); handleMacchinaDrop(m.id) }}
-                onDragEnd={resetMacchinaDrag}
-                className={`flex items-center gap-2 px-2 py-1 bg-gray-50 rounded text-xs ${!m.attivo ? 'opacity-50' : ''} ${draggedMacchinaId === m.id ? 'opacity-40' : ''} ${dragOverMacchinaId === m.id ? 'border-t-2 border-indigo-500' : ''}`}
-              >
-                <GripVertical
-                  size={14}
-                  className="text-gray-400 flex-shrink-0 cursor-grab active:cursor-grabbing"
-                  onMouseDown={() => setDragEnabledMacchinaId(m.id)}
-                  onMouseUp={() => setDragEnabledMacchinaId(null)}
-                />
-                <Cpu size={12} className="text-gray-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <span className="font-medium">{m.nome}</span>
-                  {m.codice && (
-                    <span className="font-mono text-[10px] ml-2 px-1 py-0.5 bg-gray-200 text-gray-700 rounded">
-                      {m.codice}
-                    </span>
-                  )}
-                  {m.carl_code && (
-                    <span className="font-mono text-[10px] ml-2 px-1 py-0.5 bg-white border text-gray-700 rounded" title="Codice CARL">
-                      CARL {m.carl_code}
-                    </span>
-                  )}
-                  {m.descrizione && (
-                    <span className="text-[10px] text-gray-500 ml-2">{m.descrizione}</span>
-                  )}
-                  {(m.componenti || []).length > 0 && (
-                    <span className="text-[10px] text-gray-500 ml-2">
-                      {m.componenti.filter(c => c.attivo !== false).map(c => c.nome).join(' · ')}
-                    </span>
-                  )}
-                </div>
-                <button
-                  onClick={() => { setEditingMacchina(m); setShowMacchinaForm(true) }}
-                  className="p-0.5 hover:bg-yellow-100 rounded text-yellow-600"
-                  title="Modifica"
-                >
-                  <Edit2 size={11} />
-                </button>
-                <button
-                  onClick={() => handleDeleteMacchina(m)}
-                  className="p-0.5 hover:bg-red-100 rounded text-red-600"
-                  title="Elimina"
-                >
-                  <Trash2 size={11} />
-                </button>
-              </div>
-            ))
-          )}
-          <button
-            onClick={() => { setEditingMacchina(null); setShowMacchinaForm(true) }}
-            className="w-full text-[10px] text-gray-500 hover:bg-gray-100 py-1 rounded border border-dashed border-gray-300 flex items-center justify-center gap-1"
-          >
-            <Plus size={11} /> Aggiungi Macchina
-          </button>
-        </div>
-      )}
-
-      {showMacchinaForm && (
-        <MacchinaFormModal
-          reparto={reparto}
-          linea={linea}
-          macchina={editingMacchina}
-          onClose={() => { setShowMacchinaForm(false); setEditingMacchina(null) }}
-          onSaved={() => { setShowMacchinaForm(false); setEditingMacchina(null); onChange() }}
-        />
-      )}
-
-      {showCopyModal && (
-        <CopyStructureModal
-          allReparti={allReparti}
-          currentLineaId={linea.id}
-          targetLineaNome={linea.nome}
-          onClose={() => setShowCopyModal(false)}
-          onCopy={copyFromLinea}
-        />
-      )}
+  const counts = structureCounts(linea)
+  return <div className={`border-l-2 border-blue-300 ml-2 rounded ${linea.attivo === false ? 'opacity-60' : ''}`}>
+    <div className="bg-blue-50 px-3 py-2 flex items-center gap-2 rounded-r">
+      <GripVertical size={14} className="text-blue-400 cursor-grab shrink-0" onMouseDown={onGrabStart} onMouseUp={onGrabEnd} />
+      <button type="button" onClick={onToggle} aria-label="Espandi linea" className="p-1">{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button>
+      <div className="flex-1 min-w-0"><span className="font-medium text-blue-900 text-sm">{linea.nome}</span>{linea.codice && <span className="ml-2 font-mono text-xs">{linea.codice}</span>}<span className="ml-2 text-xs text-gray-500">{counts.areas} aree · {counts.machines} macchine</span>{linea.carl_code && <span className="ml-2 text-xs">CARL {linea.carl_code}</span>}</div>
+      <button type="button" onClick={onDuplicate} title="Duplica linea" className="p-1"><CopyPlus size={13} /></button>
+      <button type="button" onClick={onEdit} title="Modifica linea" className="p-1"><Edit2 size={13} /></button>
+      <button type="button" onClick={onDelete} title="Elimina linea" className="p-1 text-red-600"><Trash2 size={13} /></button>
     </div>
-  )
+    {expanded && <LineaStructure reparto={reparto} linea={linea} allReparti={allReparti} onChange={onChange} />}
+  </div>
 }
-
-function CopyStructureModal({ allReparti, currentLineaId, targetLineaNome, onClose, onCopy }) {
-  const [search, setSearch] = useState('')
-  const [mode, setMode] = useState('add')
-
-  const sorgenti = []
-  allReparti.forEach(rep => {
-    (rep.linee || []).forEach(l => {
-      if (l.id === currentLineaId) return
-      sorgenti.push({ reparto: rep, linea: l })
-    })
-  })
-
-  const filtered = search.trim()
-    ? sorgenti.filter(({ reparto, linea }) =>
-        linea.nome?.toLowerCase().includes(search.toLowerCase()) ||
-        reparto.nome?.toLowerCase().includes(search.toLowerCase())
-      )
-    : sorgenti
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="bg-indigo-600 text-white px-5 py-3 flex justify-between items-center">
-          <h2 className="font-semibold">Copia struttura in "{targetLineaNome}"</h2>
-          <button onClick={onClose}><X size={20} /></button>
-        </div>
-        <div className="p-4 border-b space-y-3">
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cerca linea sorgente..."
-              className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm"
-              autoFocus
-            />
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setMode('add')}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm border-2 ${mode === 'add' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600'}`}
-            >
-              Aggiungi alle esistenti
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('replace')}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm border-2 ${mode === 'replace' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 text-gray-600'}`}
-            >
-              Sostituisci tutte
-            </button>
-          </div>
-        </div>
-        <div className="overflow-y-auto flex-1 p-3 space-y-1.5">
-          {filtered.length === 0 ? (
-            <div className="text-center py-8 text-sm text-gray-400">Nessuna linea sorgente disponibile</div>
-          ) : (
-            filtered.map(({ reparto, linea }) => (
-              <button
-                key={`${reparto._id}_${linea.id}`}
-                type="button"
-                onClick={() => {
-                  if (mode === 'replace' && !confirm(`Sostituire tutte le macchine di "${targetLineaNome}" con quelle di "${linea.nome}"?`)) return
-                  onCopy(linea, mode)
-                }}
-                className="w-full text-left border rounded-lg px-3 py-2 hover:border-indigo-400 hover:bg-indigo-50 flex items-center justify-between gap-2"
-              >
-                <div className="min-w-0">
-                  <div className="text-sm font-medium truncate">{linea.nome}</div>
-                  <div className="text-xs text-gray-500 truncate">{reparto.nome} · {(linea.macchine || []).length} macchine</div>
-                </div>
-                <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />
-              </button>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function RepartoFormModal({ reparto, onClose, onSaved }) {
   const [form, setForm] = useState({
     nome: reparto?.nome || '',
@@ -952,7 +679,7 @@ function LineaFormModal({ reparto, linea, onClose, onSaved }) {
     try {
       if (linea?.id) {
         await api.put(`/reparti/${reparto._id}/linee/${linea.id}`, {
-          ...form, id: linea.id, macchine: linea.macchine || [],
+          ...form, id: linea.id, macchine: linea.macchine || [], aree: linea.aree ?? null,
         })
       } else {
         await api.post(`/reparti/${reparto._id}/linee`, { ...form, macchine: [] })
@@ -1007,125 +734,6 @@ function LineaFormModal({ reparto, linea, onClose, onSaved }) {
   )
 }
 
-function MacchinaFormModal({ reparto, linea, macchina, onClose, onSaved }) {
-  const [form, setForm] = useState({
-    nome: macchina?.nome || '',
-    codice: macchina?.codice || '',
-    carl_code: macchina?.carl_code || '',
-    descrizione: macchina?.descrizione || '',
-    attivo: macchina?.attivo !== false,
-    componenti: macchina?.componenti || [],
-  })
-  const [nuovaComponente, setNuovaComponente] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  function addComponente() {
-    const nome = nuovaComponente.trim()
-    if (!nome) return
-    if (form.componenti.some(c => c.nome.toLowerCase() === nome.toLowerCase())) {
-      setNuovaComponente('')
-      return
-    }
-    setForm({ ...form, componenti: [...form.componenti, { id: genLocalId(), nome, attivo: true }] })
-    setNuovaComponente('')
-  }
-
-  function removeComponente(id) {
-    setForm({ ...form, componenti: form.componenti.filter(c => c.id !== id) })
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    if (!form.nome.trim()) return alert('Nome obbligatorio')
-    setSaving(true)
-    try {
-      if (macchina?.id) {
-        await api.put(`/reparti/${reparto._id}/linee/${linea.id}/macchine/${macchina.id}`, {
-          ...form, id: macchina.id,
-        })
-      } else {
-        await api.post(`/reparti/${reparto._id}/linee/${linea.id}/macchine`, form)
-      }
-      onSaved()
-    } catch (err) {
-      alert('Errore: ' + (err.response?.data?.detail || err.message))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-        <div className="bg-gray-600 text-white px-5 py-3 flex justify-between items-center">
-          <h2 className="font-semibold">{macchina ? 'Modifica Macchina' : 'Nuova Macchina'} in {linea.nome}</h2>
-          <button onClick={onClose}><X size={20} /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">Nome <span className="text-red-500">*</span></label>
-            <input required autoFocus value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} className="w-full border rounded-lg px-3 py-2" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Codice</label>
-            <input value={form.codice} onChange={(e) => setForm({ ...form, codice: e.target.value.toUpperCase() })} className="w-full border rounded-lg px-3 py-2 font-mono" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Codice CARL</label>
-            <input value={form.carl_code} onChange={(e) => setForm({ ...form, carl_code: e.target.value.toUpperCase().trim() })} placeholder="Es. G039A" className="w-full border rounded-lg px-3 py-2 font-mono" />
-            <p className="text-xs text-gray-500 mt-1">Codice dell'attrezzatura in CARL (Tag di Attrezzatura).</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Descrizione</label>
-            <textarea value={form.descrizione} onChange={(e) => setForm({ ...form, descrizione: e.target.value })} rows={2} className="w-full border rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Componenti</label>
-            {form.componenti.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {form.componenti.map(c => (
-                  <span key={c.id} className="inline-flex items-center gap-1 bg-gray-100 border rounded px-2 py-1 text-xs">
-                    {c.nome}
-                    <button type="button" onClick={() => removeComponente(c.id)} className="text-gray-500 hover:text-red-600" aria-label={`Rimuovi ${c.nome}`}>
-                      <X size={12} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <input
-                value={nuovaComponente}
-                onChange={(e) => setNuovaComponente(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addComponente() } }}
-                placeholder="Es. Ugelli, Stampo, Pinza"
-                className="flex-1 border rounded-lg px-3 py-2 text-sm"
-              />
-              <button type="button" onClick={addComponente} className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 flex items-center gap-1">
-                <Plus size={14} /> Aggiungi
-              </button>
-            </div>
-          </div>
-          <label className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg cursor-pointer">
-            <input type="checkbox" checked={form.attivo} onChange={(e) => setForm({ ...form, attivo: e.target.checked })} className="w-4 h-4" />
-            <span className="text-sm">Attiva</span>
-          </label>
-          <div className="flex justify-end gap-2 pt-3 border-t">
-            <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg">Annulla</button>
-            <button type="submit" disabled={saving} className="px-6 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 flex items-center gap-2">
-              <Save size={16} />
-              {saving ? 'Salvataggio...' : (macchina ? 'Salva' : 'Crea')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-// ──────────────────────────────────────────────────────────
-// CONFIG MANAGER
-// ──────────────────────────────────────────────────────────
 function ConfigManager({ tipo, label, color, onChange }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
