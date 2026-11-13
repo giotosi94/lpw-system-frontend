@@ -11,8 +11,8 @@ export const getAreas = line => Array.isArray(line.aree) ? line.aree : (line.mac
   componenti_da_assegnare: machine.componenti || [], macchine: [],
 }))
 export const cloneAreas = line => getAreas(line).map(area => ({ ...area, id: uid(), legacy_macchina_id: null, carl_code: '',
-  componenti_da_assegnare: (area.componenti_da_assegnare || []).map(component => ({ ...component, id: uid() })),
-  macchine: (area.macchine || []).map(machine => ({ ...machine, id: uid(), carl_code: '', componenti: (machine.componenti || []).map(component => ({ ...component, id: uid() })) })),
+  componenti_da_assegnare: (area.componenti_da_assegnare || []).map(component => ({ ...component, id: uid(), carl_code: '' })),
+  macchine: (area.macchine || []).map(machine => ({ ...machine, id: uid(), carl_code: '', componenti: (machine.componenti || []).map(component => ({ ...component, id: uid(), carl_code: '' })) })),
 }))
 export const structureCounts = line => {
   const areas = getAreas(line)
@@ -106,7 +106,7 @@ export default function LineaStructure({ reparto, linea, allReparti = [], onChan
   const editButton = (kind, area, machine, node) => <button type="button" disabled={busy} title={`Modifica ${kind.toLowerCase()}`} aria-label={`Modifica ${node.nome}`} className="ml-auto shrink-0 p-1.5 rounded text-amber-700 hover:bg-amber-50 disabled:opacity-40" onClick={event => { event.stopPropagation(); start(kind, area, machine, node) }}><Edit2 size={14} /></button>
   const start = (kind, area, machine, node) => setEditor({ kind, areaId: area?.id, machineId: machine?.id, node: node || null })
   const commit = form => {
-    const value = { ...(editor.node || {}), ...form, id: editor.node?.id || uid(), nome: form.nome.trim() }
+    const value = { ...(editor.node || {}), ...form, carl_code: form.carl_code.trim(), id: editor.node?.id || uid(), nome: form.nome.trim() }
     const replace = nodes => editor.node ? nodes.map(node => node.id === value.id ? value : node) : [...nodes, value]
     if (editor.kind === 'Area') return save(replace(areas))
     return save(changeArea(editor.areaId, area => editor.kind === 'Macchina'
@@ -153,7 +153,7 @@ export default function LineaStructure({ reparto, linea, allReparti = [], onChan
           {opened[`machine:${machine.id}`] && <div className="p-2 space-y-2">
             {machine.carl_code && <p className="text-xs text-gray-500">CARL {machine.carl_code}</p>}
             {(machine.componenti || []).map(component => <div key={component.id} {...dropProps(`components:${machine.id}`, component)} className={`flex items-center gap-1 border-b py-1 text-xs ${component.attivo === false ? 'opacity-60' : ''} ${dropTarget === `components:${machine.id}:${component.id}` ? 'bg-blue-100 ring-1 ring-blue-300' : ''}`}>
-              {dragHandle(`components:${machine.id}`, component)}<span className="flex-1 break-words">{component.nome}{component.attivo === false ? ' · Disattivo' : ''}</span>{editButton('Componente', area, machine, component)}
+              {dragHandle(`components:${machine.id}`, component)}<span className="flex-1 break-words">{component.nome}{component.carl_code && <span className="ml-2 text-gray-500">CARL {component.carl_code}</span>}{component.attivo === false ? ' · Disattivo' : ''}</span>{editButton('Componente', area, machine, component)}
             </div>)}
             <button type="button" disabled={busy} className={button} onClick={() => start('Componente', area, machine)}><Plus size={12} className="inline mr-1" />Aggiungi componente</button>
           </div>}
@@ -175,6 +175,7 @@ function StructureNodeForm({ editor, busy, error, onClose, onSave }) {
     <form onSubmit={event => { event.preventDefault(); if (form.nome.trim()) onSave(form) }}><fieldset disabled={busy} className="space-y-3">
       <label className="block text-sm">Nome<input required autoFocus maxLength={180} className={field} value={form.nome} onChange={event => setForm(current => ({ ...current, nome: event.target.value }))} /></label>
       {editor.kind !== 'Componente' && <><label className="block text-sm">Codice<input className={field} value={form.codice} onChange={event => setForm(current => ({ ...current, codice: event.target.value }))} /></label><label className="block text-sm">Codice CARL<input className={field} value={form.carl_code} onChange={event => setForm(current => ({ ...current, carl_code: event.target.value.trim() }))} /></label><label className="block text-sm">Descrizione<textarea className={field} rows={2} value={form.descrizione} onChange={event => setForm(current => ({ ...current, descrizione: event.target.value }))} /></label></>}
+      {editor.kind === 'Componente' && <label className="block text-sm">Codice CARL<input className={field} value={form.carl_code} onChange={event => setForm(current => ({ ...current, carl_code: event.target.value }))} placeholder="Codice della posizione in CARL" /><span className="block mt-1 text-xs text-gray-500">Codice CARL specifico del componente. Campo facoltativo.</span></label>}
       <label className="flex gap-2 text-sm"><input type="checkbox" checked={form.attivo} onChange={event => setForm(current => ({ ...current, attivo: event.target.checked }))} />Attivo</label>
       <p className="text-xs text-gray-500">Per non perdere i riferimenti, disattiva gli elementi non più utilizzati invece di eliminarli.</p>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
