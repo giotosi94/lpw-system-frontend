@@ -3,6 +3,10 @@ import { Link } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import ActionPlanDetailPanel from '../components/ActionPlanDetailPanel'
+import ActionPlanFormShared from '../components/ActionPlanFormShared'
+import ActionPlanViews, { getActionPlanOrigin, isAPLocked, isActionPlanOverdue } from '../components/ActionPlanViews'
+import { useAllConfigurations } from '../hooks/useConfigurations'
+import { Star } from 'lucide-react'
 
 export default function HomePage() {
   const { user, isOperator } = useAuth()
@@ -20,6 +24,13 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const [selectedAP, setSelectedAP] = useState(null)
   const [origineFilter, setOrigineFilter] = useState('tutte')
+  const [search, setSearch] = useState('')
+  const [stateFilter, setStateFilter] = useState('active')
+  const [deadlineFilter, setDeadlineFilter] = useState('all')
+  const [parentFilter, setParentFilter] = useState('')
+  const [editingAP, setEditingAP] = useState(null)
+  const { configs } = useAllConfigurations()
+  const statiConfig = configs.stato_ap || []
 
   useEffect(() => { loadData(); return () => { requestId.current += 1 } }, [user])
   async function loadData() {
@@ -106,15 +117,17 @@ export default function HomePage() {
 
   const baseActionPlans = isOperator ? myAreaActionPlans : myActionPlans
 
-  const targetActionPlans = origineFilter === 'tutte'
-    ? baseActionPlans
-    : baseActionPlans.filter(ap => getOrigine(ap) === origineFilter)
-
-  const apOverdue = targetActionPlans.filter(ap => classifyByDeadline(ap) === 'overdue')
-  const apToday = targetActionPlans.filter(ap => classifyByDeadline(ap) === 'today')
-  const apWeek = targetActionPlans.filter(ap => classifyByDeadline(ap) === 'week')
-  const apFuture = targetActionPlans.filter(ap => classifyByDeadline(ap) === 'future' || classifyByDeadline(ap) === 'no-date')
-
+  const originPlans = origineFilter === 'tutte' ? baseActionPlans : baseActionPlans.filter(ap => getActionPlanOrigin(ap) === origineFilter)
+  const parentOptions = [...new Map(originPlans.filter(ap => ap.parent_id).map(ap => [`${getActionPlanOrigin(ap)}:${ap.parent_id}`, ap.parent_label || ap.parent_id])).entries()]
+  const targetActionPlans = originPlans.filter(ap => {
+    const terminal = isAPLocked(ap, statiConfig)
+    if (stateFilter === 'active' && terminal) return false
+    if (!['active', 'all'].includes(stateFilter) && ap.stato !== stateFilter) return false
+    if (parentFilter && `${getActionPlanOrigin(ap)}:${ap.parent_id}` !== parentFilter) return false
+    if (search.trim() && ![ap.numero, ap.titolo, ap.parent_label].filter(Boolean).join(' ').toLowerCase().includes(search.trim().toLowerCase())) return false
+    if (deadlineFilter === 'overdue') return isActionPlanOverdue(ap, statiConfig)
+    return deadlineFilter === 'all' || (!terminal && classifyByDeadline(ap) === deadlineFilter)
+  }).sort((a, b) => Number(isActionPlanOverdue(b, statiConfig)) - Number(isActionPlanOverdue(a, statiConfig)) || (Date.parse(a.data_scadenza) || Number.MAX_SAFE_INTEGER) - (Date.parse(b.data_scadenza) || Number.MAX_SAFE_INTEGER))
   const roleLabels = {
     admin: 'Amministratore',
     manager: 'Manager',
@@ -147,10 +160,10 @@ export default function HomePage() {
 .lpw-home .home-report-buttons{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .lpw-home .home-report-buttons a{background:#f8f7f4;border:1px solid #e5e2db;border-radius:7px;min-height:64px;display:flex;align-items:center;justify-content:center;padding:12px;font-size:13px;color:#43382a;font-weight:550}
 .lpw-home .home-report-buttons a:hover{background:#f0ede7;border-color:#b8a78d}
-.lpw-home .home-panel-actions{grid-column:1;grid-row:2 / span 2}
-.lpw-home .home-panel-kaizen{grid-column:2;grid-row:2}
-.lpw-home .home-panel-pillars{grid-column:3;grid-row:2}
-.lpw-home .home-panel-meetings{grid-column:2 / -1;grid-row:3}
+.lpw-home .home-panel-actions{grid-column:1 / -1;grid-row:2}
+.lpw-home .home-panel-kaizen{grid-column:1;grid-row:3}
+.lpw-home .home-panel-pillars{grid-column:2;grid-row:3}
+.lpw-home .home-panel-meetings{grid-column:3;grid-row:3}
 .lpw-home .home-action-list{display:flex;flex-direction:column;gap:18px;margin-top:18px}
 .lpw-home .home-ap-heading{font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.65px;color:#74716c;border-bottom:1px solid var(--home-line);padding-bottom:8px;margin:0 0 3px}
 .lpw-home .home-ap-red .home-ap-heading{color:#ad3833}
@@ -162,6 +175,7 @@ export default function HomePage() {
 .lpw-home .home-panel .text-gray-500,.lpw-home .home-panel .text-gray-600{color:#71736f}
 .lpw-home .home-panel a,.lpw-home .home-panel button{overflow-wrap:anywhere}
 .lpw-home button:focus-visible,.lpw-home a:focus-visible{outline:2px solid #947748;outline-offset:3px}
+.lpw-home .home-action-filters{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:14px}.lpw-home .home-action-filters label{display:flex;flex-direction:column;gap:5px;min-width:0;font-size:12px;color:var(--home-muted)}.lpw-home .home-action-filters input,.lpw-home .home-action-filters select{width:100%;min-width:0;min-height:38px;border:1px solid var(--home-line);border-radius:7px;background:#fff;padding:8px;color:var(--home-ink);font-size:13px}.lpw-home .ap-home-readonly{box-shadow:none;border:1px solid var(--home-line)}.lpw-home .ap-home-readonly table{table-layout:fixed}.lpw-home .ap-home-readonly th,.lpw-home .ap-home-readonly td{overflow-wrap:anywhere}.lpw-home .ap-home-readonly th:nth-child(2){width:26%}.lpw-home .ap-home-readonly th:last-child{width:17%}@media(max-width:1199px){.lpw-home .home-action-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:1100px){.lpw-home .ap-home-readonly table,.lpw-home .ap-home-readonly tbody{display:block;width:100%}.lpw-home .ap-home-readonly thead{display:none}.lpw-home .ap-home-readonly tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:12px;gap:8px}.lpw-home .ap-home-readonly td{display:block;width:auto;padding:0;min-width:0}.lpw-home .ap-home-readonly td:before{content:attr(data-label);display:block;font-size:10px;color:#71736f;margin-bottom:3px}.lpw-home .ap-home-readonly td:nth-child(2),.lpw-home .ap-home-readonly td:last-child{grid-column:1 / -1}.lpw-home .ap-home-readonly td:nth-child(2){grid-row:2}}@media(max-width:639px){.lpw-home .home-action-filters{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:1199px){.lpw-home .home-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.lpw-home .home-panel{grid-column:auto;grid-row:auto}.lpw-home .home-panel-actions{grid-column:1 / -1}.lpw-home .home-panel-opl,.lpw-home .home-panel-new,.lpw-home .home-panel-reports{min-height:0}}
 @media(max-width:639px){.lpw-home .home-grid{grid-template-columns:minmax(0,1fr);gap:12px}.lpw-home .home-panel{grid-column:auto;padding:16px}.lpw-home .home-heading{padding-bottom:16px;margin-bottom:16px}.lpw-home .home-heading h1{font-size:23px}.lpw-home .home-panel-heading{margin-bottom:14px}.lpw-home .home-tabs{gap:14px}.lpw-home .home-panel-actions .flex.flex-wrap.gap-2 button{min-height:32px}}
 `}</style>
@@ -189,14 +203,16 @@ export default function HomePage() {
       <HomeSection section="reports" title="Storico segnalazioni" to="/segnalazioni" linkLabel="Vedi tutte">
         {errors.reports ? <LoadError onRetry={loadData} /> : !reportList.length ? <Empty>Nessuna segnalazione personale.</Empty> : <div className="divide-y">{reportList.map(item => <Link key={item._id} to={`/segnalazioni?open=${encodeURIComponent(item._id)}`} className="block py-2 hover:bg-gray-50 rounded"><div className="flex flex-wrap justify-between gap-2 text-xs"><span className="font-mono">{item.codice || 'Bozza'}</span><span className="text-gray-500">{item.tipo} · {item.stato}</span></div><p className="text-sm break-words mt-1 line-clamp-2">{item.descrizione || 'Senza descrizione'}</p></Link>)}</div>}
       </HomeSection>
-      <HomeSection section="actions" title={isOperator ? 'Action Plan della mia area' : 'Le mie Action Plan'} to="/action-plan" linkLabel="Vedi tutte">
-        <OrigineFilterBar plans={baseActionPlans} value={origineFilter} onChange={setOrigineFilter} />
-        {errors.ap ? <LoadError onRetry={loadData} /> : !targetActionPlans.length ? <Empty>Nessuna Action Plan.</Empty> : <div className="home-action-list">
-          {apOverdue.length > 0 && <APGroup title="Scaduti" color="red" aps={apOverdue.slice(0, 5)} onClick={setSelectedAP} />}
-          {apToday.length > 0 && <APGroup title="Oggi" color="orange" aps={apToday.slice(0, 5)} onClick={setSelectedAP} />}
-          {apWeek.length > 0 && <APGroup title="Questa settimana" color="yellow" aps={apWeek.slice(0, 5)} onClick={setSelectedAP} />}
-          {apFuture.length > 0 && <APGroup title="Prossime" color="green" aps={apFuture.slice(0, 5)} onClick={setSelectedAP} />}
-        </div>}
+      <HomeSection section="actions" title={isOperator ? 'Piani d’azione della mia area' : 'I miei piani d’azione'} to="/action-plan" linkLabel="Vedi tutti">
+        <div className="home-action-filters">
+          <label>Cerca<input type="search" placeholder="Numero o titolo" value={search} onChange={event => setSearch(event.target.value)} /></label>
+          <label>Stato<select value={stateFilter} onChange={event => setStateFilter(event.target.value)}><option value="active">Aperti</option><option value="all">Tutti</option>{[...new Set([...statiConfig.map(item => item.label), ...baseActionPlans.map(ap => ap.stato)].filter(Boolean))].map(state => <option key={state} value={state}>{state}</option>)}</select></label>
+          <label>Scadenza<select value={deadlineFilter} onChange={event => setDeadlineFilter(event.target.value)}><option value="all">Tutte</option><option value="overdue">Scaduti</option><option value="today">Oggi</option><option value="week">Prossimi 7 giorni</option><option value="future">Successive</option><option value="no-date">Senza scadenza</option></select></label>
+          <label>Collegato a<select value={origineFilter} onChange={event => { setOrigineFilter(event.target.value); setParentFilter('') }}>{ORIGINE_CHIPS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+          <label>Elemento collegato<select value={parentFilter} disabled={!parentOptions.length} onChange={event => setParentFilter(event.target.value)}><option value="">Tutti</option>{parentOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+        </div>
+        <div className="flex justify-between items-center gap-2 mb-3 text-xs text-gray-500"><span>{targetActionPlans.length} piani d’azione</span><button type="button" className="text-primary hover:underline" onClick={() => { setSearch(''); setStateFilter('active'); setDeadlineFilter('all'); setOrigineFilter('tutte'); setParentFilter('') }}>Azzera filtri</button></div>
+        {errors.ap ? <LoadError onRetry={loadData} /> : <ActionPlanViews plans={targetActionPlans} statiConfig={statiConfig} onSelectAP={setSelectedAP} readOnly showKanban={false} showCalendar={false} showCollegato emptyMessage="Nessun piano d’azione trovato." />}
       </HomeSection>
       <HomeSection section="kaizen" title={isOperator ? 'Kaizen della mia linea' : 'I miei Kaizen'} to="/kaizen" linkLabel="Vedi tutti">
         {errors.kaizen ? <LoadError onRetry={loadData} /> : !myKaizens.length ? <Empty>Nessun Kaizen attivo.</Empty> : <div className="divide-y">{myKaizens.slice(0, 5).map(k => <Link key={k._id} to={`/kaizen/${k._id}`} className="block py-2 hover:bg-gray-50 rounded"><span className="text-xs font-mono text-gray-500">{k.numero}</span><p className="text-sm font-medium break-words">{k.titolo}</p></Link>)}</div>}
@@ -204,11 +220,12 @@ export default function HomePage() {
       {!isOperator && <HomeSection section="pillars" title="I miei pilastri" to="/pillars" linkLabel="Vedi tutti">
         {errors.pillar ? <LoadError onRetry={loadData} /> : !myPillars.length ? <Empty>Nessun pilastro assegnato.</Empty> : <div className="divide-y">{myPillars.slice(0, 5).map(p => <Link key={p._id} to={`/pillars/${p._id}`} className="flex items-center gap-3 py-2 hover:bg-gray-50 rounded">{p.icon_image && <img src={p.icon_image} alt="" style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }} onError={event => { event.currentTarget.style.display = 'none' }} />}<div className="min-w-0"><p className="text-sm font-semibold">{p.sigla}</p><p className="text-xs text-gray-600 break-words">{p.label}</p></div></Link>)}</div>}
       </HomeSection>}
-      <HomeSection section="meetings" title="I miei Meeting" to="/dashboard" linkLabel="Vedi tutti">
-        {errors.meeting ? <LoadError onRetry={loadData} /> : !dashboards.length ? <Empty>Nessun meeting disponibile.</Empty> : <div className="divide-y">{dashboards.slice(0, 6).map(d => <Link key={d._id} to={`/dashboard/${d._id}`} className="block py-2 text-sm font-medium break-words hover:bg-gray-50 rounded">{d.nome || d.label || 'Meeting'}</Link>)}</div>}
+      <HomeSection section="meetings" title="Meeting preferiti" to="/dashboard" linkLabel="Vedi tutti">
+        {errors.meeting ? <LoadError onRetry={loadData} /> : <FavoriteMeetings key={`${user.plant_id || 'induno'}:${user.id || user._id || user.username}`} meetings={dashboards} storageKey={`lpw:meeting-favorites:${user.plant_id || 'induno'}:${user.id || user._id || user.username}`} />}
       </HomeSection>
     </div>
-    {selectedAP && <ActionPlanDetailPanel plan={selectedAP} onClose={() => setSelectedAP(null)} onUpdated={loadData} onEdit={() => setSelectedAP(null)} />}
+    {editingAP && <ActionPlanFormShared plan={editingAP} onClose={() => setEditingAP(null)} onSaved={saved => { setEditingAP(null); loadData(); if (saved) setSelectedAP(saved) }} />}
+    {selectedAP && <ActionPlanDetailPanel plan={selectedAP} onClose={() => setSelectedAP(null)} onUpdated={loadData} onEdit={plan => { setEditingAP(plan || selectedAP); setSelectedAP(null) }} />}
   </div>
 }
 function HomeSection({ section, title, to, linkLabel, children }) {
@@ -218,125 +235,33 @@ function Empty({ children }) { return <p className="text-sm text-gray-500 py-3">
 function LoadError({ onRetry }) { return <p role="alert" className="text-sm text-red-700">Dati non disponibili. <button type="button" onClick={onRetry} className="underline">Riprova</button></p> }
 function formatDate(value) { const date = new Date(value); return value && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('it-IT') : '—' }
 function tabClass(active) { return `home-tab ${active ? 'home-tab-active' : ''}` }
-function APGroup({ title, color, aps, onClick }) {
-  const colors = { red: 'text-red-700 bg-red-50 border-red-200', orange: 'text-orange-700 bg-orange-50 border-orange-200', yellow: 'text-yellow-800 bg-yellow-50 border-yellow-200', green: 'text-gray-700 bg-gray-50 border-gray-200' }
-  return <div className={`home-ap-group home-ap-${color}`}><h3 className="home-ap-heading">{title} ({aps.length})</h3><div className="divide-y">{aps.map(ap => <div key={ap._id} className="py-2 min-w-0"><button type="button" onClick={() => onClick(ap)} className="block w-full text-left hover:text-primary"><span className="font-mono text-xs font-semibold">{ap.numero}</span><span className="block text-sm break-words mt-0.5">{ap.titolo}</span></button><div className="flex flex-wrap justify-between gap-1 mt-1"><OriginePill ap={ap} />{ap.data_scadenza && <span className="text-xs text-gray-500">{formatDate(ap.data_scadenza)}</span>}</div></div>)}</div></div>
-}
-function getOrigine(ap) {
-  if (!ap.parent_type || ap.parent_type === 'standalone') {
-    return 'manuale'
-  }
-
-  return ap.parent_type
-}
-
-function getOrigineLabel(origine) {
-  if (origine === 'segnalazione') return 'Segnalazione'
-  if (origine === 'kaizen') return 'Kaizen'
-  if (origine === 'dashboard') return 'Meeting'
-  if (origine === 'pillar') return 'Pillar'
-  return 'Manuale'
-}
-
-function getOrigineColor(origine) {
-  if (origine === 'segnalazione') return 'bg-red-100 text-red-700'
-  if (origine === 'kaizen') return 'bg-emerald-100 text-emerald-700'
-  if (origine === 'dashboard') return 'bg-purple-100 text-purple-700'
-  if (origine === 'pillar') return 'bg-indigo-100 text-indigo-700'
-  return 'bg-gray-100 text-gray-600'
-}
-
-function getOrigineRoute(ap) {
-  if (!ap.parent_id) return null
-
-  if (ap.parent_type === 'segnalazione') {
-    return `/segnalazioni?open=${ap.parent_id}`
-  }
-
-  if (ap.parent_type === 'kaizen') {
-    return `/kaizen/${ap.parent_id}`
-  }
-
-  if (ap.parent_type === 'dashboard') {
-    return `/dashboard/${ap.parent_id}`
-  }
-
-  if (ap.parent_type === 'pillar') {
-    return `/pillars/${ap.parent_id}`
-  }
-
-  return null
-}
-
-function OriginePill({ ap }) {
-  const origine = getOrigine(ap)
-  const label = getOrigineLabel(origine)
-  const color = getOrigineColor(origine)
-  const route = getOrigineRoute(ap)
-
-  const pill = (
-    <span
-      className={`px-2 py-0.5 rounded text-xs font-medium break-words ${color}`}
-    >
-      {label}
-      {ap.parent_label ? ` · ${ap.parent_label}` : ''}
-    </span>
-  )
-
-  if (!route) {
-    return <span className="min-w-0">{pill}</span>
-  }
-
-  return (
-    <Link
-      to={route}
-      onClick={event => event.stopPropagation()}
-      className="min-w-0 hover:opacity-80"
-      title={`Apri ${label}`}
-    >
-      {pill}
-    </Link>
-  )
-}
-
 const ORIGINE_CHIPS = [
-  { id: 'tutte', label: 'Tutte' },
-  { id: 'segnalazione', label: 'Segnalazioni' },
-  { id: 'dashboard', label: 'Meeting' },
-  { id: 'kaizen', label: 'Kaizen' },
-  { id: 'pillar', label: 'Pillar' },
-  { id: 'manuale', label: 'Manuale' },
+  { id: 'tutte', label: 'Tutti' }, { id: 'segnalazione', label: 'Segnalazioni' },
+  { id: 'dashboard', label: 'Meeting' }, { id: 'kaizen', label: 'Kaizen' },
+  { id: 'pillar', label: 'Pilastri' }, { id: 'manuale', label: 'Manuali' }, { id: 'other', label: 'Altri' },
 ]
-
-function OrigineFilterBar({ plans, value, onChange }) {
-  function getCount(origine) {
-    if (origine === 'tutte') {
-      return plans.length
-    }
-
-    return plans.filter(ap => getOrigine(ap) === origine).length
+function FavoriteMeetings({ meetings, storageKey }) {
+  const [favorites, setFavorites] = useState(() => {
+    try { const saved = JSON.parse(localStorage.getItem(storageKey) || '[]'); return Array.isArray(saved) ? saved.filter(id => typeof id === 'string') : [] } catch { return [] }
+  })
+  const [configuring, setConfiguring] = useState(false)
+  const [query, setQuery] = useState('')
+  const [saveError, setSaveError] = useState(false)
+  function toggle(id) {
+    const next = favorites.includes(id) ? favorites.filter(value => value !== id) : [...favorites, id]
+    setFavorites(next)
+    try { localStorage.setItem(storageKey, JSON.stringify(next)); setSaveError(false) } catch { setSaveError(true) }
   }
-
-  return (
-    <div className="flex flex-wrap gap-2 mb-4">
-      {ORIGINE_CHIPS.map(chip => {
-        const active = value === chip.id
-        const count = getCount(chip.id)
-        const baseClass = 'px-2 py-1 rounded text-xs font-medium border'
-        const activeClass = 'bg-primary text-white border-primary'
-        const inactiveClass = 'bg-white text-gray-600 border-gray-200 hover:border-primary'
-
-        return (
-          <button
-            key={chip.id}
-            type="button"
-            onClick={() => onChange(chip.id)}
-            className={`${baseClass} ${active ? activeClass : inactiveClass}`}
-          >
-            {chip.label} ({count})
-          </button>
-        )
-      })}
-    </div>
-  )
+  const visible = meetings.filter(item => configuring ? String(item.nome || item.label || item.titolo || '').toLowerCase().includes(query.trim().toLowerCase()) : favorites.includes(String(item._id)))
+  return <div>
+    <div className="flex justify-end mb-2"><button type="button" aria-expanded={configuring} onClick={() => setConfiguring(value => !value)} className="text-xs text-primary hover:underline">{configuring ? 'Fine' : 'Configura'}</button></div>
+    {configuring && <input type="search" aria-label="Cerca meeting" placeholder="Cerca meeting" value={query} onChange={event => setQuery(event.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm mb-2" />}
+    {saveError && <p role="alert" className="text-xs text-red-700">Preferiti non salvati nel browser.</p>}
+    {!visible.length ? <Empty>{configuring ? 'Nessun meeting trovato.' : 'Nessun meeting preferito.'}</Empty> : <div className="divide-y max-h-80 overflow-y-auto">{visible.map(item => {
+      const id = String(item._id)
+      const selected = favorites.includes(id)
+      const name = item.nome || item.label || item.titolo || 'Meeting'
+      return <div key={id} className="flex items-center gap-2 py-2"><Link to={`/dashboard/${encodeURIComponent(id)}`} className="min-w-0 flex-1 text-sm font-medium break-words hover:text-primary">{name}</Link><button type="button" aria-label={`${selected ? 'Rimuovi' : 'Aggiungi'} ${name} ${selected ? 'dai' : 'ai'} preferiti`} aria-pressed={selected} onClick={() => toggle(id)} className={`p-2 rounded hover:bg-gray-50 ${selected ? 'text-amber-700' : 'text-gray-400'}`}><Star size={17} fill={selected ? 'currentColor' : 'none'} /></button></div>
+    })}</div>}
+  </div>
 }
