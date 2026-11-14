@@ -24,6 +24,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const [selectedAP, setSelectedAP] = useState(null)
   const [origins, setOrigins] = useState([])
+  const [configuringMeetings, setConfiguringMeetings] = useState(false)
   const [editingAP, setEditingAP] = useState(null)
   const { configs } = useAllConfigurations()
   const statiConfig = configs.stato_ap || []
@@ -171,6 +172,7 @@ export default function HomePage() {
 @media(max-width:1199px){.lpw-home .home-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.lpw-home .home-panel{grid-column:auto;grid-row:auto}.lpw-home .home-panel-actions{grid-column:1 / -1}.lpw-home .home-panel-opl,.lpw-home .home-panel-new,.lpw-home .home-panel-reports{min-height:0}}
 @media(max-width:639px){.lpw-home .home-grid{grid-template-columns:minmax(0,1fr);gap:12px}.lpw-home .home-panel{grid-column:auto;padding:16px}.lpw-home .home-heading{padding-bottom:16px;margin-bottom:16px}.lpw-home .home-heading h1{font-size:23px}.lpw-home .home-panel-heading{margin-bottom:14px}.lpw-home .home-tabs{gap:14px}.lpw-home .home-panel-actions .flex.flex-wrap.gap-2 button{min-height:32px}}
 .lpw-home .home-panel{border:1px solid #c9bbaa;box-shadow:0 2px 6px rgba(63,43,25,.06)}.lpw-home .home-panel-heading{border-bottom:1px solid #e5dcd1;padding-bottom:13px}.lpw-home .home-origin-flags{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:20px}.lpw-home .home-origin-flags label{display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:8px 12px;border:1px solid #d7cbbb;border-radius:8px;background:#fff;font-size:13px;cursor:pointer}.lpw-home .home-origin-flags label.is-selected{border-color:#806342;background:#f6f0e7;color:#3e2b1a}.lpw-home .home-origin-flags input{width:16px;height:16px;accent-color:#765735}.lpw-home .home-ap-group{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #e5dcd1}.lpw-home .home-ap-group span{font-size:11px;padding:2px 7px;border-radius:12px;background:#f2eee8}.lpw-home .home-ap-overdue{color:#b42318}.lpw-home .home-ap-overdue span{background:#fef0ee}
+.lpw-home .home-ap-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;align-items:start}.lpw-home .home-ap-columns>section{min-width:0}.lpw-home .home-ap-undated{grid-column:1 / -1}.lpw-home .home-ap-columns .ap-home-readonly{container-type:inline-size}@container(max-width:800px){.lpw-home .home-ap-columns .ap-home-readonly table,.lpw-home .home-ap-columns .ap-home-readonly tbody{display:block;width:100%}.lpw-home .home-ap-columns .ap-home-readonly thead{display:none}.lpw-home .home-ap-columns .ap-home-readonly tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:12px;gap:8px}.lpw-home .home-ap-columns .ap-home-readonly td{display:block;width:auto;padding:0;min-width:0}.lpw-home .home-ap-columns .ap-home-readonly td:before{content:attr(data-label);display:block;font-size:10px;color:#71736f;margin-bottom:3px}.lpw-home .home-ap-columns .ap-home-readonly td:nth-child(2),.lpw-home .home-ap-columns .ap-home-readonly td:last-child{grid-column:1 / -1}.lpw-home .home-ap-columns .ap-home-readonly td:nth-child(2){grid-row:2}}@media(max-width:767px){.lpw-home .home-ap-columns{grid-template-columns:minmax(0,1fr)}.lpw-home .home-panel-meetings .home-panel-heading{flex-wrap:wrap;gap:10px}}
 `}</style>
     <header className="home-heading">
       <div className="min-w-0"><h1 className="text-2xl font-bold">Ciao {user.full_name?.split(' ')[0] || user.username}!</h1><p className="text-sm mt-1 break-words">{[...new Set(roles)].join(' · ')}</p></div>
@@ -201,10 +203,10 @@ export default function HomePage() {
           {ORIGINE_CHIPS.map(item => <label key={item.id} className={origins.includes(item.id) ? 'is-selected' : ''}><input type="checkbox" checked={origins.includes(item.id)} onChange={() => setOrigins(current => current.includes(item.id) ? current.filter(id => id !== item.id) : [...current, item.id])} />{item.label}</label>)}
           {origins.length > 0 && <button type="button" onClick={() => setOrigins([])} className="text-xs text-primary hover:underline">Tutte</button>}
         </div>
-        {errors.ap ? <LoadError onRetry={loadData} /> : <div className="space-y-5">
+        {errors.ap ? <LoadError onRetry={loadData} /> : <div className="home-ap-columns">
           <section aria-labelledby="home-overdue-title"><h3 id="home-overdue-title" className="home-ap-group home-ap-overdue">Scaduti <span>{overduePlans.length}</span></h3><ActionPlanViews plans={overduePlans} statiConfig={statiConfig} onSelectAP={setSelectedAP} readOnly showKanban={false} showCalendar={false} showCollegato emptyMessage="Nessun piano d’azione scaduto." /></section>
           <section aria-labelledby="home-upcoming-title"><h3 id="home-upcoming-title" className="home-ap-group">In scadenza <span>{upcomingPlans.length}</span></h3><ActionPlanViews plans={upcomingPlans} statiConfig={statiConfig} onSelectAP={setSelectedAP} readOnly showKanban={false} showCalendar={false} showCollegato emptyMessage="Nessun piano d’azione in scadenza." /></section>
-          {undatedPlans.length > 0 && <section aria-labelledby="home-undated-title"><h3 id="home-undated-title" className="home-ap-group">Senza scadenza <span>{undatedPlans.length}</span></h3><ActionPlanViews plans={undatedPlans} statiConfig={statiConfig} onSelectAP={setSelectedAP} readOnly showKanban={false} showCalendar={false} showCollegato /></section>}
+          {undatedPlans.length > 0 && <section className="home-ap-undated" aria-labelledby="home-undated-title"><h3 id="home-undated-title" className="home-ap-group">Senza scadenza <span>{undatedPlans.length}</span></h3><ActionPlanViews plans={undatedPlans} statiConfig={statiConfig} onSelectAP={setSelectedAP} readOnly showKanban={false} showCalendar={false} showCollegato /></section>}
         </div>}
       </HomeSection>
       <HomeSection section="kaizen" title={isOperator ? 'Kaizen della mia linea' : 'I miei Kaizen'} to="/kaizen" linkLabel="Vedi tutti">
@@ -213,16 +215,16 @@ export default function HomePage() {
       {!isOperator && <HomeSection section="pillars" title="I miei pilastri" to="/pillars" linkLabel="Vedi tutti">
         {errors.pillar ? <LoadError onRetry={loadData} /> : !myPillars.length ? <Empty>Nessun pilastro assegnato.</Empty> : <div className="divide-y">{myPillars.slice(0, 5).map(p => <Link key={p._id} to={`/pillars/${p._id}`} className="flex items-center gap-3 py-2 hover:bg-gray-50 rounded">{p.icon_image && <img src={p.icon_image} alt="" style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }} onError={event => { event.currentTarget.style.display = 'none' }} />}<div className="min-w-0"><p className="text-sm font-semibold">{p.sigla}</p><p className="text-xs text-gray-600 break-words">{p.label}</p></div></Link>)}</div>}
       </HomeSection>}
-      <HomeSection section="meetings" title="Meeting preferiti" to="/dashboard" linkLabel="Vedi tutti">
-        {errors.meeting ? <LoadError onRetry={loadData} /> : <FavoriteMeetings key={`${user.plant_id || 'induno'}:${user.id || user._id || user.username}`} meetings={dashboards} storageKey={`lpw:meeting-favorites:${user.plant_id || 'induno'}:${user.id || user._id || user.username}`} />}
+      <HomeSection section="meetings" title="Meeting preferiti" to="/dashboard" linkLabel="Vedi tutti" actions={<button type="button" aria-expanded={configuringMeetings} onClick={() => setConfiguringMeetings(value => !value)} className="home-panel-link">{configuringMeetings ? 'Fine' : 'Configura'}</button>}>
+        {errors.meeting ? <LoadError onRetry={loadData} /> : <FavoriteMeetings key={`${user.plant_id || 'induno'}:${user.id || user._id || user.username}`} meetings={dashboards} configuring={configuringMeetings} storageKey={`lpw:meeting-favorites:${user.plant_id || 'induno'}:${user.id || user._id || user.username}`} />}
       </HomeSection>
     </div>
     {editingAP && <ActionPlanFormShared plan={editingAP} onClose={() => setEditingAP(null)} onSaved={saved => { setEditingAP(null); loadData(); if (saved) setSelectedAP(saved) }} />}
     {selectedAP && <ActionPlanDetailPanel plan={selectedAP} onClose={() => setSelectedAP(null)} onUpdated={loadData} onEdit={plan => { setEditingAP(plan || selectedAP); setSelectedAP(null) }} />}
   </div>
 }
-function HomeSection({ section, title, to, linkLabel, children }) {
-  return <section className={`home-panel home-panel-${section || 'other'}`}><div className="home-panel-heading"><h2 className="home-panel-title">{title}</h2>{to && <Link to={to} className="home-panel-link">{linkLabel}</Link>}</div>{children}</section>
+function HomeSection({ section, title, to, linkLabel, children, actions }) {
+  return <section className={`home-panel home-panel-${section || 'other'}`}><div className="home-panel-heading"><h2 className="home-panel-title">{title}</h2><div className="flex items-center gap-4">{actions}{to && <Link to={to} className="home-panel-link">{linkLabel}</Link>}</div></div>{children}</section>
 }
 function Empty({ children }) { return <p className="text-sm text-gray-500 py-3">{children}</p> }
 function LoadError({ onRetry }) { return <p role="alert" className="text-sm text-red-700">Dati non disponibili. <button type="button" onClick={onRetry} className="underline">Riprova</button></p> }
@@ -234,11 +236,10 @@ const ORIGINE_CHIPS = [
   { id: 'kaizen', label: 'Kaizen' },
   { id: 'pillar', label: 'Pilastri' },
 ]
-function FavoriteMeetings({ meetings, storageKey }) {
+function FavoriteMeetings({ meetings, storageKey, configuring }) {
   const [favorites, setFavorites] = useState(() => {
     try { const saved = JSON.parse(localStorage.getItem(storageKey) || '[]'); return Array.isArray(saved) ? saved.filter(id => typeof id === 'string') : [] } catch { return [] }
   })
-  const [configuring, setConfiguring] = useState(false)
   const [query, setQuery] = useState('')
   const [saveError, setSaveError] = useState(false)
   function toggle(id) {
@@ -248,7 +249,6 @@ function FavoriteMeetings({ meetings, storageKey }) {
   }
   const visible = meetings.filter(item => configuring ? String(item.nome || item.label || item.titolo || '').toLowerCase().includes(query.trim().toLowerCase()) : favorites.includes(String(item._id)))
   return <div>
-    <div className="flex justify-end mb-2"><button type="button" aria-expanded={configuring} onClick={() => setConfiguring(value => !value)} className="text-xs text-primary hover:underline">{configuring ? 'Fine' : 'Configura'}</button></div>
     {configuring && <input type="search" aria-label="Cerca meeting" placeholder="Cerca meeting" value={query} onChange={event => setQuery(event.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm mb-2" />}
     {saveError && <p role="alert" className="text-xs text-red-700">Preferiti non salvati nel browser.</p>}
     {!visible.length ? <Empty>{configuring ? 'Nessun meeting trovato.' : 'Nessun meeting preferito.'}</Empty> : <div className="divide-y max-h-80 overflow-y-auto">{visible.map(item => {
