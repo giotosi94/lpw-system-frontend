@@ -23,11 +23,7 @@ export default function HomePage() {
   const requestId = useRef(0)
   const [loading, setLoading] = useState(true)
   const [selectedAP, setSelectedAP] = useState(null)
-  const [origineFilter, setOrigineFilter] = useState('tutte')
-  const [search, setSearch] = useState('')
-  const [stateFilter, setStateFilter] = useState('active')
-  const [deadlineFilter, setDeadlineFilter] = useState('all')
-  const [parentFilter, setParentFilter] = useState('')
+  const [origins, setOrigins] = useState([])
   const [editingAP, setEditingAP] = useState(null)
   const { configs } = useAllConfigurations()
   const statiConfig = configs.stato_ap || []
@@ -117,17 +113,13 @@ export default function HomePage() {
 
   const baseActionPlans = isOperator ? myAreaActionPlans : myActionPlans
 
-  const originPlans = origineFilter === 'tutte' ? baseActionPlans : baseActionPlans.filter(ap => getActionPlanOrigin(ap) === origineFilter)
-  const parentOptions = [...new Map(originPlans.filter(ap => ap.parent_id).map(ap => [`${getActionPlanOrigin(ap)}:${ap.parent_id}`, ap.parent_label || ap.parent_id])).entries()]
-  const targetActionPlans = originPlans.filter(ap => {
-    const terminal = isAPLocked(ap, statiConfig)
-    if (stateFilter === 'active' && terminal) return false
-    if (!['active', 'all'].includes(stateFilter) && ap.stato !== stateFilter) return false
-    if (parentFilter && `${getActionPlanOrigin(ap)}:${ap.parent_id}` !== parentFilter) return false
-    if (search.trim() && ![ap.numero, ap.titolo, ap.parent_label].filter(Boolean).join(' ').toLowerCase().includes(search.trim().toLowerCase())) return false
-    if (deadlineFilter === 'overdue') return isActionPlanOverdue(ap, statiConfig)
-    return deadlineFilter === 'all' || (!terminal && classifyByDeadline(ap) === deadlineFilter)
-  }).sort((a, b) => Number(isActionPlanOverdue(b, statiConfig)) - Number(isActionPlanOverdue(a, statiConfig)) || (Date.parse(a.data_scadenza) || Number.MAX_SAFE_INTEGER) - (Date.parse(b.data_scadenza) || Number.MAX_SAFE_INTEGER))
+  const targetActionPlans = baseActionPlans.filter(ap => {
+    if (isAPLocked(ap, statiConfig) || ['chiuso', 'closed', 'completed', 'annullato', 'cancelled', 'canceled', 'done'].includes(String(ap.stato || '').trim().toLowerCase())) return false
+    return !origins.length || origins.includes(getActionPlanOrigin(ap))
+  }).sort((a, b) => (Date.parse(a.data_scadenza) || Number.MAX_SAFE_INTEGER) - (Date.parse(b.data_scadenza) || Number.MAX_SAFE_INTEGER))
+  const overduePlans = targetActionPlans.filter(ap => isActionPlanOverdue(ap, statiConfig))
+  const upcomingPlans = targetActionPlans.filter(ap => !isActionPlanOverdue(ap, statiConfig) && Number.isFinite(Date.parse(ap.data_scadenza)))
+  const undatedPlans = targetActionPlans.filter(ap => !Number.isFinite(Date.parse(ap.data_scadenza)))
   const roleLabels = {
     admin: 'Amministratore',
     manager: 'Manager',
@@ -175,9 +167,10 @@ export default function HomePage() {
 .lpw-home .home-panel .text-gray-500,.lpw-home .home-panel .text-gray-600{color:#71736f}
 .lpw-home .home-panel a,.lpw-home .home-panel button{overflow-wrap:anywhere}
 .lpw-home button:focus-visible,.lpw-home a:focus-visible{outline:2px solid #947748;outline-offset:3px}
-.lpw-home .home-action-filters{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:14px}.lpw-home .home-action-filters label{display:flex;flex-direction:column;gap:5px;min-width:0;font-size:12px;color:var(--home-muted)}.lpw-home .home-action-filters input,.lpw-home .home-action-filters select{width:100%;min-width:0;min-height:38px;border:1px solid var(--home-line);border-radius:7px;background:#fff;padding:8px;color:var(--home-ink);font-size:13px}.lpw-home .ap-home-readonly{box-shadow:none;border:1px solid var(--home-line)}.lpw-home .ap-home-readonly table{table-layout:fixed}.lpw-home .ap-home-readonly th,.lpw-home .ap-home-readonly td{overflow-wrap:anywhere}.lpw-home .ap-home-readonly th:nth-child(2){width:26%}.lpw-home .ap-home-readonly th:last-child{width:17%}@media(max-width:1199px){.lpw-home .home-action-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:1100px){.lpw-home .ap-home-readonly table,.lpw-home .ap-home-readonly tbody{display:block;width:100%}.lpw-home .ap-home-readonly thead{display:none}.lpw-home .ap-home-readonly tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:12px;gap:8px}.lpw-home .ap-home-readonly td{display:block;width:auto;padding:0;min-width:0}.lpw-home .ap-home-readonly td:before{content:attr(data-label);display:block;font-size:10px;color:#71736f;margin-bottom:3px}.lpw-home .ap-home-readonly td:nth-child(2),.lpw-home .ap-home-readonly td:last-child{grid-column:1 / -1}.lpw-home .ap-home-readonly td:nth-child(2){grid-row:2}}@media(max-width:639px){.lpw-home .home-action-filters{grid-template-columns:minmax(0,1fr)}}
+.lpw-home .ap-home-readonly{box-shadow:none;border:1px solid var(--home-line)}.lpw-home .ap-home-readonly table{table-layout:fixed}.lpw-home .ap-home-readonly th,.lpw-home .ap-home-readonly td{overflow-wrap:anywhere}.lpw-home .ap-home-readonly th:nth-child(2){width:26%}.lpw-home .ap-home-readonly th:last-child{width:17%}@media(max-width:1100px){.lpw-home .ap-home-readonly table,.lpw-home .ap-home-readonly tbody{display:block;width:100%}.lpw-home .ap-home-readonly thead{display:none}.lpw-home .ap-home-readonly tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:12px;gap:8px}.lpw-home .ap-home-readonly td{display:block;width:auto;padding:0;min-width:0}.lpw-home .ap-home-readonly td:before{content:attr(data-label);display:block;font-size:10px;color:#71736f;margin-bottom:3px}.lpw-home .ap-home-readonly td:nth-child(2),.lpw-home .ap-home-readonly td:last-child{grid-column:1 / -1}.lpw-home .ap-home-readonly td:nth-child(2){grid-row:2}}
 @media(max-width:1199px){.lpw-home .home-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.lpw-home .home-panel{grid-column:auto;grid-row:auto}.lpw-home .home-panel-actions{grid-column:1 / -1}.lpw-home .home-panel-opl,.lpw-home .home-panel-new,.lpw-home .home-panel-reports{min-height:0}}
 @media(max-width:639px){.lpw-home .home-grid{grid-template-columns:minmax(0,1fr);gap:12px}.lpw-home .home-panel{grid-column:auto;padding:16px}.lpw-home .home-heading{padding-bottom:16px;margin-bottom:16px}.lpw-home .home-heading h1{font-size:23px}.lpw-home .home-panel-heading{margin-bottom:14px}.lpw-home .home-tabs{gap:14px}.lpw-home .home-panel-actions .flex.flex-wrap.gap-2 button{min-height:32px}}
+.lpw-home .home-panel{border:1px solid #c9bbaa;box-shadow:0 2px 6px rgba(63,43,25,.06)}.lpw-home .home-panel-heading{border-bottom:1px solid #e5dcd1;padding-bottom:13px}.lpw-home .home-origin-flags{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:20px}.lpw-home .home-origin-flags label{display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:8px 12px;border:1px solid #d7cbbb;border-radius:8px;background:#fff;font-size:13px;cursor:pointer}.lpw-home .home-origin-flags label.is-selected{border-color:#806342;background:#f6f0e7;color:#3e2b1a}.lpw-home .home-origin-flags input{width:16px;height:16px;accent-color:#765735}.lpw-home .home-ap-group{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #e5dcd1}.lpw-home .home-ap-group span{font-size:11px;padding:2px 7px;border-radius:12px;background:#f2eee8}.lpw-home .home-ap-overdue{color:#b42318}.lpw-home .home-ap-overdue span{background:#fef0ee}
 `}</style>
     <header className="home-heading">
       <div className="min-w-0"><h1 className="text-2xl font-bold">Ciao {user.full_name?.split(' ')[0] || user.username}!</h1><p className="text-sm mt-1 break-words">{[...new Set(roles)].join(' · ')}</p></div>
@@ -204,15 +197,15 @@ export default function HomePage() {
         {errors.reports ? <LoadError onRetry={loadData} /> : !reportList.length ? <Empty>Nessuna segnalazione personale.</Empty> : <div className="divide-y">{reportList.map(item => <Link key={item._id} to={`/segnalazioni?open=${encodeURIComponent(item._id)}`} className="block py-2 hover:bg-gray-50 rounded"><div className="flex flex-wrap justify-between gap-2 text-xs"><span className="font-mono">{item.codice || 'Bozza'}</span><span className="text-gray-500">{item.tipo} · {item.stato}</span></div><p className="text-sm break-words mt-1 line-clamp-2">{item.descrizione || 'Senza descrizione'}</p></Link>)}</div>}
       </HomeSection>
       <HomeSection section="actions" title={isOperator ? 'Piani d’azione della mia area' : 'I miei piani d’azione'} to="/action-plan" linkLabel="Vedi tutti">
-        <div className="home-action-filters">
-          <label>Cerca<input type="search" placeholder="Numero o titolo" value={search} onChange={event => setSearch(event.target.value)} /></label>
-          <label>Stato<select value={stateFilter} onChange={event => setStateFilter(event.target.value)}><option value="active">Aperti</option><option value="all">Tutti</option>{[...new Set([...statiConfig.map(item => item.label), ...baseActionPlans.map(ap => ap.stato)].filter(Boolean))].map(state => <option key={state} value={state}>{state}</option>)}</select></label>
-          <label>Scadenza<select value={deadlineFilter} onChange={event => setDeadlineFilter(event.target.value)}><option value="all">Tutte</option><option value="overdue">Scaduti</option><option value="today">Oggi</option><option value="week">Prossimi 7 giorni</option><option value="future">Successive</option><option value="no-date">Senza scadenza</option></select></label>
-          <label>Collegato a<select value={origineFilter} onChange={event => { setOrigineFilter(event.target.value); setParentFilter('') }}>{ORIGINE_CHIPS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
-          <label>Elemento collegato<select value={parentFilter} disabled={!parentOptions.length} onChange={event => setParentFilter(event.target.value)}><option value="">Tutti</option>{parentOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+        <div className="home-origin-flags" role="group" aria-label="Filtra per origine">
+          {ORIGINE_CHIPS.map(item => <label key={item.id} className={origins.includes(item.id) ? 'is-selected' : ''}><input type="checkbox" checked={origins.includes(item.id)} onChange={() => setOrigins(current => current.includes(item.id) ? current.filter(id => id !== item.id) : [...current, item.id])} />{item.label}</label>)}
+          {origins.length > 0 && <button type="button" onClick={() => setOrigins([])} className="text-xs text-primary hover:underline">Tutte</button>}
         </div>
-        <div className="flex justify-between items-center gap-2 mb-3 text-xs text-gray-500"><span>{targetActionPlans.length} piani d’azione</span><button type="button" className="text-primary hover:underline" onClick={() => { setSearch(''); setStateFilter('active'); setDeadlineFilter('all'); setOrigineFilter('tutte'); setParentFilter('') }}>Azzera filtri</button></div>
-        {errors.ap ? <LoadError onRetry={loadData} /> : <ActionPlanViews plans={targetActionPlans} statiConfig={statiConfig} onSelectAP={setSelectedAP} readOnly showKanban={false} showCalendar={false} showCollegato emptyMessage="Nessun piano d’azione trovato." />}
+        {errors.ap ? <LoadError onRetry={loadData} /> : <div className="space-y-5">
+          <section aria-labelledby="home-overdue-title"><h3 id="home-overdue-title" className="home-ap-group home-ap-overdue">Scaduti <span>{overduePlans.length}</span></h3><ActionPlanViews plans={overduePlans} statiConfig={statiConfig} onSelectAP={setSelectedAP} readOnly showKanban={false} showCalendar={false} showCollegato emptyMessage="Nessun piano d’azione scaduto." /></section>
+          <section aria-labelledby="home-upcoming-title"><h3 id="home-upcoming-title" className="home-ap-group">In scadenza <span>{upcomingPlans.length}</span></h3><ActionPlanViews plans={upcomingPlans} statiConfig={statiConfig} onSelectAP={setSelectedAP} readOnly showKanban={false} showCalendar={false} showCollegato emptyMessage="Nessun piano d’azione in scadenza." /></section>
+          {undatedPlans.length > 0 && <section aria-labelledby="home-undated-title"><h3 id="home-undated-title" className="home-ap-group">Senza scadenza <span>{undatedPlans.length}</span></h3><ActionPlanViews plans={undatedPlans} statiConfig={statiConfig} onSelectAP={setSelectedAP} readOnly showKanban={false} showCalendar={false} showCollegato /></section>}
+        </div>}
       </HomeSection>
       <HomeSection section="kaizen" title={isOperator ? 'Kaizen della mia linea' : 'I miei Kaizen'} to="/kaizen" linkLabel="Vedi tutti">
         {errors.kaizen ? <LoadError onRetry={loadData} /> : !myKaizens.length ? <Empty>Nessun Kaizen attivo.</Empty> : <div className="divide-y">{myKaizens.slice(0, 5).map(k => <Link key={k._id} to={`/kaizen/${k._id}`} className="block py-2 hover:bg-gray-50 rounded"><span className="text-xs font-mono text-gray-500">{k.numero}</span><p className="text-sm font-medium break-words">{k.titolo}</p></Link>)}</div>}
@@ -236,9 +229,10 @@ function LoadError({ onRetry }) { return <p role="alert" className="text-sm text
 function formatDate(value) { const date = new Date(value); return value && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('it-IT') : '—' }
 function tabClass(active) { return `home-tab ${active ? 'home-tab-active' : ''}` }
 const ORIGINE_CHIPS = [
-  { id: 'tutte', label: 'Tutti' }, { id: 'segnalazione', label: 'Segnalazioni' },
-  { id: 'dashboard', label: 'Meeting' }, { id: 'kaizen', label: 'Kaizen' },
-  { id: 'pillar', label: 'Pilastri' }, { id: 'manuale', label: 'Manuali' }, { id: 'other', label: 'Altri' },
+  { id: 'segnalazione', label: 'Segnalazioni' },
+  { id: 'dashboard', label: 'Meeting' },
+  { id: 'kaizen', label: 'Kaizen' },
+  { id: 'pillar', label: 'Pilastri' },
 ]
 function FavoriteMeetings({ meetings, storageKey }) {
   const [favorites, setFavorites] = useState(() => {
