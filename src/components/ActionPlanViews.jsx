@@ -80,7 +80,7 @@ export function isActionPlanOverdue(ap, states = []) {
 }
 function CollegatoBadge({ ap }) {
   const origin = getActionPlanOrigin(ap)
-  const labels = { kaizen: 'Kaizen', dashboard: 'Meeting', pillar: 'Pilastro', segnalazione: 'Segnalazione', manuale: 'Manuale', other: 'Altro' }
+  const labels = { kaizen: 'Kaizen', dashboard: 'Meeting', pillar: 'Pilastro', segnalazione: 'Segnalazione', manuale: 'Non collegato', other: 'Altro' }
   const paths = { kaizen: '/kaizen/', dashboard: '/dashboard/', pillar: '/pillars/', segnalazione: '/segnalazioni?open=' }
   const path = ['major_kaizen', 'major-kaizen'].includes(ap.parent_type) ? '/major-kaizen/' : paths[origin]
   const content = <span className="inline-block bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs break-words">{labels[origin]}{ap.parent_label ? ` · ${ap.parent_label}` : ''}</span>
