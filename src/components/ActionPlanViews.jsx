@@ -1,13 +1,10 @@
+import { Link } from 'react-router-dom'
 import { useState, useMemo } from 'react'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import {
   Eye, Edit2, Trash2, Link2, Lock, AlertCircle, CheckSquare, Bug,
   TrendingUp, Shield, Wrench, MessageSquare, Calendar
 } from 'lucide-react'
-
-// ──────────────────────────────────────────────────────────
-// COSTANTI condivise
-// ──────────────────────────────────────────────────────────
 const PRIORITA_BG = {
   Lowest: 'bg-gray-100 text-gray-700',
   Low: 'bg-blue-100 text-blue-700',
@@ -37,23 +34,14 @@ const KANBAN_PALETTE = [
   { color: 'bg-red-50 border-red-200', headerColor: 'bg-red-200 text-red-800' },
   { color: 'bg-pink-50 border-pink-200', headerColor: 'bg-pink-200 text-pink-800' },
 ]
-
-// ──────────────────────────────────────────────────────────
-// LOGICA isLocked CENTRALIZZATA
-// ──────────────────────────────────────────────────────────
 export function isAPLocked(ap, statiConfig = []) {
   if (!ap) return false
   if (ap.is_cancelled) return true
   const statoCorrente = statiConfig.find(s => s.label === ap.stato)
   if (statoCorrente?.is_terminal) return true
-  // Fallback per retrocompatibilità
   if (['Done', 'Chiuso', 'Cancelled'].includes(ap.stato)) return true
   return false
 }
-
-// ──────────────────────────────────────────────────────────
-// HELPER COMPONENTS
-// ──────────────────────────────────────────────────────────
 function Avatar({ name, size = 24, showName = true }) {
   if (!name) {
     return showName ? <span className="text-xs text-gray-400 italic">— Non assegnato</span> : null
@@ -75,42 +63,42 @@ function Avatar({ name, size = 24, showName = true }) {
   )
 }
 
-function CollegatoBadge({ ap }) {
-  if (!ap.parent_type || ap.parent_type === 'standalone') {
-    return <span className="text-gray-400 text-xs">—</span>
-  }
-  const styles = {
-    pillar: 'bg-indigo-100 text-indigo-700',
-    kaizen: 'bg-emerald-100 text-emerald-700',
-    dashboard: 'bg-purple-100 text-purple-700',
-    segnalazione: 'bg-red-100 text-red-700',
-  }
-  const labels = { pillar: 'Pillar', kaizen: 'Kaizen', dashboard: 'Meeting', segnalazione: 'Segnalazione' }
-  return (
-    <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${styles[ap.parent_type] || 'bg-gray-100 text-gray-700'}`}>
-      {labels[ap.parent_type] || ap.parent_type}
-      {ap.parent_label && ` · ${ap.parent_label}`}
-    </span>
-  )
+export function getActionPlanOrigin(ap) {
+  if (['kaizen', 'major_kaizen', 'major-kaizen'].includes(ap.parent_type)) return 'kaizen'
+  if (['dashboard', 'meeting'].includes(ap.parent_type)) return 'dashboard'
+  if (['pillar', 'pilastro'].includes(ap.parent_type)) return 'pillar'
+  if (ap.parent_type === 'segnalazione') return 'segnalazione'
+  return !ap.parent_type || ap.parent_type === 'standalone' ? 'manuale' : 'other'
 }
-
+export function isActionPlanOverdue(ap, states = []) {
+  if (isAPLocked(ap, states) || ['Annullato', 'Completed', 'Closed'].includes(ap.stato) || !ap.data_scadenza) return false
+  const due = new Date(ap.data_scadenza)
+  const today = new Date()
+  due.setHours(0, 0, 0, 0)
+  today.setHours(0, 0, 0, 0)
+  return due < today
+}
+function CollegatoBadge({ ap }) {
+  const origin = getActionPlanOrigin(ap)
+  const labels = { kaizen: 'Kaizen', dashboard: 'Meeting', pillar: 'Pilastro', segnalazione: 'Segnalazione', manuale: 'Manuale', other: 'Altro' }
+  const paths = { kaizen: '/kaizen/', dashboard: '/dashboard/', pillar: '/pillars/', segnalazione: '/segnalazioni?open=' }
+  const path = ['major_kaizen', 'major-kaizen'].includes(ap.parent_type) ? '/major-kaizen/' : paths[origin]
+  const content = <span className="inline-block bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs break-words">{labels[origin]}{ap.parent_label ? ` · ${ap.parent_label}` : ''}</span>
+  return path && ap.parent_id ? <Link to={`${path}${encodeURIComponent(ap.parent_id)}`} onClick={event => event.stopPropagation()} className="hover:underline">{content}</Link> : content
+}
 function getStatoStyle(stato, statiConfig = []) {
   const cfg = statiConfig.find(s => s.label === stato)
-
-  // Se Settings ha colore custom, usa stile inline
   if (cfg?.color) {
     const hex = cfg.color
     return {
       className: 'border font-medium',
       style: {
-        backgroundColor: hex + '20',  // sfondo chiaro (20 = ~12% opacità)
+        backgroundColor: hex + '20',
         color: hex,
-        borderColor: hex + '60',      // bordo medio
+        borderColor: hex + '60',    
       },
     }
   }
-
-  // Altrimenti mapping default basato sul nome
   const defaultMap = {
     'Da Valutare': 'bg-gray-100 text-gray-700 border-gray-300',
     'Da valutare': 'bg-gray-100 text-gray-700 border-gray-300',
@@ -130,37 +118,6 @@ function getStatoStyle(stato, statiConfig = []) {
   }
 }
 
-// ──────────────────────────────────────────────────────────
-// COMPONENTE PRINCIPALE
-// ──────────────────────────────────────────────────────────
-/**
- * ActionPlanViews — Suite riusabile per visualizzare AP in Lista/Kanban/Calendario.
- *
- * Props OBBLIGATORI:
- *   plans            — array degli Action Plan
- *   statiConfig      — configurazione stati da Settings (usata per isLocked + Kanban)
- *   onSelectAP(ap)   — callback click su riga (apre dettaglio)
- *
- * Props OPZIONALI:
- *   onEditAP(ap)             — callback matita (apre form modifica)
- *   onDeleteAP(ap)           — callback cestino (elimina)
- *   onUnlinkAP(ap)           — callback scollega da parent (Kaizen/Pillar)
- *   onChangeStato(ap, stato) — callback cambio stato inline (default fa PATCH)
- *   onChangeStepGant(ap, id) — callback cambio step Gant (solo Kaizen)
- *
- *   gantSteps        — array degli step Gant (solo Kaizen)
- *   unlinkLabel      — testo tooltip scollega (es. "Scollega dal Kaizen")
- *
- *   showCollegato    — bool: mostra colonna "Collegato a" (default: true)
- *   showStepGant     — bool: mostra colonna "Step Gant" (default: false)
- *   showKanban       — bool: abilita vista Kanban (default: true)
- *   showCalendar     — bool: abilita vista Calendario (default: true)
- *   defaultView      — 'list' | 'kanban' | 'calendar' (default: 'list')
- *
- *   compact          — bool: layout compatto per widget (default: false)
- *   emptyMessage     — testo quando lista vuota
- *   emptyAction      — { label, onClick } CTA quando vuoto
- */
 export default function ActionPlanViews({
   plans = [],
   statiConfig = [],
@@ -178,6 +135,7 @@ export default function ActionPlanViews({
   showCalendar = true,
   defaultView = 'list',
   compact = false,
+  readOnly = false,
   emptyMessage = 'Nessun Action Plan',
   emptyAction = null,
 }) {
@@ -199,7 +157,7 @@ export default function ActionPlanViews({
 
   return (
     <div className="space-y-3">
-      {/* Toggle Vista (visibile solo se ci sono almeno 2 viste abilitate) */}
+      
       {(showKanban || showCalendar) && (
         <div className="flex justify-end">
           <div className="bg-white border rounded-lg p-1 flex gap-1 shadow-sm">
@@ -229,7 +187,7 @@ export default function ActionPlanViews({
         </div>
       )}
 
-      {/* View body */}
+      
       {viewMode === 'list' && (
         <ListView
           plans={plans}
@@ -245,6 +203,7 @@ export default function ActionPlanViews({
           showCollegato={showCollegato}
           showStepGant={showStepGant}
           compact={compact}
+          readOnly={readOnly}
         />
       )}
       {viewMode === 'kanban' && (
@@ -266,16 +225,12 @@ export default function ActionPlanViews({
     </div>
   )
 }
-
-// ──────────────────────────────────────────────────────────
-// VISTA LISTA (tabella)
-// ──────────────────────────────────────────────────────────
 function ListView({
   plans, statiConfig, gantSteps, onSelectAP, onEditAP, onDeleteAP, onUnlinkAP,
-  onChangeStato, onChangeStepGant, unlinkLabel, showCollegato, showStepGant, compact,
+  onChangeStato, onChangeStepGant, unlinkLabel, showCollegato, showStepGant, compact, readOnly,
 }) {
   return (
-    <div className="bg-white rounded-xl shadow overflow-hidden">
+    <div className={`bg-white rounded-xl shadow overflow-hidden ${readOnly ? 'ap-home-readonly' : ''}`}>
       <table className="w-full text-sm">
         <thead className="bg-gray-50 border-b text-xs uppercase text-gray-500">
           <tr>
@@ -288,13 +243,13 @@ function ListView({
             <th className="px-3 py-2 text-left w-28">Scadenza</th>
             {showStepGant && <th className="px-3 py-2 text-left w-48">Step Gant</th>}
             {showCollegato && <th className="px-3 py-2 text-left w-32">Collegato a</th>}
-            <th className="px-3 py-2 text-center w-32">Azioni</th>
+            {!readOnly && <th className="px-3 py-2 text-center w-32">Azioni</th>}
           </tr>
         </thead>
         <tbody>
           {plans.map(ap => {
             const TipoIcon = TIPO_ICONS[ap.tipo] || CheckSquare
-            const isOverdue = ap.stato_visuale === 'In Ritardo'
+            const isOverdue = isActionPlanOverdue(ap, statiConfig)
             const isCancelled = ap.is_cancelled
             const locked = isAPLocked(ap, statiConfig)
             return (
@@ -303,11 +258,11 @@ function ListView({
                 className={`border-b hover:bg-gray-50 cursor-pointer ${isCancelled ? 'opacity-60' : ''}`}
                 onClick={() => onSelectAP?.(ap)}
               >
-                <td className="px-3 py-2 font-mono text-primary text-xs font-bold">{ap.numero}</td>
-                <td className="px-3 py-2">
-                  <div className="font-medium truncate max-w-md">{ap.titolo}</div>
+                <td data-label="Numero" className="px-3 py-2 font-mono text-primary text-xs font-bold">{ap.numero}</td>
+                <td data-label="Titolo" className="px-3 py-2">
+                  <button type="button" className="font-medium text-left break-words hover:text-primary" onClick={event => { event.stopPropagation(); onSelectAP?.(ap) }}>{ap.titolo}</button>
                 </td>
-                <td className="px-3 py-2">
+                <td data-label="Tipo" className="px-3 py-2">
                   {ap.tipo ? (
                     <div className={`flex items-center gap-1 text-xs ${TIPO_COLORS[ap.tipo] || 'text-gray-500'}`}>
                       <TipoIcon size={14} />
@@ -315,19 +270,20 @@ function ListView({
                     </div>
                   ) : <span className="text-xs text-gray-300">—</span>}
                 </td>
-                <td className="px-3 py-2">
+                <td data-label="Priorità" className="px-3 py-2">
                   {ap.priorita ? (
                     <span className={`px-2 py-0.5 rounded text-xs ${PRIORITA_BG[ap.priorita] || 'bg-gray-100 text-gray-700'}`}>
                       {ap.priorita}
                     </span>
                   ) : <span className="text-xs text-gray-300">—</span>}
                 </td>
-                <td className="px-3 py-2">
+                <td data-label="Responsabile" className="px-3 py-2">
                   <Avatar name={ap.responsabile} />
                 </td>
-                <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                <td data-label="Stato" className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                   {(() => {
                     const statoStyle = getStatoStyle(ap.stato, statiConfig)
+                    if (readOnly) return <span className={`inline-block text-xs px-2 py-1 rounded ${statoStyle.className}`} style={statoStyle.style}>{ap.stato || 'Non definito'}</span>
                     return (
                       <select
                         value={ap.stato || ''}
@@ -346,7 +302,7 @@ function ListView({
                     )
                   })()}
                 </td>
-                <td className="px-3 py-2 text-xs">
+                <td data-label="Scadenza" className="px-3 py-2 text-xs">
                   {ap.data_scadenza ? (
                     <div className={isOverdue ? 'text-red-600 font-bold' : 'text-gray-700'}>
                       {new Date(ap.data_scadenza).toLocaleDateString('it-IT')}
@@ -354,7 +310,7 @@ function ListView({
                   ) : '—'}
                 </td>
                 {showStepGant && (
-                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                  <td data-label="Step Gant" className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     <select
                       value={ap.gant_step_id || ''}
                       onChange={(e) => onChangeStepGant?.(ap, e.target.value)}
@@ -373,11 +329,11 @@ function ListView({
                   </td>
                 )}
                 {showCollegato && (
-                  <td className="px-3 py-2 text-xs">
+                  <td data-label="Collegato a" className="px-3 py-2 text-xs">
                     <CollegatoBadge ap={ap} />
                   </td>
                 )}
-                <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                {!readOnly && <td data-label="Collegato a" className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                   <div className="flex justify-center gap-1">
                     {onSelectAP && (
                       <button onClick={() => onSelectAP(ap)} className="p-1 hover:bg-blue-100 rounded text-blue-600" title="Apri dettaglio">
@@ -412,7 +368,7 @@ function ListView({
                       </>
                     )}
                   </div>
-                </td>
+                </td>}
               </tr>
             )
           })}
@@ -421,10 +377,6 @@ function ListView({
     </div>
   )
 }
-
-// ──────────────────────────────────────────────────────────
-// VISTA KANBAN (drag&drop, colonne da statiConfig)
-// ──────────────────────────────────────────────────────────
 function KanbanView({ plans, statiConfig, onSelectAP, onChangeStato }) {
   if (statiConfig.length === 0) {
     return (
@@ -442,7 +394,6 @@ function KanbanView({ plans, statiConfig, onSelectAP, onChangeStato }) {
 
   const columns = statiConfig.map((s, idx) => {
     const palette = KANBAN_PALETTE[idx % KANBAN_PALETTE.length]
-    // Se lo stato ha colore custom dai Settings, usalo
     const hex = s.color
     if (hex) {
       return {
@@ -629,10 +580,6 @@ function KanbanCard({ plan }) {
     </>
   )
 }
-
-// ──────────────────────────────────────────────────────────
-// VISTA CALENDARIO (Scaduti / Oggi / Settimana / Prossimi)
-// ──────────────────────────────────────────────────────────
 function CalendarView({ plans, calendarDays, setCalendarDays, onSelectAP }) {
   const oggi = new Date()
   oggi.setHours(0, 0, 0, 0)
