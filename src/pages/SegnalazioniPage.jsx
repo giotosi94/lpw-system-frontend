@@ -101,6 +101,12 @@ export default function SegnalazioniPage() {
   useEffect(() => { load() }, [])
 
   useEffect(() => {
+    const newType = searchParams.get('nuova')
+    if (['Sicurezza', 'Ambiente'].includes(newType)) {
+      setDetail({ _id: null, tipo: newType, stato: 'Bozza', codice: '', segnalatore_nome: '', descrizione: '' })
+      setSearchParams({}, { replace: true })
+      return
+    }
     const openId = searchParams.get('open')
     if (!openId) return
     api.get(`/segnalazioni/${openId}`)
