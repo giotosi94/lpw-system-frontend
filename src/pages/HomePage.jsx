@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
+import { createPortal } from 'react-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import ActionPlanDetailPanel from '../components/ActionPlanDetailPanel'
@@ -17,7 +18,7 @@ export default function HomePage() {
   const [dashboards, setDashboards] = useState([])
   const [oplDaLeggere, setOplDaLeggere] = useState([])
   const [oplHistory, setOplHistory] = useState([])
-  const [oplTab, setOplTab] = useState('pending')
+  const [showReadingHistory, setShowReadingHistory] = useState(false)
   const [reports, setReports] = useState([])
   const [errors, setErrors] = useState({})
   const requestId = useRef(0)
@@ -127,7 +128,7 @@ export default function HomePage() {
     office: 'Ufficio',
     operator: 'Operatore'
   }
-  const shownOpl = oplTab === 'pending' ? oplDaLeggere : oplHistory
+  const shownOpl = oplDaLeggere
   const ownReports = reports.filter(item => {
     const id = user.id || user._id
     return (id && [item.segnalatore_id, item.creatore_id, item.created_by_id].some(value => value && String(value) === String(id))) || (user.full_name && item.segnalatore_nome === user.full_name)
@@ -183,12 +184,12 @@ export default function HomePage() {
     <div className="home-grid">
       <HomeSection section="opl" title="OPL" to="/da-leggere" linkLabel="Vedi tutte">
         <div className="home-tabs" role="group" aria-label="Letture OPL">
-          <button type="button" aria-pressed={oplTab === 'pending'} onClick={() => setOplTab('pending')} className={tabClass(oplTab === 'pending')}>Da leggere ({oplDaLeggere.length})</button>
-          <button type="button" aria-pressed={oplTab === 'history'} onClick={() => setOplTab('history')} className={tabClass(oplTab === 'history')}>Storico letture</button>
+          <button type="button" aria-pressed={true} className={tabClass(true)}>Da leggere ({oplDaLeggere.length})</button>
+          <button type="button" aria-haspopup="dialog" aria-expanded={showReadingHistory} onClick={() => setShowReadingHistory(true)} className={tabClass(false)}>Storico letture</button>
         </div>
-        {errors[oplTab === 'pending' ? 'opl' : 'history'] ? <LoadError onRetry={loadData} /> : !shownOpl.length ? <Empty>{oplTab === 'pending' ? 'Nessuna OPL da leggere.' : 'Nessuna lettura confermata.'}</Empty> : <div className="divide-y">{shownOpl.slice(0, 5).map(opl => <Link key={opl._id} to={`/da-leggere?opl=${encodeURIComponent(opl.document_id)}`} className="block py-2 hover:bg-gray-50 rounded">
+        {errors.opl ? <LoadError onRetry={loadData} /> : !shownOpl.length ? <Empty>Nessuna OPL da leggere.</Empty> : <div className="divide-y">{shownOpl.slice(0, 5).map(opl => <Link key={opl._id} to={`/da-leggere?opl=${encodeURIComponent(opl.document_id)}`} className="block py-2 hover:bg-gray-50 rounded">
           <div className="text-xs text-gray-500">{opl.document_number} · v{opl.version}</div><p className="text-sm font-medium break-words">{opl.document_title}</p>
-          <p className="text-xs text-gray-500 mt-1">{oplTab === 'history' ? `Letta il ${formatDate(opl.confirmed_at)}` : opl.scadenza ? `Scadenza ${formatDate(opl.scadenza)}` : ''}</p>
+          <p className="text-xs text-gray-500 mt-1">{opl.scadenza ? `Scadenza ${formatDate(opl.scadenza)}` : ''}</p>
         </Link>)}</div>}
       </HomeSection>
       <HomeSection section="new" title="Nuova segnalazione">
@@ -220,6 +221,7 @@ export default function HomePage() {
         {errors.meeting ? <LoadError onRetry={loadData} /> : <FavoriteMeetings key={`${user.plant_id || 'induno'}:${user.id || user._id || user.username}`} meetings={dashboards} configuring={configuringMeetings} storageKey={`lpw:meeting-favorites:${user.plant_id || 'induno'}:${user.id || user._id || user.username}`} />}
       </HomeSection>
     </div>
+    {showReadingHistory && <ReadingHistoryModal readings={oplHistory} error={errors.history} onRetry={loadData} onClose={() => setShowReadingHistory(false)} />}
     {editingAP && <ActionPlanFormShared plan={editingAP} onClose={() => setEditingAP(null)} onSaved={saved => { setEditingAP(null); loadData(); if (saved) setSelectedAP(saved) }} />}
     {selectedAP && <ActionPlanDetailPanel plan={selectedAP} onClose={() => setSelectedAP(null)} onUpdated={loadData} onEdit={plan => { setEditingAP(plan || selectedAP); setSelectedAP(null) }} />}
   </div>
@@ -259,4 +261,30 @@ function FavoriteMeetings({ meetings, storageKey, configuring }) {
       return <div key={id} className="flex items-center gap-2 py-2"><Link to={`/dashboard/${encodeURIComponent(id)}`} className="min-w-0 flex-1 text-sm font-medium break-words hover:text-primary">{name}</Link><button type="button" aria-label={`${selected ? 'Rimuovi' : 'Aggiungi'} ${name} ${selected ? 'dai' : 'ai'} preferiti`} aria-pressed={selected} onClick={() => toggle(id)} className={`p-2 rounded hover:bg-gray-50 ${selected ? 'text-amber-700' : 'text-gray-400'}`}><Star size={17} fill={selected ? 'currentColor' : 'none'} /></button></div>
     })}</div>}
   </div>
+}
+
+function ReadingHistoryModal({ readings, error, onRetry, onClose }) {
+  const dialogRef = useRef(null)
+  const [query, setQuery] = useState('')
+  useEffect(() => {
+    const dialog = dialogRef.current
+    const previousFocus = document.activeElement
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    dialog.showModal()
+    return () => {
+      dialog.close()
+      document.body.style.overflow = previousOverflow
+      previousFocus?.focus?.()
+    }
+  }, [])
+  const visible = readings.filter(item => [item.document_number, item.document_title].filter(Boolean).join(' ').toLowerCase().includes(query.trim().toLowerCase())).sort((a, b) => (Date.parse(b.confirmed_at) || 0) - (Date.parse(a.confirmed_at) || 0))
+  return createPortal(<dialog ref={dialogRef} aria-labelledby="reading-history-title" onCancel={event => { event.preventDefault(); onClose() }} onClick={event => { if (event.target === event.currentTarget) { const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose() } }} className="lpw-reading-history">
+    <style>{`.lpw-reading-history{width:min(760px,calc(100% - 32px));max-height:85dvh;padding:0;border:1px solid #c9bbaa;border-radius:12px;background:#fff;color:#30271e;box-shadow:0 18px 60px #0003;overflow:hidden}.lpw-reading-history::backdrop{background:rgba(0,0,0,.45)}.lpw-reading-history .reading-shell{display:flex;flex-direction:column;max-height:85dvh}.lpw-reading-history .reading-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px;border-bottom:1px solid #e5dcd1}.lpw-reading-history .reading-search{padding:16px 24px}.lpw-reading-history .reading-list{overflow-y:auto;padding:0 24px 20px;min-height:0}.lpw-reading-history .reading-row{display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #eee7df;text-decoration:none;color:inherit}.lpw-reading-history .reading-row:hover{background:#faf8f5}.lpw-reading-history button:focus-visible,.lpw-reading-history a:focus-visible,.lpw-reading-history input:focus-visible{outline:2px solid #806342;outline-offset:3px}@media(max-width:520px){.lpw-reading-history .reading-row{align-items:flex-start;flex-direction:column;gap:5px}.lpw-reading-history .reading-header{padding:16px}.lpw-reading-history .reading-search{padding:12px 16px}.lpw-reading-history .reading-list{padding:0 16px 16px}}`}</style>
+    <div className="reading-shell">
+      <div className="reading-header"><h2 id="reading-history-title" className="text-lg font-semibold">Storico letture</h2><button type="button" onClick={onClose} className="text-sm px-3 py-2 rounded border border-gray-300">Chiudi</button></div>
+      <div className="reading-search"><label className="block text-xs text-gray-500 mb-1" htmlFor="reading-history-search">Cerca per codice o titolo</label><input autoFocus id="reading-history-search" type="search" value={query} onChange={event => setQuery(event.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>
+      <div className="reading-list">{error ? <LoadError onRetry={onRetry} /> : !visible.length ? <Empty>{query.trim() ? 'Nessuna lettura trovata.' : 'Nessuna lettura confermata.'}</Empty> : visible.map((item, index) => <Link key={item._id || `${item.document_id}:${item.version}:${index}`} to={`/da-leggere?opl=${encodeURIComponent(item.document_id)}`} onClick={onClose} className="reading-row"><div className="min-w-0 flex-1"><div className="text-xs text-gray-500">{item.document_number} · v{item.version}</div><div className="text-sm font-medium break-words">{item.document_title}</div></div><span className="text-xs text-gray-500 whitespace-nowrap">Letta il {formatDate(item.confirmed_at)}</span></Link>)}</div>
+    </div>
+  </dialog>, document.body)
 }
