@@ -128,14 +128,50 @@ export default function HomePage() {
   }).sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0))
   const reportList = ownReports.slice(0, 4)
   const roles = [user.job_title || roleLabels[user.role], user.reparto, ...(user.linee || []), user.team].filter(Boolean)
-  return <div className="space-y-4" data-layout="home-clean-v1">
-    <header className="bg-gradient-to-r from-primary to-primary-light text-white rounded-xl p-4 sm:p-5 flex flex-wrap justify-between items-start gap-3">
+  return <div className="lpw-home" data-layout="home-professional-v2">
+    <style>{`
+.lpw-home{--home-ink:#29251f;--home-muted:#6e706f;--home-line:#e6e4df;--home-accent:#715328;color:var(--home-ink);width:100%;min-width:0;font-size:14px;line-height:1.5}
+.lpw-home .home-heading{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;padding:4px 0 22px;border-bottom:1px solid #dedbd4;margin-bottom:22px}
+.lpw-home .home-heading h1{font-size:26px;letter-spacing:-.6px;line-height:1.25;color:#30271e;margin:0;font-weight:650}
+.lpw-home .home-heading p{color:var(--home-muted);font-size:12px;margin-top:6px}
+.lpw-home .home-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;align-items:start}
+.lpw-home .home-panel{background:#fff;border:1px solid var(--home-line);border-radius:10px;padding:20px;min-width:0;box-shadow:0 2px 4px #30271e03}
+.lpw-home .home-panel-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+.lpw-home .home-panel-title{font-size:15px;line-height:1.4;font-weight:650;letter-spacing:-.15px;margin:0}
+.lpw-home .home-panel-link{font-size:11px;font-weight:500;color:var(--home-muted);text-decoration:none;white-space:nowrap}
+.lpw-home .home-panel-link:hover{color:var(--home-accent);text-decoration:underline}
+.lpw-home .home-panel-opl,.lpw-home .home-panel-new,.lpw-home .home-panel-reports{min-height:184px}
+.lpw-home .home-tabs{display:flex;gap:20px;border-bottom:1px solid var(--home-line);margin-bottom:12px}
+.lpw-home .home-tab{background:none;border:0;border-bottom:2px solid transparent;padding:0 0 9px;color:var(--home-muted);font-size:12px;min-height:34px}
+.lpw-home .home-tab-active{color:#3c2b1d;border-bottom-color:#896c3f;font-weight:600}
+.lpw-home .home-report-buttons{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.lpw-home .home-report-buttons a{background:#f8f7f4;border:1px solid #e5e2db;border-radius:7px;min-height:64px;display:flex;align-items:center;justify-content:center;padding:12px;font-size:13px;color:#43382a;font-weight:550}
+.lpw-home .home-report-buttons a:hover{background:#f0ede7;border-color:#b8a78d}
+.lpw-home .home-panel-actions{grid-column:1;grid-row:2 / span 2}
+.lpw-home .home-panel-kaizen{grid-column:2;grid-row:2}
+.lpw-home .home-panel-pillars{grid-column:3;grid-row:2}
+.lpw-home .home-panel-meetings{grid-column:2 / -1;grid-row:3}
+.lpw-home .home-action-list{display:flex;flex-direction:column;gap:18px;margin-top:18px}
+.lpw-home .home-ap-heading{font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.65px;color:#74716c;border-bottom:1px solid var(--home-line);padding-bottom:8px;margin:0 0 3px}
+.lpw-home .home-ap-red .home-ap-heading{color:#ad3833}
+.lpw-home .home-ap-orange .home-ap-heading{color:#9a631f}
+.lpw-home .home-ap-group .py-2{padding-top:12px;padding-bottom:12px}
+.lpw-home .home-ap-group button span:last-child{font-size:13px;line-height:1.6;color:#363631}
+.lpw-home .home-panel-actions .rounded-full{border-radius:5px;font-size:11px;padding:5px 8px}
+.lpw-home .home-panel-actions .flex.flex-wrap.gap-2{gap:5px}
+.lpw-home .home-panel .text-gray-500,.lpw-home .home-panel .text-gray-600{color:#71736f}
+.lpw-home .home-panel a,.lpw-home .home-panel button{overflow-wrap:anywhere}
+.lpw-home button:focus-visible,.lpw-home a:focus-visible{outline:2px solid #947748;outline-offset:3px}
+@media(max-width:1199px){.lpw-home .home-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.lpw-home .home-panel{grid-column:auto;grid-row:auto}.lpw-home .home-panel-actions{grid-column:1 / -1}.lpw-home .home-panel-opl,.lpw-home .home-panel-new,.lpw-home .home-panel-reports{min-height:0}}
+@media(max-width:639px){.lpw-home .home-grid{grid-template-columns:minmax(0,1fr);gap:12px}.lpw-home .home-panel{grid-column:auto;padding:16px}.lpw-home .home-heading{padding-bottom:16px;margin-bottom:16px}.lpw-home .home-heading h1{font-size:23px}.lpw-home .home-panel-heading{margin-bottom:14px}.lpw-home .home-tabs{gap:14px}.lpw-home .home-panel-actions .flex.flex-wrap.gap-2 button{min-height:32px}}
+`}</style>
+    <header className="home-heading">
       <div className="min-w-0"><h1 className="text-2xl font-bold">Ciao {user.full_name?.split(' ')[0] || user.username}!</h1><p className="text-sm mt-1 break-words">{[...new Set(roles)].join(' · ')}</p></div>
       <p className="text-xs">{new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
     </header>
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
-      <HomeSection title="OPL" to="/da-leggere" linkLabel="Vedi tutte">
-        <div className="flex flex-wrap gap-2 mb-3" role="group" aria-label="Letture OPL">
+    <div className="home-grid">
+      <HomeSection section="opl" title="OPL" to="/da-leggere" linkLabel="Vedi tutte">
+        <div className="home-tabs" role="group" aria-label="Letture OPL">
           <button type="button" aria-pressed={oplTab === 'pending'} onClick={() => setOplTab('pending')} className={tabClass(oplTab === 'pending')}>Da leggere ({oplDaLeggere.length})</button>
           <button type="button" aria-pressed={oplTab === 'history'} onClick={() => setOplTab('history')} className={tabClass(oplTab === 'history')}>Storico letture</button>
         </div>
@@ -144,47 +180,47 @@ export default function HomePage() {
           <p className="text-xs text-gray-500 mt-1">{oplTab === 'history' ? `Letta il ${formatDate(opl.confirmed_at)}` : opl.scadenza ? `Scadenza ${formatDate(opl.scadenza)}` : ''}</p>
         </Link>)}</div>}
       </HomeSection>
-      <HomeSection title="Nuova segnalazione">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <HomeSection section="new" title="Nuova segnalazione">
+        <div className="home-report-buttons">
           <Link to="/segnalazioni?nuova=Sicurezza" className="border border-gray-300 rounded-lg px-4 py-4 text-center text-sm font-semibold hover:border-primary focus-visible:outline focus-visible:outline-2">Sicurezza</Link>
           <Link to="/segnalazioni?nuova=Ambiente" className="border border-gray-300 rounded-lg px-4 py-4 text-center text-sm font-semibold hover:border-primary focus-visible:outline focus-visible:outline-2">Ambiente</Link>
         </div>
       </HomeSection>
-      <HomeSection title="Storico segnalazioni" to="/segnalazioni" linkLabel="Vedi tutte">
+      <HomeSection section="reports" title="Storico segnalazioni" to="/segnalazioni" linkLabel="Vedi tutte">
         {errors.reports ? <LoadError onRetry={loadData} /> : !reportList.length ? <Empty>Nessuna segnalazione personale.</Empty> : <div className="divide-y">{reportList.map(item => <Link key={item._id} to={`/segnalazioni?open=${encodeURIComponent(item._id)}`} className="block py-2 hover:bg-gray-50 rounded"><div className="flex flex-wrap justify-between gap-2 text-xs"><span className="font-mono">{item.codice || 'Bozza'}</span><span className="text-gray-500">{item.tipo} · {item.stato}</span></div><p className="text-sm break-words mt-1 line-clamp-2">{item.descrizione || 'Senza descrizione'}</p></Link>)}</div>}
       </HomeSection>
-      <HomeSection title={isOperator ? 'Action Plan della mia area' : 'Le mie Action Plan'} to="/action-plan" linkLabel="Vedi tutte">
+      <HomeSection section="actions" title={isOperator ? 'Action Plan della mia area' : 'Le mie Action Plan'} to="/action-plan" linkLabel="Vedi tutte">
         <OrigineFilterBar plans={baseActionPlans} value={origineFilter} onChange={setOrigineFilter} />
-        {errors.ap ? <LoadError onRetry={loadData} /> : !targetActionPlans.length ? <Empty>Nessuna Action Plan.</Empty> : <div className="space-y-3">
+        {errors.ap ? <LoadError onRetry={loadData} /> : !targetActionPlans.length ? <Empty>Nessuna Action Plan.</Empty> : <div className="home-action-list">
           {apOverdue.length > 0 && <APGroup title="Scaduti" color="red" aps={apOverdue.slice(0, 5)} onClick={setSelectedAP} />}
           {apToday.length > 0 && <APGroup title="Oggi" color="orange" aps={apToday.slice(0, 5)} onClick={setSelectedAP} />}
           {apWeek.length > 0 && <APGroup title="Questa settimana" color="yellow" aps={apWeek.slice(0, 5)} onClick={setSelectedAP} />}
           {apFuture.length > 0 && <APGroup title="Prossime" color="green" aps={apFuture.slice(0, 5)} onClick={setSelectedAP} />}
         </div>}
       </HomeSection>
-      <HomeSection title={isOperator ? 'Kaizen della mia linea' : 'I miei Kaizen'} to="/kaizen" linkLabel="Vedi tutti">
+      <HomeSection section="kaizen" title={isOperator ? 'Kaizen della mia linea' : 'I miei Kaizen'} to="/kaizen" linkLabel="Vedi tutti">
         {errors.kaizen ? <LoadError onRetry={loadData} /> : !myKaizens.length ? <Empty>Nessun Kaizen attivo.</Empty> : <div className="divide-y">{myKaizens.slice(0, 5).map(k => <Link key={k._id} to={`/kaizen/${k._id}`} className="block py-2 hover:bg-gray-50 rounded"><span className="text-xs font-mono text-gray-500">{k.numero}</span><p className="text-sm font-medium break-words">{k.titolo}</p></Link>)}</div>}
       </HomeSection>
-      {!isOperator && <HomeSection title="I miei pilastri" to="/pillars" linkLabel="Vedi tutti">
+      {!isOperator && <HomeSection section="pillars" title="I miei pilastri" to="/pillars" linkLabel="Vedi tutti">
         {errors.pillar ? <LoadError onRetry={loadData} /> : !myPillars.length ? <Empty>Nessun pilastro assegnato.</Empty> : <div className="divide-y">{myPillars.slice(0, 5).map(p => <Link key={p._id} to={`/pillars/${p._id}`} className="flex items-center gap-3 py-2 hover:bg-gray-50 rounded">{p.icon_image && <img src={p.icon_image} alt="" style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }} onError={event => { event.currentTarget.style.display = 'none' }} />}<div className="min-w-0"><p className="text-sm font-semibold">{p.sigla}</p><p className="text-xs text-gray-600 break-words">{p.label}</p></div></Link>)}</div>}
       </HomeSection>}
-      <HomeSection title="I miei Meeting" to="/dashboard" linkLabel="Vedi tutti">
+      <HomeSection section="meetings" title="I miei Meeting" to="/dashboard" linkLabel="Vedi tutti">
         {errors.meeting ? <LoadError onRetry={loadData} /> : !dashboards.length ? <Empty>Nessun meeting disponibile.</Empty> : <div className="divide-y">{dashboards.slice(0, 6).map(d => <Link key={d._id} to={`/dashboard/${d._id}`} className="block py-2 text-sm font-medium break-words hover:bg-gray-50 rounded">{d.nome || d.label || 'Meeting'}</Link>)}</div>}
       </HomeSection>
     </div>
     {selectedAP && <ActionPlanDetailPanel plan={selectedAP} onClose={() => setSelectedAP(null)} onUpdated={loadData} onEdit={() => setSelectedAP(null)} />}
   </div>
 }
-function HomeSection({ title, to, linkLabel, children }) {
-  return <section className="bg-white border border-gray-200 rounded-xl p-4 min-w-0"><div className="flex flex-wrap justify-between items-center gap-2 mb-3"><h2 className="text-base font-semibold text-gray-900">{title}</h2>{to && <Link to={to} className="text-xs text-primary hover:underline shrink-0">{linkLabel}</Link>}</div>{children}</section>
+function HomeSection({ section, title, to, linkLabel, children }) {
+  return <section className={`home-panel home-panel-${section || 'other'}`}><div className="home-panel-heading"><h2 className="home-panel-title">{title}</h2>{to && <Link to={to} className="home-panel-link">{linkLabel}</Link>}</div>{children}</section>
 }
 function Empty({ children }) { return <p className="text-sm text-gray-500 py-3">{children}</p> }
 function LoadError({ onRetry }) { return <p role="alert" className="text-sm text-red-700">Dati non disponibili. <button type="button" onClick={onRetry} className="underline">Riprova</button></p> }
 function formatDate(value) { const date = new Date(value); return value && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('it-IT') : '—' }
-function tabClass(active) { return `px-3 py-1.5 rounded border text-xs ${active ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-200'}` }
+function tabClass(active) { return `home-tab ${active ? 'home-tab-active' : ''}` }
 function APGroup({ title, color, aps, onClick }) {
   const colors = { red: 'text-red-700 bg-red-50 border-red-200', orange: 'text-orange-700 bg-orange-50 border-orange-200', yellow: 'text-yellow-800 bg-yellow-50 border-yellow-200', green: 'text-gray-700 bg-gray-50 border-gray-200' }
-  return <div><h3 className={`mb-1 px-2 py-1 rounded border text-xs font-semibold ${colors[color]}`}>{title} ({aps.length})</h3><div className="divide-y">{aps.map(ap => <div key={ap._id} className="py-2 min-w-0"><button type="button" onClick={() => onClick(ap)} className="block w-full text-left hover:text-primary"><span className="font-mono text-xs font-semibold">{ap.numero}</span><span className="block text-sm break-words mt-0.5">{ap.titolo}</span></button><div className="flex flex-wrap justify-between gap-1 mt-1"><OriginePill ap={ap} />{ap.data_scadenza && <span className="text-xs text-gray-500">{formatDate(ap.data_scadenza)}</span>}</div></div>)}</div></div>
+  return <div className={`home-ap-group home-ap-${color}`}><h3 className="home-ap-heading">{title} ({aps.length})</h3><div className="divide-y">{aps.map(ap => <div key={ap._id} className="py-2 min-w-0"><button type="button" onClick={() => onClick(ap)} className="block w-full text-left hover:text-primary"><span className="font-mono text-xs font-semibold">{ap.numero}</span><span className="block text-sm break-words mt-0.5">{ap.titolo}</span></button><div className="flex flex-wrap justify-between gap-1 mt-1"><OriginePill ap={ap} />{ap.data_scadenza && <span className="text-xs text-gray-500">{formatDate(ap.data_scadenza)}</span>}</div></div>)}</div></div>
 }
 function getOrigine(ap) {
   if (!ap.parent_type || ap.parent_type === 'standalone') {
