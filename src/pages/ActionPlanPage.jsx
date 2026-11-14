@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, Filter, X, ChevronDown } from 'lucide-react'
+import { Search, Filter, X, ChevronDown } from 'lucide-react'
 import api from '../services/api'
 import { useAllConfigurations } from '../hooks/useConfigurations'
 import ActionPlanFormShared from '../components/ActionPlanFormShared'
@@ -164,18 +164,13 @@ export default function ActionPlanPage() {
 
   return (
     <div className="space-y-4">
-      {/* HEADER */}
+      
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">Action Plan Management</h1>
           <p className="text-gray-500 text-sm">Gestione piani d'azione trasversali</p>
         </div>
-        <div className="flex gap-2 items-center">
-          <button onClick={() => { setEditingPlan(null); setShowForm(true) }}
-            className="bg-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-light shadow-sm">
-            <Plus size={20} /> Nuovo Action Plan
-          </button>
-        </div>
+
       </div>
 
       <div className="bg-white p-4 rounded-xl shadow-sm space-y-4">
@@ -244,7 +239,7 @@ export default function ActionPlanPage() {
             title="Origine"
             field="parent_type"
             options={[
-              { value: 'standalone', label: 'Manuale' },
+
               { value: 'segnalazione', label: 'Segnalazione' },
               { value: 'dashboard', label: 'Meeting' },
               { value: 'kaizen', label: 'Kaizen' },
@@ -298,13 +293,13 @@ export default function ActionPlanPage() {
           </div>
         )}
       </div>
-      {/* LISTA/KANBAN */}
+      
       {loading ? (
         <div className="bg-white rounded-lg shadow-sm p-12 text-center text-gray-400">Caricamento...</div>
       ) : plans.length === 0 ? (
         <div className="bg-white rounded-lg shadow-sm p-12 text-center text-gray-400">
           <p>Nessun Action Plan trovato</p>
-          <button onClick={() => setShowForm(true)} className="text-primary hover:underline mt-2">Creane uno nuovo →</button>
+
         </div>
       ) : (
         <ActionPlanViews
@@ -319,11 +314,11 @@ export default function ActionPlanPage() {
           showCalendar={true}
           defaultView={viewMode}
           emptyMessage="Nessun Action Plan trovato"
-          emptyAction={{ label: 'Creane uno nuovo →', onClick: () => setShowForm(true) }}
+
         />
       )}
 
-      {showForm && (
+      {showForm && editingPlan && (
         <ActionPlanFormShared
           plan={editingPlan}
           onClose={() => { setShowForm(false); setEditingPlan(null) }}
@@ -350,10 +345,6 @@ export default function ActionPlanPage() {
     </div>
   )
 }
-
-// ──────────────────────────────────────────────────────────
-// HELPER COMPONENTS
-// ──────────────────────────────────────────────────────────
 function toggleMultiValue(values, value) {
   return values.includes(value)
     ? values.filter(item => item !== value)
