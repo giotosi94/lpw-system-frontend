@@ -1,69 +1,56 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
-import {
-  ClipboardList, AlertTriangle, Calendar, FileText, Layers,
-  User, Briefcase, Factory, MapPin, ChevronRight, CheckCircle2, Clock
-} from 'lucide-react'
 import ActionPlanDetailPanel from '../components/ActionPlanDetailPanel'
 
 export default function HomePage() {
-  const { user, isAdmin, isManager, isOffice, isOperator } = useAuth()
+  const { user, isOperator } = useAuth()
 
   const [actionPlans, setActionPlans] = useState([])
   const [kaizens, setKaizens] = useState([])
   const [pillars, setPillars] = useState([])
   const [dashboards, setDashboards] = useState([])
   const [oplDaLeggere, setOplDaLeggere] = useState([])
+  const [oplHistory, setOplHistory] = useState([])
+  const [oplTab, setOplTab] = useState('pending')
+  const [reports, setReports] = useState([])
+  const [errors, setErrors] = useState({})
+  const requestId = useRef(0)
   const [loading, setLoading] = useState(true)
   const [selectedAP, setSelectedAP] = useState(null)
   const [origineFilter, setOrigineFilter] = useState('tutte')
 
-  useEffect(() => { loadData() }, [user])
-
+  useEffect(() => { loadData(); return () => { requestId.current += 1 } }, [user])
   async function loadData() {
     if (!user) return
+    const version = ++requestId.current
     setLoading(true)
-    try {
-      const [
-  apsRes,
-  kaizensRes,
-  pillarsRes,
-  dashboardsRes,
-  oplRes,
-] = await Promise.all([
-  api.get('/action-plans/').catch(() => ({ data: [] })),
-  api.get('/kaizens/').catch(() => ({ data: [] })),
-  api.get('/pillars/').catch(() => ({ data: [] })),
-  api.get('/dashboards/').catch(() => ({ data: [] })),
-  api.get('/opl-letture/da-leggere').catch(() => ({
-    data: { items: [] },
-  })),
-])
-
-setActionPlans(apsRes.data || [])
-setKaizens(kaizensRes.data || [])
-setPillars(pillarsRes.data || [])
-setDashboards(dashboardsRes.data || [])
-setOplDaLeggere(oplRes.data?.items || [])
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
+    const endpoints = ['/action-plans/', '/kaizens/', '/pillars/', '/dashboards/', '/opl-letture/da-leggere', '/opl-letture/storico-personale', '/segnalazioni/']
+    const results = await Promise.allSettled(endpoints.map(path => api.get(path)))
+    if (version !== requestId.current) return
+    const failures = {}
+    const read = (index, key, wrapped = false) => {
+      if (results[index].status !== 'fulfilled') { failures[key] = true; return [] }
+      const data = results[index].value.data
+      return Array.isArray(wrapped ? data?.items : data) ? (wrapped ? data.items : data) : []
     }
+    setActionPlans(read(0, 'ap'))
+    setKaizens(read(1, 'kaizen'))
+    setPillars(read(2, 'pillar'))
+    setDashboards(read(3, 'meeting'))
+    setOplDaLeggere(read(4, 'opl', true))
+    setOplHistory(read(5, 'history', true))
+    setReports(read(6, 'reports'))
+    setErrors(failures)
+    setLoading(false)
   }
-
   if (!user) return null
   if (loading) {
     return (
       <div className="text-center py-12 text-gray-400">Caricamento dashboard personale...</div>
     )
   }
-
-  // ──────────────────────────────────────────
-  // FILTRI per "le mie cose" in base al ruolo
-  // ──────────────────────────────────────────
   const myActionPlans = actionPlans.filter(ap => {
     if (ap.is_cancelled) return false
     if (ap.responsabile && ap.responsabile === user.full_name) return true
@@ -134,412 +121,71 @@ setOplDaLeggere(oplRes.data?.items || [])
     office: 'Ufficio',
     operator: 'Operatore'
   }
-  const roleColors = {
-    admin: 'bg-red-100 text-red-700',
-    manager: 'bg-purple-100 text-purple-700',
-    office: 'bg-blue-100 text-blue-700',
-    operator: 'bg-green-100 text-green-700'
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* HEADER PERSONALE */}
-      <div className="bg-gradient-to-r from-primary to-primary-light text-white rounded-2xl shadow-lg p-6">
-        <div className="flex items-start justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-3xl font-bold mb-1">
-              Ciao {user.full_name?.split(' ')[0] || user.username}!
-            </h1>
-            <p className="text-white text-opacity-90 text-sm">
-              {user.job_title || roleLabels[user.role] || 'Utente LPW System'}
-            </p>
-            <div className="flex items-center gap-3 mt-3 flex-wrap">
-              <span className={`px-2 py-1 rounded-full text-xs font-medium ${roleColors[user.role] || 'bg-gray-100 text-gray-700'}`}>
-                {roleLabels[user.role] || user.role}
-              </span>
-              {user.reparto && (
-                <span className="bg-white bg-opacity-20 px-3 py-1 rounded-full text-xs flex items-center gap-1">
-                  <Factory size={12} /> {user.reparto}
-                </span>
-              )}
-              {user.linee?.length > 0 && (
-                <span className="bg-white bg-opacity-20 px-3 py-1 rounded-full text-xs flex items-center gap-1">
-                  <MapPin size={12} /> {user.linee.join(', ')}
-                </span>
-              )}
-              {user.team && (
-                <span className="bg-white bg-opacity-20 px-3 py-1 rounded-full text-xs flex items-center gap-1">
-                  <Briefcase size={12} /> {user.team}
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-sm opacity-90">{new Date().toLocaleDateString('it-IT', {
-              weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-            })}</div>
-          </div>
+  const shownOpl = oplTab === 'pending' ? oplDaLeggere : oplHistory
+  const ownReports = reports.filter(item => {
+    const id = user.id || user._id
+    return (id && [item.segnalatore_id, item.creatore_id, item.created_by_id].some(value => value && String(value) === String(id))) || (user.full_name && item.segnalatore_nome === user.full_name)
+  }).sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0))
+  const reportList = ownReports.slice(0, 4)
+  const roles = [user.job_title || roleLabels[user.role], user.reparto, ...(user.linee || []), user.team].filter(Boolean)
+  return <div className="space-y-4" data-layout="home-clean-v1">
+    <header className="bg-gradient-to-r from-primary to-primary-light text-white rounded-xl p-4 sm:p-5 flex flex-wrap justify-between items-start gap-3">
+      <div className="min-w-0"><h1 className="text-2xl font-bold">Ciao {user.full_name?.split(' ')[0] || user.username}!</h1><p className="text-sm mt-1 break-words">{[...new Set(roles)].join(' · ')}</p></div>
+      <p className="text-xs">{new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+    </header>
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
+      <HomeSection title="OPL" to="/da-leggere" linkLabel="Vedi tutte">
+        <div className="flex flex-wrap gap-2 mb-3" role="group" aria-label="Letture OPL">
+          <button type="button" aria-pressed={oplTab === 'pending'} onClick={() => setOplTab('pending')} className={tabClass(oplTab === 'pending')}>Da leggere ({oplDaLeggere.length})</button>
+          <button type="button" aria-pressed={oplTab === 'history'} onClick={() => setOplTab('history')} className={tabClass(oplTab === 'history')}>Storico letture</button>
         </div>
-      </div>
-
-      {/* RIASSUNTO RAPIDO */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard icon={AlertTriangle} label="Scaduti" value={apOverdue.length} color="red" link="/action-plan" />
-        <StatCard icon={Clock} label="Oggi" value={apToday.length} color="orange" link="/action-plan" />
-        <StatCard icon={Calendar} label="Settimana" value={apWeek.length} color="yellow" link="/action-plan" />
-        <StatCard icon={CheckCircle2} label="AP totali" value={targetActionPlans.length} color="green" link="/action-plan" />
-      </div>
-
-            <div className="bg-white rounded-xl shadow overflow-hidden">
-        <div className="bg-yellow-50 border-l-4 border-yellow-500 px-6 py-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <FileText size={20} className="text-yellow-600" />
-                OPL da prendere visione
-
-                {oplDaLeggere.length > 0 && (
-                  <span className="bg-red-500 text-white min-w-6 h-6 px-1.5 rounded-full text-xs flex items-center justify-center">
-                    {oplDaLeggere.length}
-                  </span>
-                )}
-              </h2>
-
-              <p className="text-xs text-gray-500 mt-1">
-                OPL assegnate che richiedono la conferma di lettura e comprensione.
-              </p>
-            </div>
-
-            {oplDaLeggere.length > 0 && (
-              <Link
-                to="/da-leggere"
-                className="text-primary text-sm font-medium hover:underline flex items-center gap-1"
-              >
-                Vedi tutte
-                <ChevronRight size={14} />
-              </Link>
-            )}
-          </div>
+        {errors[oplTab === 'pending' ? 'opl' : 'history'] ? <LoadError onRetry={loadData} /> : !shownOpl.length ? <Empty>{oplTab === 'pending' ? 'Nessuna OPL da leggere.' : 'Nessuna lettura confermata.'}</Empty> : <div className="divide-y">{shownOpl.slice(0, 5).map(opl => <Link key={opl._id} to={`/da-leggere?opl=${encodeURIComponent(opl.document_id)}`} className="block py-2 hover:bg-gray-50 rounded">
+          <div className="text-xs text-gray-500">{opl.document_number} · v{opl.version}</div><p className="text-sm font-medium break-words">{opl.document_title}</p>
+          <p className="text-xs text-gray-500 mt-1">{oplTab === 'history' ? `Letta il ${formatDate(opl.confirmed_at)}` : opl.scadenza ? `Scadenza ${formatDate(opl.scadenza)}` : ''}</p>
+        </Link>)}</div>}
+      </HomeSection>
+      <HomeSection title="Nuova segnalazione">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Link to="/segnalazioni?nuova=Sicurezza" className="border border-gray-300 rounded-lg px-4 py-4 text-center text-sm font-semibold hover:border-primary focus-visible:outline focus-visible:outline-2">Sicurezza</Link>
+          <Link to="/segnalazioni?nuova=Ambiente" className="border border-gray-300 rounded-lg px-4 py-4 text-center text-sm font-semibold hover:border-primary focus-visible:outline focus-visible:outline-2">Ambiente</Link>
         </div>
-
-        {oplDaLeggere.length === 0 ? (
-          <div className="px-6 py-5 flex items-center gap-3 text-sm text-gray-500">
-            <CheckCircle2 size={22} className="text-green-500 flex-shrink-0" />
-
-            <span>
-              Nessuna OPL in attesa di conferma.
-            </span>
-          </div>
-        ) : (
-          <div className="divide-y">
-            {oplDaLeggere.slice(0, 4).map(opl => (
-              <Link
-                key={opl._id}
-                to={`/da-leggere?opl=${opl.document_id}`}
-                className="flex items-center gap-4 px-6 py-4 hover:bg-yellow-50 transition-colors"
-              >
-                <div className="w-10 h-10 rounded-lg bg-yellow-100 text-yellow-700 flex items-center justify-center flex-shrink-0">
-                  <FileText size={19} />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-primary">
-                      {opl.document_number}
-                    </span>
-
-                    <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs">
-                      v{opl.version}
-                    </span>
-                  </div>
-
-                  <div className="text-sm font-medium text-gray-800 truncate mt-1">
-                    {opl.document_title}
-                  </div>
-
-                  {opl.scadenza && (
-                    <div className="text-xs text-gray-500 mt-1">
-                      Da confermare entro il{' '}
-                      {new Date(opl.scadenza).toLocaleDateString('it-IT')}
-                    </div>
-                  )}
-                </div>
-
-                <span className="text-xs font-medium bg-primary text-white px-3 py-1.5 rounded-lg">
-                  Apri
-                </span>
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* LE MIE ACTION PLAN */}
-      <div className="bg-white rounded-xl shadow p-6">
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-              <ClipboardList size={20} className="text-primary" />
-              {isOperator ? 'Action Plan della mia area' : 'Le mie Action Plan'}
-            </h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {isOperator
-                ? `Filtrate per reparto/linea/macchine assegnate`
-                : `Dove sei responsabile o menzionato`
-              }
-            </p>
-          </div>
-          <Link to="/action-plan" className="text-primary text-sm hover:underline flex items-center gap-1">
-            Vedi tutte <ChevronRight size={14} />
-          </Link>
-        </div>
-
-        <OrigineFilterBar
-          plans={baseActionPlans}
-          value={origineFilter}
-          onChange={setOrigineFilter}
-        />
-
-        {targetActionPlans.length === 0 ? (
-          <div className="text-center py-8 text-gray-400">
-            <ClipboardList size={48} className="mx-auto opacity-30 mb-2" />
-            <p>Nessuna Action Plan al momento</p>
-            <p className="text-xs">Quando ne avrai una, apparirà qui.</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {apOverdue.length > 0 && (
-              <APGroup title="Scaduti" color="red" icon={AlertTriangle} aps={apOverdue.slice(0, 5)} onClick={setSelectedAP} />
-            )}
-            {apToday.length > 0 && (
-              <APGroup title="Da fare oggi" color="orange" icon={Clock} aps={apToday.slice(0, 5)} onClick={setSelectedAP} />
-            )}
-            {apWeek.length > 0 && (
-              <APGroup title="Questa settimana" color="yellow" icon={Calendar} aps={apWeek.slice(0, 5)} onClick={setSelectedAP} />
-            )}
-            {apFuture.length > 0 && (
-              <APGroup title="Prossime" color="green" icon={CheckCircle2} aps={apFuture.slice(0, 5)} onClick={setSelectedAP} />
-            )}
-            {apOverdue.length === 0 && apToday.length === 0 && apWeek.length === 0 && apFuture.length === 0 && (
-              <div className="text-center py-4 text-gray-400 text-sm">
-                Nessun AP attivo al momento. Bel lavoro!
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* I MIEI PILLAR + I MIEI KAIZEN (lato fianco) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {!isOperator && (
-          <div className="bg-white rounded-xl shadow p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <Layers size={18} className="text-indigo-600" />
-                I miei Pillar
-                <span className="text-sm text-gray-400 font-normal">({myPillars.length})</span>
-              </h2>
-              <Link to="/pillars" className="text-primary text-sm hover:underline flex items-center gap-1">
-                Vedi tutti <ChevronRight size={14} />
-              </Link>
-            </div>
-            {myPillars.length === 0 ? (
-              <p className="text-gray-400 text-sm text-center py-6">Non sei coinvolto in alcun Pillar</p>
-            ) : (
-              <div className="space-y-2">
-                {myPillars.slice(0, 5).map(p => {
-                  const isLeader = p.leader_id === user.id || p.leader === user.full_name
-                  return (
-                    <Link
-                      key={p._id}
-                      to={`/pillars/${p._id}`}
-                      className="flex items-center gap-3 p-3 rounded-lg border hover:bg-gray-50 transition-colors"
-                    >
-                      <div
-                        className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm overflow-hidden flex-shrink-0"
-                        style={{ backgroundColor: p.color || '#6366f1' }}
-                      >
-                        {p.icon_image ? (
-                          React.createElement('img', {
-                            src: p.icon_image,
-                            alt: p.sigla,
-                            className: 'w-full h-full object-contain',
-                          })
-                        ) : (
-                          p.icon || p.sigla?.charAt(0) || 'P'
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-mono text-sm font-bold" style={{ color: p.color || '#6366f1' }}>
-                          {p.sigla}
-                        </div>
-                        <div className="text-sm text-gray-700 truncate">{p.label}</div>
-                      </div>
-                      {isLeader && (
-                        <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-xs font-medium">
-                          Leader
-                        </span>
-                      )}
-                    </Link>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* KAIZEN */}
-        <div className={`bg-white rounded-xl shadow p-6 ${isOperator ? 'md:col-span-2' : ''}`}>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-              <FileText size={18} className="text-emerald-600" />
-              {isOperator ? 'Kaizen della mia linea' : 'I miei Kaizen'}
-              <span className="text-sm text-gray-400 font-normal">({myKaizens.length})</span>
-            </h2>
-            <Link to="/kaizen" className="text-primary text-sm hover:underline flex items-center gap-1">
-              Vedi tutti <ChevronRight size={14} />
-            </Link>
-          </div>
-          {myKaizens.length === 0 ? (
-            <p className="text-gray-400 text-sm text-center py-6">Nessun Kaizen attivo</p>
-          ) : (
-            <div className="space-y-2">
-              {myKaizens.slice(0, 5).map(k => {
-                const livello = k.livello || (k.tipo?.includes('Major') ? 'Major' : k.tipo?.includes('Standard') ? 'Standard' : 'Quick')
-                const livelloColor = {
-                  Major: 'bg-purple-100 text-purple-700',
-                  Standard: 'bg-blue-100 text-blue-700',
-                  Quick: 'bg-emerald-100 text-emerald-700'
-                }[livello] || 'bg-gray-100 text-gray-700'
-                return (
-                  <Link
-                    key={k._id}
-                    to={`/kaizen/${k._id}`}
-                    className="flex items-center gap-3 p-3 rounded-lg border hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="font-mono text-xs text-primary font-bold">{k.numero}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${livelloColor}`}>
-                          {livello}
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-700 truncate">{k.titolo}</div>
-                    </div>
-                    <ChevronRight size={16} className="text-gray-400" />
-                  </Link>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* MEETINGS / DASHBOARD */}
-      <div className="bg-white rounded-xl shadow p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-            <Calendar size={18} className="text-purple-600" />
-            I miei Meetings
-            <span className="text-sm text-gray-400 font-normal">({dashboards.length})</span>
-          </h2>
-          <Link to="/dashboard" className="text-primary text-sm hover:underline flex items-center gap-1">
-            Vedi tutti <ChevronRight size={14} />
-          </Link>
-        </div>
-        {dashboards.length === 0 ? (
-          <p className="text-gray-400 text-sm text-center py-6">Nessun Meeting configurato</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {dashboards.slice(0, 6).map(d => (
-              <Link
-                key={d._id}
-                to={`/dashboard/${d._id}`}
-                className="p-3 rounded-lg border hover:bg-gray-50 transition-colors"
-              >
-                <div className="font-medium text-sm text-gray-700">{d.nome || d.label || 'Meeting'}</div>
-                {d.tipo && <div className="text-xs text-gray-500 mt-0.5">{d.tipo}</div>}
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Pannello dettaglio AP (cliccando una riga) */}
-      {selectedAP && (
-        <ActionPlanDetailPanel
-          plan={selectedAP}
-          onClose={() => setSelectedAP(null)}
-          onUpdated={loadData}
-          onEdit={() => setSelectedAP(null)}
-        />
-      )}
+      </HomeSection>
+      <HomeSection title="Storico segnalazioni" to="/segnalazioni" linkLabel="Vedi tutte">
+        {errors.reports ? <LoadError onRetry={loadData} /> : !reportList.length ? <Empty>Nessuna segnalazione personale.</Empty> : <div className="divide-y">{reportList.map(item => <Link key={item._id} to={`/segnalazioni?open=${encodeURIComponent(item._id)}`} className="block py-2 hover:bg-gray-50 rounded"><div className="flex flex-wrap justify-between gap-2 text-xs"><span className="font-mono">{item.codice || 'Bozza'}</span><span className="text-gray-500">{item.tipo} · {item.stato}</span></div><p className="text-sm break-words mt-1 line-clamp-2">{item.descrizione || 'Senza descrizione'}</p></Link>)}</div>}
+      </HomeSection>
+      <HomeSection title={isOperator ? 'Action Plan della mia area' : 'Le mie Action Plan'} to="/action-plan" linkLabel="Vedi tutte">
+        <OrigineFilterBar plans={baseActionPlans} value={origineFilter} onChange={setOrigineFilter} />
+        {errors.ap ? <LoadError onRetry={loadData} /> : !targetActionPlans.length ? <Empty>Nessuna Action Plan.</Empty> : <div className="space-y-3">
+          {apOverdue.length > 0 && <APGroup title="Scaduti" color="red" aps={apOverdue.slice(0, 5)} onClick={setSelectedAP} />}
+          {apToday.length > 0 && <APGroup title="Oggi" color="orange" aps={apToday.slice(0, 5)} onClick={setSelectedAP} />}
+          {apWeek.length > 0 && <APGroup title="Questa settimana" color="yellow" aps={apWeek.slice(0, 5)} onClick={setSelectedAP} />}
+          {apFuture.length > 0 && <APGroup title="Prossime" color="green" aps={apFuture.slice(0, 5)} onClick={setSelectedAP} />}
+        </div>}
+      </HomeSection>
+      <HomeSection title={isOperator ? 'Kaizen della mia linea' : 'I miei Kaizen'} to="/kaizen" linkLabel="Vedi tutti">
+        {errors.kaizen ? <LoadError onRetry={loadData} /> : !myKaizens.length ? <Empty>Nessun Kaizen attivo.</Empty> : <div className="divide-y">{myKaizens.slice(0, 5).map(k => <Link key={k._id} to={`/kaizen/${k._id}`} className="block py-2 hover:bg-gray-50 rounded"><span className="text-xs font-mono text-gray-500">{k.numero}</span><p className="text-sm font-medium break-words">{k.titolo}</p></Link>)}</div>}
+      </HomeSection>
+      {!isOperator && <HomeSection title="I miei pilastri" to="/pillars" linkLabel="Vedi tutti">
+        {errors.pillar ? <LoadError onRetry={loadData} /> : !myPillars.length ? <Empty>Nessun pilastro assegnato.</Empty> : <div className="divide-y">{myPillars.slice(0, 5).map(p => <Link key={p._id} to={`/pillars/${p._id}`} className="flex items-center gap-3 py-2 hover:bg-gray-50 rounded">{p.icon_image && <img src={p.icon_image} alt="" style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }} onError={event => { event.currentTarget.style.display = 'none' }} />}<div className="min-w-0"><p className="text-sm font-semibold">{p.sigla}</p><p className="text-xs text-gray-600 break-words">{p.label}</p></div></Link>)}</div>}
+      </HomeSection>}
+      <HomeSection title="I miei Meeting" to="/dashboard" linkLabel="Vedi tutti">
+        {errors.meeting ? <LoadError onRetry={loadData} /> : !dashboards.length ? <Empty>Nessun meeting disponibile.</Empty> : <div className="divide-y">{dashboards.slice(0, 6).map(d => <Link key={d._id} to={`/dashboard/${d._id}`} className="block py-2 text-sm font-medium break-words hover:bg-gray-50 rounded">{d.nome || d.label || 'Meeting'}</Link>)}</div>}
+      </HomeSection>
     </div>
-  )
+    {selectedAP && <ActionPlanDetailPanel plan={selectedAP} onClose={() => setSelectedAP(null)} onUpdated={loadData} onEdit={() => setSelectedAP(null)} />}
+  </div>
 }
-
-// ──────────────────────────────────────────
-// HELPER: StatCard
-// ──────────────────────────────────────────
-function StatCard({ icon: Icon, label, value, color, link }) {
-  const colors = {
-    red: 'bg-red-100 text-red-600',
-    orange: 'bg-orange-100 text-orange-600',
-    yellow: 'bg-yellow-100 text-yellow-600',
-    green: 'bg-green-100 text-green-600',
-    blue: 'bg-blue-100 text-blue-600',
-  }
-  return (
-    <Link to={link || '#'} className="bg-white rounded-xl shadow p-4 flex items-center gap-3 hover:shadow-md transition-shadow">
-      <div className={`p-3 rounded-lg ${colors[color] || 'bg-gray-100 text-gray-600'}`}>
-        <Icon size={20} />
-      </div>
-      <div className="min-w-0">
-        <p className="text-2xl font-bold">{value}</p>
-        <p className="text-xs text-gray-500">{label}</p>
-      </div>
-    </Link>
-  )
+function HomeSection({ title, to, linkLabel, children }) {
+  return <section className="bg-white border border-gray-200 rounded-xl p-4 min-w-0"><div className="flex flex-wrap justify-between items-center gap-2 mb-3"><h2 className="text-base font-semibold text-gray-900">{title}</h2>{to && <Link to={to} className="text-xs text-primary hover:underline shrink-0">{linkLabel}</Link>}</div>{children}</section>
 }
-
-// ──────────────────────────────────────────
-// HELPER: Gruppo di AP per categoria scadenza (CLICCABILE)
-// ──────────────────────────────────────────
-function APGroup({ title, color, icon: Icon, aps, onClick }) {
-  const colors = {
-    red: 'text-red-700 bg-red-50 border-red-200',
-    orange: 'text-orange-700 bg-orange-50 border-orange-200',
-    yellow: 'text-yellow-700 bg-yellow-50 border-yellow-200',
-    green: 'text-green-700 bg-green-50 border-green-200',
-  }
-  return (
-    <div>
-      <div className={`flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg border ${colors[color]}`}>
-        <Icon size={14} />
-        <span className="text-xs font-bold uppercase">{title} ({aps.length})</span>
-      </div>
-      <div className="space-y-1.5">
-        {aps.map(ap => (
-          <div
-            key={ap._id}
-            onClick={() => onClick?.(ap)}
-            className="flex items-center gap-2 p-2 rounded border hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition-colors"
-          >
-            <span className="font-mono text-xs text-primary font-bold flex-shrink-0">{ap.numero}</span>
-            <span className="text-sm flex-1 truncate">{ap.titolo}</span>
-            <OriginePill ap={ap} />
-            {ap.data_scadenza && (
-              <span className="text-xs text-gray-500 flex-shrink-0">
-                {new Date(ap.data_scadenza).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
+function Empty({ children }) { return <p className="text-sm text-gray-500 py-3">{children}</p> }
+function LoadError({ onRetry }) { return <p role="alert" className="text-sm text-red-700">Dati non disponibili. <button type="button" onClick={onRetry} className="underline">Riprova</button></p> }
+function formatDate(value) { const date = new Date(value); return value && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('it-IT') : '—' }
+function tabClass(active) { return `px-3 py-1.5 rounded border text-xs ${active ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-200'}` }
+function APGroup({ title, color, aps, onClick }) {
+  const colors = { red: 'text-red-700 bg-red-50 border-red-200', orange: 'text-orange-700 bg-orange-50 border-orange-200', yellow: 'text-yellow-800 bg-yellow-50 border-yellow-200', green: 'text-gray-700 bg-gray-50 border-gray-200' }
+  return <div><h3 className={`mb-1 px-2 py-1 rounded border text-xs font-semibold ${colors[color]}`}>{title} ({aps.length})</h3><div className="divide-y">{aps.map(ap => <div key={ap._id} className="py-2 min-w-0"><button type="button" onClick={() => onClick(ap)} className="block w-full text-left hover:text-primary"><span className="font-mono text-xs font-semibold">{ap.numero}</span><span className="block text-sm break-words mt-0.5">{ap.titolo}</span></button><div className="flex flex-wrap justify-between gap-1 mt-1"><OriginePill ap={ap} />{ap.data_scadenza && <span className="text-xs text-gray-500">{formatDate(ap.data_scadenza)}</span>}</div></div>)}</div></div>
 }
-
 function getOrigine(ap) {
   if (!ap.parent_type || ap.parent_type === 'standalone') {
     return 'manuale'
@@ -594,7 +240,7 @@ function OriginePill({ ap }) {
 
   const pill = (
     <span
-      className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${color}`}
+      className={`px-2 py-0.5 rounded text-xs font-medium break-words ${color}`}
     >
       {label}
       {ap.parent_label ? ` · ${ap.parent_label}` : ''}
@@ -602,14 +248,14 @@ function OriginePill({ ap }) {
   )
 
   if (!route) {
-    return <span className="flex-shrink-0">{pill}</span>
+    return <span className="min-w-0">{pill}</span>
   }
 
   return (
     <Link
       to={route}
       onClick={event => event.stopPropagation()}
-      className="flex-shrink-0 hover:opacity-80"
+      className="min-w-0 hover:opacity-80"
       title={`Apri ${label}`}
     >
       {pill}
@@ -640,7 +286,7 @@ function OrigineFilterBar({ plans, value, onChange }) {
       {ORIGINE_CHIPS.map(chip => {
         const active = value === chip.id
         const count = getCount(chip.id)
-        const baseClass = 'px-3 py-1.5 rounded-full text-xs font-medium border'
+        const baseClass = 'px-2 py-1 rounded text-xs font-medium border'
         const activeClass = 'bg-primary text-white border-primary'
         const inactiveClass = 'bg-white text-gray-600 border-gray-200 hover:border-primary'
 
