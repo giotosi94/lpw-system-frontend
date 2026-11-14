@@ -178,6 +178,7 @@ export default function HomePage() {
 .lpw-home .home-panel-actions>.home-panel-heading{justify-content:flex-start;gap:22px;flex-wrap:wrap}.lpw-home .home-panel-actions>.home-panel-heading>.home-panel-title{flex-shrink:0}.lpw-home .home-panel-actions>.home-panel-heading>.home-origin-flags{margin:0;gap:8px}.lpw-home .home-panel-actions>.home-panel-heading>.home-origin-flags label{min-height:32px;padding:5px 9px;font-size:12px}.lpw-home .home-panel-actions>.home-panel-heading>.flex{margin-left:auto;flex-shrink:0}@media(max-width:767px){.lpw-home .home-panel-actions>.home-panel-heading{gap:12px}.lpw-home .home-panel-actions>.home-panel-heading>.home-origin-flags{order:3;flex-basis:100%}}
 .lpw-home .home-grid{grid-template-columns:repeat(6,minmax(0,1fr))}.lpw-home .home-panel-opl{grid-column:1 / span 3;grid-row:1;min-height:0}.lpw-home .home-panel-reports{grid-column:4 / span 3;grid-row:1;min-height:0}.lpw-home .home-panel-actions{grid-column:1 / -1;grid-row:2}.lpw-home .home-panel-kaizen{grid-column:1 / span 2;grid-row:3}.lpw-home .home-panel-pillars{grid-column:3 / span 2;grid-row:3}.lpw-home .home-panel-meetings{grid-column:5 / span 2;grid-row:3}.lpw-home .home-panel-opl>.home-panel-heading,.lpw-home .home-panel-reports>.home-panel-heading{justify-content:flex-start;gap:18px;flex-wrap:wrap}.lpw-home .home-panel-opl>.home-panel-heading>.flex,.lpw-home .home-panel-reports>.home-panel-heading>.flex{margin-left:auto}.lpw-home .home-panel-opl .home-tabs{margin:0;border:0;gap:16px}.lpw-home .home-panel-opl .home-tab{padding:4px 0;white-space:nowrap}.lpw-home .home-opl-row{display:flex;align-items:center;gap:12px;min-width:0;padding:10px 0;border-radius:4px}.lpw-home .home-opl-row:hover{background:#faf8f5}.lpw-home .home-opl-code{font-size:12px;color:#777;white-space:nowrap;flex-shrink:0}.lpw-home .home-opl-title{font-size:14px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.lpw-home .home-opl-due{font-size:12px;color:#777;white-space:nowrap;flex-shrink:0}.lpw-home .home-report-inline{display:flex;align-items:center;gap:8px}.lpw-home .home-report-inline a{border:1px solid #c9bbaa;border-radius:7px;padding:6px 10px;font-size:12px;font-weight:600;white-space:nowrap}.lpw-home .home-report-inline a:hover{background:#f6f0e7}@media(max-width:1199px){.lpw-home .home-panel-kaizen,.lpw-home .home-panel-pillars,.lpw-home .home-panel-meetings{grid-column:span 2;grid-row:auto}}@media(max-width:767px){.lpw-home .home-grid{grid-template-columns:minmax(0,1fr)}.lpw-home .home-panel-opl,.lpw-home .home-panel-reports,.lpw-home .home-panel-actions,.lpw-home .home-panel-kaizen,.lpw-home .home-panel-pillars,.lpw-home .home-panel-meetings{grid-column:1;grid-row:auto}.lpw-home .home-panel-opl>.home-panel-heading,.lpw-home .home-panel-reports>.home-panel-heading{gap:10px}.lpw-home .home-opl-row{gap:8px}.lpw-home .home-opl-code,.lpw-home .home-opl-due{font-size:10px}}
 .lpw-home .home-opl-row{background:#fffbeb;border-left:3px solid #eab308;padding:9px 10px;margin:5px 0}.lpw-home .home-opl-row:hover{background:#fef3c7}.lpw-home .home-opl-type{display:inline-block;flex-shrink:0;white-space:nowrap;border:1px solid #e5c76b;background:#fef3c7;color:#854d0e;border-radius:5px;padding:2px 6px;font-size:10px;font-weight:600}.lpw-home .home-panel-opl .home-opl-pending-tab{background:#fef3c7;color:#854d0e;border-radius:5px;padding:5px 8px;border-bottom-color:#ca8a04}
+.lpw-home .home-opl-type{max-width:140px;overflow:hidden;text-overflow:ellipsis}@media(max-width:520px){.lpw-home .home-opl-type{max-width:80px}}
 `}</style>
     <header className="home-heading">
       <div className="min-w-0"><h1 className="text-2xl font-bold">Ciao {user.full_name?.split(' ')[0] || user.username}!</h1><p className="text-sm mt-1 break-words">{[...new Set(roles)].join(' · ')}</p></div>
@@ -189,7 +190,7 @@ export default function HomePage() {
           <button type="button" aria-haspopup="dialog" aria-expanded={showReadingHistory} onClick={() => setShowReadingHistory(true)} className={tabClass(false)}>Storico letture</button>
         </div>}>
         {errors.opl ? <LoadError onRetry={loadData} /> : !shownOpl.length ? <Empty>Nessuna OPL da leggere.</Empty> : <div className="divide-y">{shownOpl.slice(0, 5).map(opl => <Link key={opl._id} to={`/da-leggere?opl=${encodeURIComponent(opl.document_id)}`} className="home-opl-row" title={opl.document_title}>
-          <span className="home-opl-code">{opl.document_number} · v{opl.version}</span><span className="home-opl-type">{getOplDocumentType(opl)}</span><span className="home-opl-title">{opl.document_title}</span>
+          <span className="home-opl-code">{opl.document_number} · v{opl.version}</span><span className="home-opl-title">{opl.document_title}</span>{getOplCategory(opl, configs.categorie_documento) && <span className="home-opl-type" title={getOplCategory(opl, configs.categorie_documento)}>{getOplCategory(opl, configs.categorie_documento)}</span>}
           {opl.scadenza && <span className="home-opl-due">{formatDate(opl.scadenza)}</span>}
         </Link>)}</div>}
       </HomeSection>
@@ -284,7 +285,10 @@ function ReadingHistoryModal({ readings, error, onRetry, onClose }) {
   </dialog>, document.body)
 }
 
-function getOplDocumentType(document) {
-  const prefix = String(document.document_number || '').match(/^([A-Za-z]+)(?:-|\s|$)/)?.[1]
-  return prefix ? prefix.toUpperCase() : 'Documento'
+function getOplCategory(document, categories = []) {
+  const value = document.document_category
+  if (typeof value !== 'string' || !value.trim()) return ''
+  const key = value.trim()
+  const category = categories.find(item => [item._id, item.id, item.codice, item.label].some(candidate => candidate != null && String(candidate).trim().toLowerCase() === key.toLowerCase()))
+  return category?.label || key
 }
