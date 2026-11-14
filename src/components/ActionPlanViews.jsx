@@ -83,8 +83,10 @@ function CollegatoBadge({ ap }) {
   const labels = { kaizen: 'Kaizen', dashboard: 'Meeting', pillar: 'Pilastro', segnalazione: 'Segnalazione', manuale: 'Non collegato', other: 'Altro' }
   const paths = { kaizen: '/kaizen/', dashboard: '/dashboard/', pillar: '/pillars/', segnalazione: '/segnalazioni?open=' }
   const path = ['major_kaizen', 'major-kaizen'].includes(ap.parent_type) ? '/major-kaizen/' : paths[origin]
-  const content = <span className="inline-block bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs break-words">{labels[origin]}{ap.parent_label ? ` · ${ap.parent_label}` : ''}</span>
-  return path && ap.parent_id ? <Link to={`${path}${encodeURIComponent(ap.parent_id)}`} onClick={event => event.stopPropagation()} className="hover:underline">{content}</Link> : content
+  const label = String(ap.parent_label || '')
+  const code = ap.parent_numero || ap.parent_code || label.match(/\b[A-Z][A-Z0-9]*-\d+\b/i)?.[0] || (label && !/\s/.test(label) ? label : '')
+  const content = <span className="inline-block bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs whitespace-nowrap">{code || '—'}</span>
+  return path && ap.parent_id ? <Link to={`${path}${encodeURIComponent(ap.parent_id)}`} title={label || labels[origin]} aria-label={`Apri ${labels[origin]} ${code || ''}`} onClick={event => event.stopPropagation()} className="hover:underline">{content}</Link> : content
 }
 function getStatoStyle(stato, statiConfig = []) {
   const cfg = statiConfig.find(s => s.label === stato)
