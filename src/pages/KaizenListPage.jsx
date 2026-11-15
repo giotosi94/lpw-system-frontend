@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Plus, Search, Filter, ChevronDown, Archive, Trash2, RotateCcw, History } from 'lucide-react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
@@ -55,6 +55,10 @@ function giorniDaApertura(dataApertura) {
   return Math.floor((oggi - apertura) / (1000 * 60 * 60 * 24))
 }
 
+function numeroBreve(numero) {
+  return String(numero || '').replace(/^[A-Za-z]+-/, '')
+}
+
 function GiorniBadge({ giorni, stato }) {
   if (giorni === null) return <span className="text-gray-400">—</span>
   if (stato === 'Chiuso') return <span className="text-xs text-gray-500">Chiuso</span>
@@ -89,10 +93,11 @@ function FilterChip({ active, onClick, label }) {
     <button
       type="button"
       onClick={onClick}
-      className={`px-3 py-1.5 rounded-full text-xs font-medium border-2 transition-all ${
+      aria-pressed={active}
+      className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
         active
           ? 'bg-primary text-white border-primary'
-          : 'bg-white text-gray-700 border-gray-200 hover:border-primary'
+          : 'bg-white text-gray-700 border-gray-300 hover:border-primary'
       }`}
     >
       {label}
@@ -107,36 +112,87 @@ function toggleMultiValue(values, value) {
 function SearchableMultiSelect({ title, field, options, filters, setFilters, disabled = false, disabledText = '' }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const rootRef = useRef(null)
   const selected = filters[field] || []
   const filteredOptions = query.trim()
     ? options.filter(option => option.label.toLowerCase().includes(query.trim().toLowerCase()))
     : options
   const selectedLabels = options.filter(option => selected.includes(option.value)).map(option => option.label)
 
+  useEffect(() => {
+    if (!open) return undefined
+    const closeOutside = event => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false)
+    }
+    const closeEscape = event => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOutside)
+    document.addEventListener('keydown', closeEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside)
+      document.removeEventListener('keydown', closeEscape)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) setQuery('')
+  }, [open])
+
+  useEffect(() => {
+    if (disabled) setOpen(false)
+  }, [disabled])
+
   function clearSelection(event) {
     event.stopPropagation()
     setFilters({ ...filters, [field]: [] })
   }
 
+  const label = disabled
+    ? (disabledText || title)
+    : selectedLabels.length === 0
+      ? title
+      : selectedLabels.length === 1
+        ? `${title}: ${selectedLabels[0]}`
+        : `${title} (${selectedLabels.length})`
+
   return (
-    <div className="relative">
-      <div className="text-xs font-semibold text-gray-600 uppercase mb-1.5">{title}</div>
-      <button type="button" disabled={disabled} onClick={() => setOpen(value => !value)} className="w-full min-h-10 px-3 py-2 border rounded-lg bg-white text-left text-sm flex items-center justify-between gap-2 disabled:bg-gray-100 disabled:text-gray-400">
-        <span className="truncate">{disabled ? disabledText : selectedLabels.length === 0 ? `Tutti: ${title}` : selectedLabels.length <= 2 ? selectedLabels.join(', ') : `${selectedLabels.length} selezionati`}</span>
+    <div className="relative min-w-0" ref={rootRef}>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-haspopup="true"
+        aria-expanded={open}
+        title={label}
+        onClick={() => setOpen(value => !value)}
+        className={`w-full min-h-10 px-3 py-2 border rounded-lg bg-white text-left text-sm flex items-center justify-between gap-2 disabled:bg-gray-100 disabled:text-gray-400 ${
+          selected.length > 0 && !disabled ? 'border-primary text-gray-900' : 'border-gray-300 text-gray-600'
+        }`}
+      >
+        <span className="truncate">{label}</span>
         <span className="flex items-center gap-1 flex-shrink-0">
-          {selected.length > 0 && <span role="button" tabIndex={0} onClick={clearSelection} className="text-gray-400 hover:text-gray-700 px-1" title="Azzera selezione">×</span>}
+          {selected.length > 0 && !disabled && (
+            <span role="button" tabIndex={0} aria-label={`Azzera ${title}`} onClick={clearSelection} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); clearSelection(event) } }} className="text-gray-400 hover:text-gray-700 px-1" title="Azzera selezione">×</span>
+          )}
           <ChevronDown size={15} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
         </span>
       </button>
       {open && !disabled && (
-        <div className="absolute z-40 mt-1 w-full min-w-64 bg-white border rounded-lg shadow-xl overflow-hidden">
-          <div className="p-2 border-b relative"><Search size={14} className="absolute left-4 top-4 text-gray-400" /><input type="text" value={query} onChange={event => setQuery(event.target.value)} placeholder={`Cerca ${title.toLowerCase()}...`} className="w-full pl-8 pr-3 py-2 border rounded-md text-sm" autoFocus /></div>
+        <div className="absolute z-40 mt-1 w-full min-w-[13rem] bg-white border rounded-lg shadow-xl overflow-hidden">
+          <div className="p-2 border-b relative">
+            <Search size={14} className="absolute left-4 top-4 text-gray-400" />
+            <input type="text" value={query} onChange={event => setQuery(event.target.value)} placeholder="Cerca..." aria-label={`Cerca in ${title}`} className="w-full pl-8 pr-3 py-2 border rounded-md text-sm" autoFocus />
+          </div>
           <div className="max-h-56 overflow-y-auto p-1">
-            {filteredOptions.length === 0 ? <div className="px-3 py-3 text-sm text-gray-400">Nessun risultato</div> : filteredOptions.map(option => (
-              <label key={option.value} className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-50 cursor-pointer text-sm"><input type="checkbox" checked={selected.includes(option.value)} onChange={() => setFilters({ ...filters, [field]: toggleMultiValue(selected, option.value) })} className="rounded border-gray-300 text-primary focus:ring-primary" /><span className="truncate">{option.label}</span></label>
+            {filteredOptions.length === 0 ? (
+              <div className="px-3 py-3 text-sm text-gray-400">Nessun risultato</div>
+            ) : filteredOptions.map(option => (
+              <label key={option.value} className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-50 cursor-pointer text-sm">
+                <input type="checkbox" checked={selected.includes(option.value)} onChange={() => setFilters({ ...filters, [field]: toggleMultiValue(selected, option.value) })} className="rounded border-gray-300 text-primary focus:ring-primary" />
+                <span className="truncate">{option.label}</span>
+              </label>
             ))}
           </div>
-          {selected.length > 0 && <div className="border-t p-2 flex justify-between items-center text-xs"><span className="text-gray-500">{selected.length} selezionati</span><button type="button" onClick={clearSelection} className="text-primary hover:underline">Azzera</button></div>}
         </div>
       )}
     </div>
@@ -504,6 +560,17 @@ const majorKaizens =
     }).length
   }, [filters])
 
+  useEffect(() => {
+    setFilters(current => {
+      const lineeValide = current.reparto.length > 0 ? new Set(lineeFilterDisponibili.map(l => l.nome)) : new Set()
+      const linea = current.linea.filter(value => lineeValide.has(value))
+      const macchineValide = linea.length > 0 ? new Set(macchineFilterDisponibili.map(m => m.nome)) : new Set()
+      const macchina = current.macchina.filter(value => macchineValide.has(value))
+      if (linea.length === current.linea.length && macchina.length === current.macchina.length) return current
+      return { ...current, linea, macchina }
+    })
+  }, [filters.reparto, filters.linea, lineeFilterDisponibili, macchineFilterDisponibili])
+
   function resetFilters() {
     setFilters({ ...INITIAL_FILTERS, search: filters.search })
   }
@@ -577,9 +644,9 @@ const majorKaizens =
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Kaizen Sheet</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link
             to="/kaizen/archivio"
             className="border border-gray-300 bg-white text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
@@ -595,10 +662,9 @@ const majorKaizens =
         </div>
       </div>
 
-      {/* SEARCH + FILTRI AVANZATI */}
       <div className="bg-white p-3 rounded-lg shadow-sm mb-4">
-        <div className="flex gap-2 items-center">
-          <div className="relative flex-1">
+        <div className="flex flex-wrap gap-2 items-center">
+          <div className="relative flex-1 min-w-[200px]">
             <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
             <input
               type="text"
@@ -609,19 +675,19 @@ const majorKaizens =
             />
           </div>
           <button
+            type="button"
             onClick={() => setShowFilters(!showFilters)}
-            className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 border-2 transition-all ${
+            aria-expanded={showFilters}
+            className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 border transition-colors ${
               showFilters || activeFiltersCount > 0
-                ? 'bg-primary text-white border-primary shadow-md'
-                : 'bg-white border-gray-200 hover:border-primary text-gray-700'
+                ? 'bg-primary text-white border-primary'
+                : 'bg-white border-gray-300 hover:border-primary text-gray-700'
             }`}
           >
             <Filter size={16} />
-            Filtri avanzati
+            Filtri
             {activeFiltersCount > 0 && (
-              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
-                showFilters ? 'bg-white text-primary' : 'bg-primary text-white'
-              }`}>
+              <span className="px-1.5 py-0.5 rounded-full text-xs font-bold bg-white text-primary">
                 {activeFiltersCount}
               </span>
             )}
@@ -629,66 +695,50 @@ const majorKaizens =
           </button>
           {activeFiltersCount > 0 && (
             <button
+              type="button"
               onClick={resetFilters}
-              className="px-3 py-2 rounded-lg text-sm border-2 border-gray-200 text-gray-600 hover:bg-gray-100"
-              title="Reset filtri"
+              className="px-3 py-2 rounded-lg text-sm border border-gray-300 text-gray-700 hover:bg-gray-100"
             >
-              Reset
+              Cancella filtri
             </button>
           )}
-          <span className="text-sm text-gray-500 ml-2">{filtered.length} kaizen</span>
         </div>
 
         {showFilters && (
           <div className="mt-3 pt-3 border-t space-y-3">
-            {/* Vista rapida */}
-            <div>
-              <label className="text-xs font-semibold text-gray-600 uppercase mb-1 block">Vista rapida</label>
-              <div className="flex flex-wrap gap-2">
-                <FilterChip
-                  active={filters.view === 'all'}
-                  onClick={() => setFilters({ ...filters, view: 'all' })}
-                  label="Tutti"
-                />
-                <FilterChip
-                  active={filters.view === 'mine'}
-                  onClick={() => setFilters({ ...filters, view: 'mine' })}
-                  label="I miei Kaizen"
-                />
-                <FilterChip
-                  active={filters.view === 'old30'}
-                  onClick={() => setFilters({ ...filters, view: 'old30' })}
-                  label="Vecchi 30+ giorni"
-                />
-                <FilterChip
-                  active={filters.view === 'archived'}
-                  onClick={() => { setFilters({ ...filters, view: 'archived' }); setSelected(new Set()) }}
-                  label="Archiviati"
-                />
-              </div>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Vista">
+              <FilterChip
+                active={filters.view === 'all'}
+                onClick={() => setFilters({ ...filters, view: 'all' })}
+                label="Tutti"
+              />
+              <FilterChip
+                active={filters.view === 'mine'}
+                onClick={() => setFilters({ ...filters, view: 'mine' })}
+                label="I miei Kaizen"
+              />
+              <FilterChip
+                active={filters.view === 'old30'}
+                onClick={() => setFilters({ ...filters, view: 'old30' })}
+                label="Vecchi 30+ giorni"
+              />
+              <FilterChip
+                active={filters.view === 'archived'}
+                onClick={() => { setFilters({ ...filters, view: 'archived' }); setSelected(new Set()) }}
+                label="Archiviati"
+              />
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-end">
               <SearchableMultiSelect title="Tipologia" field="tipo" options={TIPOLOGIE_KAIZEN.map(item => ({ value: item.value, label: item.label }))} filters={filters} setFilters={setFilters} />
               <SearchableMultiSelect title="Stato" field="stato" options={[{ value: 'Aperto', label: 'Aperto' }, { value: 'In Corso', label: 'In Corso' }, { value: 'Chiuso', label: 'Chiuso' }]} filters={filters} setFilters={setFilters} />
               <SearchableMultiSelect title="Pillar" field="pillar_id" options={pillars.map(item => ({ value: item._id, label: `${item.sigla} - ${item.label}` }))} filters={filters} setFilters={setFilters} />
               <SearchableMultiSelect title="Categoria perdita" field="categoria_perdita" options={(configs.categorie_perdita || []).map(item => ({ value: item.label, label: item.label }))} filters={filters} setFilters={setFilters} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 uppercase mb-1 block">Struttura aziendale</label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <SearchableMultiSelect title="Reparto" field="reparto" options={repartiFilterDisponibili.map(item => ({ value: item.nome, label: item.nome }))} filters={filters} setFilters={setFilters} />
-                <SearchableMultiSelect title="Linea" field="linea" options={lineeFilterDisponibili.map(item => ({ value: item.nome, label: item.nome }))} filters={filters} setFilters={setFilters} disabled={filters.reparto.length === 0} disabledText="Seleziona prima un reparto" />
-                <SearchableMultiSelect title="Macchina" field="macchina" options={macchineFilterDisponibili.map(item => ({ value: item.nome, label: item.nome }))} filters={filters} setFilters={setFilters} disabled={filters.linea.length === 0} disabledText="Seleziona prima una linea" />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 uppercase mb-1 block">Contesto</label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <SearchableMultiSelect title="Meeting" field="dashboard_id" options={dashboards.map(item => ({ value: item._id, label: item.nome || item.label || item.titolo || 'Meeting' }))} filters={filters} setFilters={setFilters} />
-                <div><div className="text-xs font-semibold text-gray-600 uppercase mb-1.5">Creatore</div><UserPicker value={filters.creatore_id ? { id: filters.creatore_id, name: filters.creatore_nome } : null} onChange={(selected) => selected ? setFilters({ ...filters, creatore_id: selected.id, creatore_nome: selected.name }) : setFilters({ ...filters, creatore_id: null, creatore_nome: '' })} mode="single" placeholder="Cerca creatore..." /></div>
-                <div><div className="text-xs font-semibold text-gray-600 uppercase mb-1.5">Team leader</div><UserPicker value={filters.team_leader_id ? { id: filters.team_leader_id, name: filters.team_leader_nome } : null} onChange={(selected) => selected ? setFilters({ ...filters, team_leader_id: selected.id, team_leader_nome: selected.name }) : setFilters({ ...filters, team_leader_id: null, team_leader_nome: '' })} mode="single" placeholder="Cerca team leader..." /></div>
-              </div>
+              <SearchableMultiSelect title="Reparto" field="reparto" options={repartiFilterDisponibili.map(item => ({ value: item.nome, label: item.nome }))} filters={filters} setFilters={setFilters} />
+              <SearchableMultiSelect title="Linea" field="linea" options={lineeFilterDisponibili.map(item => ({ value: item.nome, label: item.nome }))} filters={filters} setFilters={setFilters} disabled={filters.reparto.length === 0} disabledText="Linea (scegli reparto)" />
+              <SearchableMultiSelect title="Macchina" field="macchina" options={macchineFilterDisponibili.map(item => ({ value: item.nome, label: item.nome }))} filters={filters} setFilters={setFilters} disabled={filters.linea.length === 0} disabledText="Macchina (scegli linea)" />
+              <SearchableMultiSelect title="Meeting" field="dashboard_id" options={dashboards.map(item => ({ value: item._id, label: item.nome || item.label || item.titolo || 'Meeting' }))} filters={filters} setFilters={setFilters} />
+              <div className="min-w-0"><div className="text-xs text-gray-500 mb-1">Creatore</div><UserPicker value={filters.creatore_id ? { id: filters.creatore_id, name: filters.creatore_nome } : null} onChange={(selected) => selected ? setFilters({ ...filters, creatore_id: selected.id, creatore_nome: selected.name }) : setFilters({ ...filters, creatore_id: null, creatore_nome: '' })} mode="single" placeholder="Cerca creatore..." /></div>
+              <div className="min-w-0"><div className="text-xs text-gray-500 mb-1">Team leader</div><UserPicker value={filters.team_leader_id ? { id: filters.team_leader_id, name: filters.team_leader_nome } : null} onChange={(selected) => selected ? setFilters({ ...filters, team_leader_id: selected.id, team_leader_nome: selected.name }) : setFilters({ ...filters, team_leader_id: null, team_leader_nome: '' })} mode="single" placeholder="Cerca team leader..." /></div>
             </div>
           </div>
         )}
@@ -717,8 +767,8 @@ const majorKaizens =
       )}
 
       {/* TABELLA */}
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-xl shadow overflow-x-auto">
+        <table className="w-full min-w-[820px] text-sm">
           <thead className="bg-gray-50">
             <tr className="text-left text-gray-500">
               <th className="p-4 w-10">
@@ -735,14 +785,12 @@ const majorKaizens =
                 />
               </th>
               <th className="p-4">Numero</th>
-              <th className="p-4">Titolo</th>
               <th className="p-4">Tipo</th>
-              <th className="p-4">Pillar</th>
+              <th className="p-4">Titolo</th>
               <th className="p-4">Stato</th>
               <th className="p-4">Reparto</th>
               <th className="p-4">Linea</th>
-              <th className="p-4">Meeting</th>
-              <th className="p-4">Aperto da</th>
+              <th className="p-4 whitespace-nowrap">Aperto da</th>
               <th className="p-4">Creatore</th>
             </tr>
           </thead>
@@ -769,26 +817,17 @@ const majorKaizens =
   }
   className="text-primary font-mono hover:underline"
 >
-  {k.numero}
+  {numeroBreve(k.numero)}
 </Link>
                   </td>
-                  <td className="p-4 font-medium">{k.titolo}</td>
                   <td className="p-4">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${tipoStyle.bg} ${tipoStyle.color}`}>
                       {tipoStyle.label}
                     </span>
                   </td>
+                  <td className="p-4 font-medium">{k.titolo}</td>
                   <td className="p-4">
-                    {k.pillar_sigla ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-mono font-bold bg-indigo-100 text-indigo-700">
-                        {k.pillar_sigla}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-gray-400">—</span>
-                    )}
-                  </td>
-                  <td className="p-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
                       k.stato === 'Aperto' ? 'bg-blue-100 text-blue-700' :
                       k.stato === 'In Corso' ? 'bg-yellow-100 text-yellow-700' :
                       k.stato === 'Chiuso' ? 'bg-gray-200 text-gray-700' :
@@ -797,19 +836,6 @@ const majorKaizens =
                   </td>
                   <td className="p-4 text-xs">{k.reparto || '—'}</td>
                   <td className="p-4 text-xs">{k.linea || '—'}</td>
-                  <td className="p-4 text-xs">
-                    {k.dashboard_id && k.dashboard_nome ? (
-                      <Link
-                        to={`/dashboard/${k.dashboard_id}`}
-                        className="px-2 py-0.5 rounded bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
-                        title="Vai al meeting"
-                      >
-                        {k.dashboard_nome}
-                      </Link>
-                    ) : (
-                      <span className="text-gray-400">—</span>
-                    )}
-                  </td>
                   <td className="p-4">
                     <GiorniBadge giorni={giorni} stato={k.stato} />
                   </td>
