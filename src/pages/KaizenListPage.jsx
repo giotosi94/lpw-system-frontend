@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { Plus, Search, Filter, ChevronDown, Archive, Trash2, RotateCcw, History } from 'lucide-react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
@@ -34,6 +34,7 @@ const INITIAL_KAIZEN = {
 const INITIAL_FILTERS = {
   search: '',
   tipo: [],
+  anno: [],
   stato: [],
   pillar_id: [],
   categoria_perdita: [],
@@ -56,7 +57,12 @@ function giorniDaApertura(dataApertura) {
 }
 
 function numeroBreve(numero) {
-  return String(numero || '').replace(/^[A-Za-z]+-/, '')
+  return String(numero || '').replace(/^[A-Za-z]+-/, '').replace(/^0+(?=\d)/, '')
+}
+
+function annoCreazione(kaizen) {
+  const anno = new Date(kaizen.created_at || kaizen.data_apertura || '').getFullYear()
+  return Number.isNaN(anno) ? '' : String(anno)
 }
 
 function GiorniBadge({ giorni, stato }) {
@@ -67,25 +73,6 @@ function GiorniBadge({ giorni, stato }) {
   else if (giorni > 7) colorClass = 'text-yellow-700 bg-yellow-50'
   const label = giorni === 0 ? 'oggi' : `${giorni} giorni`
   return <span className={`text-xs px-2 py-0.5 rounded ${colorClass}`}>{label}</span>
-}
-
-function CreatorAvatar({ name }) {
-  if (!name) return <span className="text-xs text-gray-400">—</span>
-  const initials = name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase()
-  const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-orange-500']
-  const color = colors[name.charCodeAt(0) % colors.length]
-  return (
-    <div className="flex items-center gap-2">
-      <div
-        className={`${color} text-white rounded-full flex items-center justify-center font-bold flex-shrink-0`}
-        style={{ width: 28, height: 28, fontSize: 11 }}
-        title={name}
-      >
-        {initials}
-      </div>
-      <span className="text-xs text-gray-700 truncate">{name}</span>
-    </div>
-  )
 }
 
 function FilterChip({ active, onClick, label }) {
@@ -199,6 +186,115 @@ function SearchableMultiSelect({ title, field, options, filters, setFilters, dis
   )
 }
 
+const CHECK_COLUMN_WIDTH = 44
+const COLUMN_MAX_WIDTH = 1000
+const COLUMN_STORAGE_KEY = 'lpw_kaizen_column_widths_v1'
+const TABLE_COLUMNS = [
+  { key: 'numero', label: '#', title: 'Numero', width: 64, min: 52 },
+  { key: 'tipo', label: 'Tipo', width: 100, min: 70 },
+  { key: 'titolo', label: 'Titolo', width: 340, min: 120 },
+  { key: 'stato', label: 'Stato', width: 110, min: 80 },
+  { key: 'reparto', label: 'Reparto', width: 170, min: 80 },
+  { key: 'linea', label: 'Linea', width: 130, min: 70 },
+  { key: 'aperto', label: 'Aperto da', width: 110, min: 80 },
+  { key: 'creatore', label: 'Creatore', width: 170, min: 90 },
+]
+const DEFAULT_COLUMN_WIDTHS = Object.fromEntries(TABLE_COLUMNS.map(column => [column.key, column.width]))
+const DEFAULT_TABLE_WIDTH = TABLE_COLUMNS.reduce((sum, column) => sum + column.width, CHECK_COLUMN_WIDTH)
+
+function clampColumnWidth(column, value) {
+  return Math.min(Math.max(Math.round(value), column.min), COLUMN_MAX_WIDTH)
+}
+
+function readStoredColumnWidths() {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(COLUMN_STORAGE_KEY) || 'null')
+    if (!stored || typeof stored !== 'object') return null
+    const widths = {}
+    for (const column of TABLE_COLUMNS) {
+      const value = Number(stored[column.key])
+      if (!Number.isFinite(value)) return null
+      widths[column.key] = clampColumnWidth(column, value)
+    }
+    return widths
+  } catch {
+    return null
+  }
+}
+
+function writeStoredColumnWidths(widths) {
+  try {
+    window.localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(widths))
+  } catch {
+    /* preferenza non salvabile: le larghezze restano valide per la sessione */
+  }
+}
+
+function ColumnResizeHandle({ label, width, min, onResize, onCommit, onReset }) {
+  const dragRef = useRef(null)
+  const [dragging, setDragging] = useState(false)
+
+  useEffect(() => {
+    if (!dragging) return undefined
+    const previousSelect = document.body.style.userSelect
+    const previousCursor = document.body.style.cursor
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+    return () => {
+      document.body.style.userSelect = previousSelect
+      document.body.style.cursor = previousCursor
+    }
+  }, [dragging])
+
+  function finishDrag(event) {
+    if (!dragRef.current) return
+    dragRef.current = null
+    setDragging(false)
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    onCommit()
+  }
+
+  return (
+    <span
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Larghezza colonna ${label}`}
+      aria-valuenow={Math.round(width)}
+      aria-valuemin={min}
+      aria-valuemax={COLUMN_MAX_WIDTH}
+      tabIndex={0}
+      title="Trascina per ridimensionare. Doppio clic per ripristinare."
+      onPointerDown={event => {
+        if (event.button !== undefined && event.button !== 0) return
+        event.preventDefault()
+        event.stopPropagation()
+        event.currentTarget.setPointerCapture(event.pointerId)
+        dragRef.current = { startX: event.clientX, startWidth: width }
+        setDragging(true)
+      }}
+      onPointerMove={event => {
+        if (!dragRef.current) return
+        onResize(dragRef.current.startWidth + event.clientX - dragRef.current.startX, false)
+      }}
+      onPointerUp={finishDrag}
+      onPointerCancel={finishDrag}
+      onLostPointerCapture={finishDrag}
+      onDoubleClick={onReset}
+      onKeyDown={event => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+        event.preventDefault()
+        const step = event.shiftKey ? 40 : 10
+        onResize(width + (event.key === 'ArrowRight' ? step : -step), true)
+      }}
+      className="group absolute top-0 right-0 h-full w-3 z-10 cursor-col-resize touch-none focus:outline-none"
+    >
+      <span className={`absolute right-0 top-3 bottom-3 w-px transition-colors ${dragging ? 'bg-primary' : 'bg-gray-300 group-hover:bg-primary group-focus-visible:bg-primary'}`} />
+    </span>
+  )
+}
+
 export default function KaizenListPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -217,6 +313,10 @@ export default function KaizenListPage() {
   }, [searchParams, setSearchParams])
   const [filters, setFilters] = useState(INITIAL_FILTERS)
   const [showFilters, setShowFilters] = useState(false)
+  const storedColumnWidths = useRef(readStoredColumnWidths())
+  const [columnWidths, setColumnWidths] = useState(() => storedColumnWidths.current || DEFAULT_COLUMN_WIDTHS)
+  const columnWidthsRef = useRef(columnWidths)
+  const tableWrapRef = useRef(null)
   const [dashboards, setDashboards] = useState([])
   const [routes, setRoutes] = useState([])
   const [routeError, setRouteError] = useState('')
@@ -259,6 +359,44 @@ export default function KaizenListPage() {
     const linea = lineeFormDisponibili.find(l => l.nome === newKaizen.linea)
     return linea?.macchine?.filter(m => m.attivo !== false) || []
   }, [newKaizen.linea, lineeFormDisponibili])
+
+  useLayoutEffect(() => {
+    if (storedColumnWidths.current) return
+    const wrap = tableWrapRef.current
+    if (!wrap) return
+    const extra = Math.floor(wrap.clientWidth - DEFAULT_TABLE_WIDTH)
+    if (extra <= 0) return
+    const fitted = { ...DEFAULT_COLUMN_WIDTHS, titolo: DEFAULT_COLUMN_WIDTHS.titolo + extra }
+    columnWidthsRef.current = fitted
+    setColumnWidths(fitted)
+  }, [])
+
+  function resizeColumn(key, value, persist) {
+    const column = TABLE_COLUMNS.find(item => item.key === key)
+    const next = { ...columnWidthsRef.current, [key]: clampColumnWidth(column, value) }
+    columnWidthsRef.current = next
+    setColumnWidths(next)
+    if (persist) writeStoredColumnWidths(next)
+  }
+
+  function commitColumnWidths() {
+    writeStoredColumnWidths(columnWidthsRef.current)
+  }
+
+  const tableWidth = TABLE_COLUMNS.reduce((sum, column) => sum + columnWidths[column.key], CHECK_COLUMN_WIDTH)
+
+  const anniDisponibili = useMemo(
+    () => [...new Set(kaizens.map(annoCreazione).filter(Boolean))].sort((a, b) => Number(b) - Number(a)),
+    [kaizens]
+  )
+
+  useEffect(() => {
+    if (anniDisponibili.length === 0) return
+    setFilters(current => {
+      const validi = current.anno.filter(value => anniDisponibili.includes(value))
+      return validi.length === current.anno.length ? current : { ...current, anno: validi }
+    })
+  }, [anniDisponibili])
 
   const repartiFilterDisponibili = useMemo(() => reparti.filter(r => r.attivo !== false), [reparti])
   const lineeFilterDisponibili = useMemo(() => {
@@ -591,6 +729,9 @@ const majorKaizens =
       (k.tipo?.includes('Standard') ? 'Standard' : 'Quick')
       const matchTipo = filters.tipo.length === 0 || filters.tipo.includes(tipoNormalizzato)
 
+      // Anno di creazione
+      const matchAnno = filters.anno.length === 0 || filters.anno.includes(annoCreazione(k))
+
       // Stato
       const matchStato = filters.stato.length === 0 || filters.stato.includes(k.stato)
 
@@ -629,7 +770,7 @@ const majorKaizens =
 
       const matchArchive = filters.view === 'archived' ? k.archiviato === true : k.archiviato !== true
 
-      return matchSearch && matchTipo && matchStato && matchPillar && matchCategoria &&
+      return matchSearch && matchTipo && matchAnno && matchStato && matchPillar && matchCategoria &&
              matchReparto && matchLinea && matchMacchina && matchDashboard &&
              matchCreatore && matchLeader && matchView && matchArchive
     })
@@ -737,6 +878,7 @@ const majorKaizens =
               <SearchableMultiSelect title="Linea" field="linea" options={lineeFilterDisponibili.map(item => ({ value: item.nome, label: item.nome }))} filters={filters} setFilters={setFilters} disabled={filters.reparto.length === 0} disabledText="Linea (scegli reparto)" />
               <SearchableMultiSelect title="Macchina" field="macchina" options={macchineFilterDisponibili.map(item => ({ value: item.nome, label: item.nome }))} filters={filters} setFilters={setFilters} disabled={filters.linea.length === 0} disabledText="Macchina (scegli linea)" />
               <SearchableMultiSelect title="Meeting" field="dashboard_id" options={dashboards.map(item => ({ value: item._id, label: item.nome || item.label || item.titolo || 'Meeting' }))} filters={filters} setFilters={setFilters} />
+              <SearchableMultiSelect title="Anno di creazione" field="anno" options={anniDisponibili.map(anno => ({ value: anno, label: anno }))} filters={filters} setFilters={setFilters} />
               <div className="min-w-0"><div className="text-xs text-gray-500 mb-1">Creatore</div><UserPicker value={filters.creatore_id ? { id: filters.creatore_id, name: filters.creatore_nome } : null} onChange={(selected) => selected ? setFilters({ ...filters, creatore_id: selected.id, creatore_nome: selected.name }) : setFilters({ ...filters, creatore_id: null, creatore_nome: '' })} mode="single" placeholder="Cerca creatore..." /></div>
               <div className="min-w-0"><div className="text-xs text-gray-500 mb-1">Team leader</div><UserPicker value={filters.team_leader_id ? { id: filters.team_leader_id, name: filters.team_leader_nome } : null} onChange={(selected) => selected ? setFilters({ ...filters, team_leader_id: selected.id, team_leader_nome: selected.name }) : setFilters({ ...filters, team_leader_id: null, team_leader_nome: '' })} mode="single" placeholder="Cerca team leader..." /></div>
             </div>
@@ -767,13 +909,18 @@ const majorKaizens =
       )}
 
       {/* TABELLA */}
-      <div className="bg-white rounded-xl shadow overflow-x-auto">
-        <table className="w-full min-w-[820px] text-sm">
+      <div ref={tableWrapRef} className="bg-white rounded-xl shadow overflow-x-auto">
+        <table className="text-sm" style={{ tableLayout: 'fixed', width: tableWidth }}>
+          <colgroup>
+            <col style={{ width: CHECK_COLUMN_WIDTH }} />
+            {TABLE_COLUMNS.map(column => <col key={column.key} style={{ width: columnWidths[column.key] }} />)}
+          </colgroup>
           <thead className="bg-gray-50">
             <tr className="text-left text-gray-500">
-              <th className="p-4 w-10">
+              <th className="px-3 py-4">
                 <input
                   type="checkbox"
+                  aria-label="Seleziona tutti"
                   checked={
                     filtered.length > 0 &&
                     filtered.every(k => selected.has(k._id))
@@ -784,14 +931,19 @@ const majorKaizens =
                   className="w-4 h-4"
                 />
               </th>
-              <th className="p-4">Numero</th>
-              <th className="p-4">Tipo</th>
-              <th className="p-4">Titolo</th>
-              <th className="p-4">Stato</th>
-              <th className="p-4">Reparto</th>
-              <th className="p-4">Linea</th>
-              <th className="p-4 whitespace-nowrap">Aperto da</th>
-              <th className="p-4">Creatore</th>
+              {TABLE_COLUMNS.map(column => (
+                <th key={column.key} title={column.title || column.label} className="relative px-3 py-4 overflow-visible">
+                  <span className="block truncate pr-2">{column.label}</span>
+                  <ColumnResizeHandle
+                    label={column.title || column.label}
+                    width={columnWidths[column.key]}
+                    min={column.min}
+                    onResize={(value, persist) => resizeColumn(column.key, value, persist)}
+                    onCommit={commitColumnWidths}
+                    onReset={() => resizeColumn(column.key, column.width, true)}
+                  />
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -800,48 +952,46 @@ const majorKaizens =
               const giorni = giorniDaApertura(k.data_apertura)
               return (
                 <tr key={k._id} className={`border-t hover:bg-gray-50 ${selected.has(k._id) ? 'bg-blue-50' : ''}`}>
-                  <td className="p-4">
+                  <td className="px-3 py-4">
                     <input
                       type="checkbox"
+                      aria-label={`Seleziona ${k.numero || k.titolo}`}
                       checked={selected.has(k._id)}
                       onChange={() => toggleSelect(k._id)}
                       className="w-4 h-4"
                     />
                   </td>
-                  <td className="p-4">
+                  <td className="px-3 py-4 overflow-hidden">
                     <Link
-  to={
-    k.entity_type === 'major_kaizen'
-      ? `/major-kaizen/${k._id}`
-      : `/kaizen/${k._id}`
-  }
-  className="text-primary font-mono hover:underline"
->
-  {numeroBreve(k.numero)}
-</Link>
+                      to={
+                        k.entity_type === 'major_kaizen'
+                          ? `/major-kaizen/${k._id}`
+                          : `/kaizen/${k._id}`
+                      }
+                      title={k.numero}
+                      className="block truncate text-primary font-mono hover:underline"
+                    >
+                      {numeroBreve(k.numero)}
+                    </Link>
                   </td>
-                  <td className="p-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${tipoStyle.bg} ${tipoStyle.color}`}>
-                      {tipoStyle.label}
-                    </span>
+                  <td className="px-3 py-4 truncate">{tipoStyle.label}</td>
+                  <td className="px-3 py-4 font-medium overflow-hidden">
+                    <span title={k.titolo} className="break-words" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{k.titolo}</span>
                   </td>
-                  <td className="p-4 font-medium">{k.titolo}</td>
-                  <td className="p-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
+                  <td className="px-3 py-4 overflow-hidden">
+                    <span className={`inline-block max-w-full truncate align-middle px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
                       k.stato === 'Aperto' ? 'bg-blue-100 text-blue-700' :
                       k.stato === 'In Corso' ? 'bg-yellow-100 text-yellow-700' :
                       k.stato === 'Chiuso' ? 'bg-gray-200 text-gray-700' :
                       'bg-green-100 text-green-700'
                     }`}>{k.stato}</span>
                   </td>
-                  <td className="p-4 text-xs">{k.reparto || '—'}</td>
-                  <td className="p-4 text-xs">{k.linea || '—'}</td>
-                  <td className="p-4">
+                  <td className="px-3 py-4 text-xs truncate" title={k.reparto || ''}>{k.reparto || '—'}</td>
+                  <td className="px-3 py-4 text-xs truncate" title={k.linea || ''}>{k.linea || '—'}</td>
+                  <td className="px-3 py-4 whitespace-nowrap overflow-hidden">
                     <GiorniBadge giorni={giorni} stato={k.stato} />
                   </td>
-                  <td className="p-4">
-                    <CreatorAvatar name={k.creatore_nome} />
-                  </td>
+                  <td className="px-3 py-4 text-xs text-gray-700 truncate" title={k.creatore_nome || ''}>{k.creatore_nome || '—'}</td>
                 </tr>
               )
             })}
