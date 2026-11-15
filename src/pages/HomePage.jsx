@@ -134,12 +134,12 @@ export default function HomePage() {
     const id = user.id || user._id
     return (id && [item.segnalatore_id, item.creatore_id, item.created_by_id].some(value => value && String(value) === String(id))) || (user.full_name && item.segnalatore_nome === user.full_name)
   }).sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0))
-  const reportList = ownReports.slice(0, REPORT_PREVIEW)
+  const reportList = ownReports
   const renderOplRow = opl => <Link key={opl._id} to={`/da-leggere?opl=${encodeURIComponent(opl.document_id)}`} className="home-opl-row" title={opl.document_title}>
           <span className="home-opl-code">{opl.document_number} · v{opl.version}</span><span className="home-opl-title">{opl.document_title}</span>{getOplCategory(opl, configs.categorie_documento) && <span className="home-opl-type" title={getOplCategory(opl, configs.categorie_documento)}>{getOplCategory(opl, configs.categorie_documento)}</span>}
           {opl.scadenza && <span className="home-opl-due">{formatDate(opl.scadenza)}</span>}
 </Link>
-  const renderReportRow = item => <Link key={item._id} to={`/segnalazioni?open=${encodeURIComponent(item._id)}`} className="block py-2 hover:bg-gray-50 rounded"><div className="flex flex-wrap justify-between gap-2 text-xs"><span className="font-mono">{item.codice || 'Bozza'}</span><span className="text-gray-500">{item.tipo} · {item.stato}</span></div><p className="text-sm break-words mt-1 line-clamp-2">{item.descrizione || 'Senza descrizione'}</p></Link>
+  const renderReportRow = item => <Link key={item._id} to={`/segnalazioni?open=${encodeURIComponent(item._id)}`} className="home-report-row block py-2 hover:bg-gray-50 rounded"><div className="flex flex-wrap justify-between gap-2 text-xs"><span className="font-mono">{item.codice || 'Bozza'}</span><span className="text-gray-500">{item.tipo} · {item.stato}</span></div><p className="text-sm break-words mt-1 line-clamp-2">{item.descrizione || 'Senza descrizione'}</p></Link>
   const renderKaizenRow = k => <Link key={k._id} to={`/kaizen/${k._id}`} className="flex items-center gap-3 min-w-0 py-2 hover:bg-gray-50 rounded" title={k.titolo}><span className="shrink-0 whitespace-nowrap text-xs font-mono text-gray-500">{k.numero}</span><span className="min-w-0 truncate text-sm font-medium">{k.titolo}</span></Link>
   const renderPillarRow = p => <Link key={p._id} to={`/pillars/${p._id}`} className="flex items-center gap-3 py-2 hover:bg-gray-50 rounded">{p.icon_image && <img src={p.icon_image} alt="" style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }} onError={event => { event.currentTarget.style.display = 'none' }} />}<div className="min-w-0"><p className="text-sm font-semibold">{p.sigla}</p><p className="text-xs text-gray-600 break-words">{p.label}</p></div></Link>
   const selectFromModal = ap => { setListModal(null); setSelectedAP(ap) }
@@ -188,23 +188,21 @@ export default function HomePage() {
 .lpw-home .home-grid{grid-template-columns:repeat(6,minmax(0,1fr))}.lpw-home .home-panel-opl{grid-column:1 / span 3;grid-row:1;min-height:0}.lpw-home .home-panel-reports{grid-column:4 / span 3;grid-row:1;min-height:0}.lpw-home .home-panel-actions{grid-column:1 / -1;grid-row:2}.lpw-home .home-panel-kaizen{grid-column:1 / span 2;grid-row:3}.lpw-home .home-panel-pillars{grid-column:3 / span 2;grid-row:3}.lpw-home .home-panel-meetings{grid-column:5 / span 2;grid-row:3}.lpw-home .home-panel-opl>.home-panel-heading,.lpw-home .home-panel-reports>.home-panel-heading{justify-content:flex-start;gap:18px;flex-wrap:wrap}.lpw-home .home-panel-opl>.home-panel-heading>.flex,.lpw-home .home-panel-reports>.home-panel-heading>.flex{margin-left:auto}.lpw-home .home-panel-opl .home-tabs{margin:0;border:0;gap:16px}.lpw-home .home-panel-opl .home-tab{padding:4px 0;white-space:nowrap}.lpw-home .home-opl-row{display:flex;align-items:center;gap:12px;min-width:0;padding:10px 0;border-radius:4px}.lpw-home .home-opl-row:hover{background:#faf8f5}.lpw-home .home-opl-code{font-size:12px;color:#777;white-space:nowrap;flex-shrink:0}.lpw-home .home-opl-title{font-size:14px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.lpw-home .home-opl-due{font-size:12px;color:#777;white-space:nowrap;flex-shrink:0}.lpw-home .home-report-inline{display:flex;align-items:center;gap:8px}.lpw-home .home-report-inline a{border:1px solid #c9bbaa;border-radius:7px;padding:6px 10px;font-size:12px;font-weight:600;white-space:nowrap}.lpw-home .home-report-inline a:hover{background:#f6f0e7}@media(max-width:1199px){.lpw-home .home-panel-kaizen,.lpw-home .home-panel-pillars,.lpw-home .home-panel-meetings{grid-column:span 2;grid-row:auto}}@media(max-width:767px){.lpw-home .home-grid{grid-template-columns:minmax(0,1fr)}.lpw-home .home-panel-opl,.lpw-home .home-panel-reports,.lpw-home .home-panel-actions,.lpw-home .home-panel-kaizen,.lpw-home .home-panel-pillars,.lpw-home .home-panel-meetings{grid-column:1;grid-row:auto}.lpw-home .home-panel-opl>.home-panel-heading,.lpw-home .home-panel-reports>.home-panel-heading{gap:10px}.lpw-home .home-opl-row{gap:8px}.lpw-home .home-opl-code,.lpw-home .home-opl-due{font-size:10px}}
 .lpw-home .home-opl-row{background:#fffbeb;border-left:3px solid #eab308;padding:9px 10px;margin:5px 0}.lpw-home .home-opl-row:hover{background:#fef3c7}.lpw-home .home-opl-type{display:inline-block;flex-shrink:0;white-space:nowrap;border:1px solid #e5c76b;background:#fef3c7;color:#854d0e;border-radius:5px;padding:2px 6px;font-size:10px;font-weight:600}.lpw-home .home-panel-opl .home-opl-pending-tab{background:#fef3c7;color:#854d0e;border-radius:5px;padding:5px 8px;border-bottom-color:#ca8a04}
 .lpw-home .home-opl-type{max-width:140px;overflow:hidden;text-overflow:ellipsis}@media(max-width:520px){.lpw-home .home-opl-type{max-width:80px}}
-  .lpw-home .home-ap-scroll{box-sizing:border-box;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#b3a58c #f2eee8}.lpw-home .home-ap-columns .home-ap-scroll .ap-home-readonly{overflow:visible}.lpw-home .home-ap-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #e5dcd1}.lpw-home .home-ap-columns .home-ap-head .home-ap-group{margin:0;padding:0;border:0}.lpw-home .home-ap-columns .home-ap-head .home-more{margin:0;padding:0;flex-shrink:0}.lpw-home .home-ap-scroll:focus-visible{outline:2px solid #947748;outline-offset:2px}.lpw-home .home-ap-scroll thead th{position:sticky;top:0;z-index:1;background:#f8f7f4}.lpw-home .home-more{display:inline-block;margin-top:10px;padding:6px 0;background:none;border:0;color:#715328;font-size:12px;font-weight:600;text-decoration:underline;text-underline-offset:3px;cursor:pointer}.lpw-home .home-more:hover{color:#3e2b1a}.lpw-home .home-ap-columns .home-more{margin-top:6px}
+  .lpw-home .home-ap-scroll{box-sizing:border-box;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#b3a58c #f2eee8}.lpw-home .home-ap-columns .home-ap-scroll .ap-home-readonly{overflow:visible}.lpw-home .home-ap-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #e5dcd1}.lpw-home .home-ap-columns .home-ap-head .home-ap-group{margin:0;padding:0;border:0}.lpw-home .home-ap-columns .home-ap-head .home-more{margin:0;padding:0;flex-shrink:0}.lpw-home .home-ap-scroll:focus-visible{outline:2px solid #947748;outline-offset:2px}.lpw-home .home-ap-scroll thead th{position:sticky;top:0;z-index:1;background:#f8f7f4}.lpw-home .home-more{display:inline-block;margin-top:10px;padding:6px 0;background:none;border:0;color:#715328;font-size:12px;font-weight:600;text-decoration:underline;text-underline-offset:3px;cursor:pointer}.lpw-home .home-more:hover{color:#3e2b1a}.lpw-home .home-panel-opl>.home-panel-heading>.home-more,.lpw-home .home-panel-reports>.home-panel-heading>.home-more{margin:0 0 0 auto;padding:0;flex-shrink:0}.lpw-home .home-panel-opl .home-ap-scroll,.lpw-home .home-panel-reports .home-ap-scroll{padding-right:2px}.lpw-home .home-panel-opl .home-opl-row:last-child,.lpw-home .home-panel-reports .home-report-row:last-child{margin-bottom:0}.lpw-home .home-ap-columns .home-more{margin-top:6px}
 `}</style>
     <header className="home-heading">
       <div className="min-w-0"><h1 className="text-2xl font-bold">Ciao {user.full_name?.split(' ')[0] || user.username}!</h1><p className="text-sm mt-1 break-words">{[...new Set(roles)].join(' · ')}</p></div>
       <p className="text-xs">{new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
     </header>
     <div className="home-grid">
-      <HomeSection section="opl" title="OPL" headerContent={<div className="home-tabs" role="group" aria-label="Letture OPL">
+      <HomeSection section="opl" title="OPL" more={!errors.opl && <MoreLink count={shownOpl.length} limit={LIST_PREVIEW} onClick={() => setListModal('opl')} />} headerContent={<div className="home-tabs" role="group" aria-label="Letture OPL">
           <button type="button" aria-pressed={true} className={`${tabClass(true)} ${oplDaLeggere.length ? 'home-opl-pending-tab' : ''}`}>Da leggere ({oplDaLeggere.length})</button>
           <button type="button" aria-haspopup="dialog" aria-expanded={showReadingHistory} onClick={() => setShowReadingHistory(true)} className={tabClass(false)}>Storico letture</button>
         </div>}>
-        {errors.opl ? <LoadError onRetry={loadData} /> : !shownOpl.length ? <Empty>Nessuna OPL da leggere.</Empty> : <div className="divide-y">{shownOpl.slice(0, PREVIEW).map(renderOplRow)}</div>}
-        {!errors.opl && <MoreLink count={shownOpl.length} onClick={() => setListModal('opl')} />}
+        {errors.opl ? <LoadError onRetry={loadData} /> : !shownOpl.length ? <Empty>Nessuna OPL da leggere.</Empty> : <FiveRowScroll label="OPL da leggere" rows={LIST_PREVIEW} rowSelector=".home-opl-row"><div className="divide-y">{shownOpl.map(renderOplRow)}</div></FiveRowScroll>}
       </HomeSection>
-      <HomeSection section="reports" title="Segnalazioni" headerContent={<div className="home-report-inline"><Link to="/segnalazioni?nuova=Sicurezza">+ Sicurezza</Link><Link to="/segnalazioni?nuova=Ambiente">+ Ambiente</Link></div>}>
-        {errors.reports ? <LoadError onRetry={loadData} /> : !reportList.length ? <Empty>Nessuna segnalazione personale.</Empty> : <div className="divide-y">{reportList.map(renderReportRow)}</div>}
-        {!errors.reports && <MoreLink count={ownReports.length} limit={REPORT_PREVIEW} onClick={() => setListModal('reports')} />}
+      <HomeSection section="reports" title="Segnalazioni" more={!errors.reports && <MoreLink count={ownReports.length} limit={LIST_PREVIEW} onClick={() => setListModal('reports')} />} headerContent={<div className="home-report-inline"><Link to="/segnalazioni?nuova=Sicurezza">+ Sicurezza</Link><Link to="/segnalazioni?nuova=Ambiente">+ Ambiente</Link></div>}>
+        {errors.reports ? <LoadError onRetry={loadData} /> : !reportList.length ? <Empty>Nessuna segnalazione personale.</Empty> : <FiveRowScroll label="Segnalazioni personali" rows={LIST_PREVIEW} rowSelector=".home-report-row"><div className="divide-y">{reportList.map(renderReportRow)}</div></FiveRowScroll>}
       </HomeSection>
       <HomeSection section="actions" title={isOperator ? 'Piani d’azione della mia area' : 'I miei piani d’azione'} headerContent={<div className="home-origin-flags" role="group" aria-label="Filtra per origine">
           {ORIGINE_CHIPS.map(item => <label key={item.id} className={origins.includes(item.id) ? 'is-selected' : ''}><input type="checkbox" checked={origins.includes(item.id)} onChange={() => setOrigins(current => current.includes(item.id) ? current.filter(id => id !== item.id) : [...current, item.id])} />{item.label}</label>)}
@@ -240,12 +238,12 @@ export default function HomePage() {
     {selectedAP && <ActionPlanDetailPanel plan={selectedAP} onClose={() => setSelectedAP(null)} onUpdated={loadData} onEdit={plan => { setEditingAP(plan || selectedAP); setSelectedAP(null) }} />}
   </div>
 }
-function HomeSection({ section, title, children, actions, headerContent }) {
-  return <section className={`home-panel home-panel-${section || 'other'}`}><div className="home-panel-heading"><h2 className="home-panel-title">{title}</h2>{headerContent}{actions && <div className="flex items-center gap-4">{actions}</div>}</div>{children}</section>
+function HomeSection({ section, title, children, actions, headerContent, more }) {
+  return <section className={`home-panel home-panel-${section || 'other'}`}><div className="home-panel-heading"><h2 className="home-panel-title">{title}</h2>{headerContent}{more}{actions && <div className="flex items-center gap-4">{actions}</div>}</div>{children}</section>
 }
 const PREVIEW = 5
-const REPORT_PREVIEW = 4
-function FiveRowScroll({ label, rows = PREVIEW, children }) {
+const LIST_PREVIEW = 3
+function FiveRowScroll({ label, rows = PREVIEW, rowSelector = 'tbody tr', children }) {
   const boxRef = useRef(null)
   useLayoutEffect(() => {
     const box = boxRef.current
@@ -253,7 +251,7 @@ function FiveRowScroll({ label, rows = PREVIEW, children }) {
     let frame = 0
     const measure = () => {
       frame = 0
-      const items = box.querySelectorAll('tbody tr')
+      const items = box.querySelectorAll(rowSelector)
       if (items.length <= rows) { box.style.maxHeight = ''; return }
       const rect = box.getBoundingClientRect()
       const scale = box.offsetWidth ? rect.width / box.offsetWidth : 1
@@ -275,7 +273,7 @@ function FiveRowScroll({ label, rows = PREVIEW, children }) {
       mutation?.disconnect()
       window.removeEventListener('resize', schedule)
     }
-  }, [rows])
+  }, [rows, rowSelector])
   return <div ref={boxRef} className="home-ap-scroll" tabIndex={0} role="region" aria-label={label}>{children}</div>
 }
 function MoreLink({ count, limit = PREVIEW, onClick }) {
