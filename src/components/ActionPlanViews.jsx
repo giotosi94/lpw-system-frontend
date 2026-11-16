@@ -643,9 +643,9 @@ function CalendarView({ plans, calendarDays, setCalendarDays, onSelectAP }) {
 
   const colonne = [
     { id: 'scaduti', label: 'Scaduti', headerBg: 'bg-red-100', headerText: 'text-red-700', border: 'border-red-300', plans: scaduti },
-    { id: 'oggi', label: 'Oggi', headerBg: 'bg-orange-100', headerText: 'text-orange-700', border: 'border-orange-300', plans: oggiAPs },
-    { id: 'settimana', label: 'Questa settimana', headerBg: 'bg-yellow-100', headerText: 'text-yellow-700', border: 'border-yellow-300', plans: settimanaAPs },
-    { id: 'prossime', label: `Prossimi ${calendarDays} giorni`, headerBg: 'bg-blue-100', headerText: 'text-blue-700', border: 'border-blue-300', plans: prossimeAPs },
+    { id: 'oggi', label: 'Oggi', headerBg: 'bg-yellow-100', headerText: 'text-yellow-800', border: 'border-yellow-300', plans: oggiAPs },
+    { id: 'settimana', label: 'Questa settimana', headerBg: 'bg-gray-100', headerText: 'text-gray-700', border: 'border-gray-200', plans: settimanaAPs },
+    { id: 'prossime', label: `Prossimi ${calendarDays} giorni`, headerBg: 'bg-gray-100', headerText: 'text-gray-700', border: 'border-gray-200', plans: prossimeAPs },
   ]
 
   return (
@@ -668,7 +668,7 @@ function CalendarView({ plans, calendarDays, setCalendarDays, onSelectAP }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         {colonne.map(col => (
-          <div key={col.id} className={`rounded-lg border-2 ${col.border} bg-white flex flex-col`}>
+          <div key={col.id} className={`rounded-lg border ${col.border} bg-white flex flex-col`}>
             <div className={`${col.headerBg} ${col.headerText} px-3 py-2 rounded-t-md font-semibold text-sm flex justify-between items-center`}>
               <span>{col.label}</span>
               <span className="bg-white bg-opacity-70 px-2 py-0.5 rounded-full text-xs font-bold">{col.plans.length}</span>
