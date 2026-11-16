@@ -43,7 +43,7 @@ function buildTabsForLivello(livello, isAdmin) {
   if (livello === 'Quick') {
     const quickTabs = [
       { id: 'dati', label: 'Dati progetto' },
-      { id: 'quickkaizen', label: 'Problem Solving' },
+      { id: 'quickkaizen', label: 'Quick Kaizen' },
     ]
 
     if (isAdmin) {
@@ -89,7 +89,7 @@ export default function KaizenDetailPage() {
   const fromDashboard = searchParams.get('from_dashboard')
   const { isAdmin } = useAuth()
   const [kaizen, setKaizen] = useState(null)
-  const [activeTab, setActiveTab] = useState('dati')
+  const [activeTab, setActiveTab] = useState('quickkaizen')
   const [saving, setSaving] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
   const [showTransformModal, setShowTransformModal] = useState(false)
@@ -218,7 +218,7 @@ export default function KaizenDetailPage() {
 
   useEffect(() => {
     if (kaizen && !tabs.find(t => t.id === activeTab)) {
-      setActiveTab(tabs[0]?.id || 'dati')
+      setActiveTab(tabs.find(t => t.id === 'quickkaizen')?.id || tabs[0]?.id || 'quickkaizen')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [livelloAttuale])
