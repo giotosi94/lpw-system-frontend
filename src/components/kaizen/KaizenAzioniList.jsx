@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import api from '../../services/api'
-import { Plus, Filter, X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { useAllConfigurations } from '../../hooks/useConfigurations'
 import ActionPlanFormShared from '../ActionPlanFormShared'
 import ActionPlanDetailPanel from '../ActionPlanDetailPanel'
-import ActionPlanViews from '../ActionPlanViews'
+import ActionPlanViews, { ActionPlanViewSwitch } from '../ActionPlanViews'
 
 export default function KaizenAzioniList({
   kaizen,
@@ -27,6 +27,7 @@ export default function KaizenAzioniList({
   const [showForm, setShowForm] = useState(false)
   const [editingAP, setEditingAP] = useState(null)
   const [selectedAP, setSelectedAP] = useState(null)
+  const [viewMode, setViewMode] = useState('list')
 
   const { configs } = useAllConfigurations()
   const statiConfig = configs.stato_ap || []
@@ -151,32 +152,12 @@ export default function KaizenAzioniList({
 
   return (
     <div className="space-y-4">
-      <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 space-y-3 min-w-0">
-        <div className="flex flex-wrap justify-between items-center gap-3">
-          <div>
-            <h4 className="font-bold text-sm uppercase text-gray-700">{phaseLocked ? 'Azioni della fase' : `Azioni del ${contextLabel}`}</h4>
-            <p className="text-xs text-gray-500">
-              {phaseLocked
-                ? 'Azioni concrete di questa fase'
-                : isMajor
-                ? 'Azioni concrete, legate o meno a una fase del progetto'
-                : 'Azioni concrete, legate o meno a uno step del Gant macro'}
-            </p>
-          </div>
-          <button
-            onClick={handleNewAP}
-            className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary-light text-sm font-medium flex items-center gap-1"
-          >
-            <Plus size={14} /> Crea Action Plan
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap pt-3 border-t">
-          <Filter size={14} className="text-gray-400" />
-          <span className="text-xs font-medium text-gray-600">Filtri:</span>
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-3 space-y-3 min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
           {!phaseLocked && <select
             value={filterStep}
             onChange={(e) => setFilterStep(e.target.value)}
+            aria-label={isMajor ? 'Filtra per fase' : 'Filtra per step'}
             className="text-xs border rounded px-2 py-1"
           >
             <option value="">{isMajor ? 'Tutte le fasi' : 'Tutti gli step'} ({stats.totale})</option>
@@ -189,6 +170,7 @@ export default function KaizenAzioniList({
           <select
             value={filterStato}
             onChange={(e) => setFilterStato(e.target.value)}
+            aria-label="Filtra per stato"
             className="text-xs border rounded px-2 py-1"
           >
             <option value="">Tutti gli stati</option>
@@ -198,17 +180,24 @@ export default function KaizenAzioniList({
           </select>
           {((filterStep && !phaseLocked) || filterStato) && (
             <button
+              type="button"
               onClick={resetFilters}
               className="text-xs px-2 py-1 border rounded text-gray-600 hover:bg-gray-100 flex items-center gap-1"
             >
               <X size={10} /> Reset
             </button>
           )}
-          <span className="text-xs text-gray-500 ml-auto">
-            {azioniFiltrate.length} azion{azioniFiltrate.length === 1 ? 'e' : 'i'} visualizzate
-          </span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {azioni.length > 0 && <ActionPlanViewSwitch value={viewMode} onChange={setViewMode} />}
+            <button
+              type="button"
+              onClick={handleNewAP}
+              className="bg-primary text-white px-3 py-1.5 rounded-md hover:bg-primary-light text-xs font-medium flex items-center gap-1"
+            >
+              <Plus size={13} /> Crea Action Plan
+            </button>
+          </div>
         </div>
-
       {loading ? (
         <div className="p-8 text-center text-gray-400">Caricamento...</div>
       ) : (
@@ -227,7 +216,9 @@ export default function KaizenAzioniList({
           showStepGant={!phaseLocked}
           showKanban={true}
           showCalendar={true}
-          defaultView="list"
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          hideViewSwitch
           emptyMessage={
             azioni.length === 0
               ? phaseLocked ? 'Nessuna azione collegata a questa fase' : `Nessuna azione collegata a questo ${contextLabel}`
