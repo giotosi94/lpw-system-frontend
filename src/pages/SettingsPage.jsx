@@ -65,9 +65,9 @@ const SECTIONS = [
     tabs: [
       {
         id: 'categorie_perdita',
-        label: 'Categoria Perdita (TPM)',
+        label: 'Categoria Perdita',
         color: 'red',
-        description: 'Le 6 grandi perdite TPM, condivisa Kaizen + Action Plan',
+        description: 'Condivisa da Kaizen e Action Plan',
         usedIn: ['Kaizen (Ishikawa)', 'Action Plan', 'Step 2 Pareto Pillar'],
       },
       {
