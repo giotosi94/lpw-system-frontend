@@ -397,7 +397,7 @@ export default function KaizenDetailPage() {
           <ArrowLeft size={18} />
           {fromDashboard ? 'Torna al Meeting' : 'Torna ai Kaizen'}
         </button>
-        <div className="flex justify-between items-start mb-5">
+        <div className="flex flex-wrap justify-between items-start gap-3">
           <div>
             <h1 className="text-2xl font-bold">{kaizen.titolo || 'Kaizen'}</h1>
             <div className="flex gap-4 mt-2 text-sm text-gray-200 flex-wrap items-center">
@@ -479,46 +479,6 @@ export default function KaizenDetailPage() {
             )}
           </div>
         </div>
-
-        <div className="bg-white bg-opacity-10 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-200 uppercase tracking-wider">Livello Kaizen</span>
-            <span className="text-xs text-gray-200">{indiceLivello + 1}/3</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {LIVELLI.map((lvl, idx) => {
-              const isActive = idx === indiceLivello
-              const isCompleted = idx < indiceLivello
-              const isFuture = idx > indiceLivello
-              const cfg = livelloConfig[lvl]
-              const StepIcon = cfg.Icon
-              return (
-                <div key={lvl} className="flex-1 flex items-center">
-                  <div className="flex flex-col items-center flex-shrink-0">
-                    <div
-                      className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-                        isActive ? 'bg-white shadow-lg scale-110 ring-4 ring-white ring-opacity-30' :
-                        isCompleted ? 'bg-white bg-opacity-90' :
-                        'bg-white bg-opacity-20'
-                      }`}
-                    >
-                      <StepIcon size={22} color={isActive || isCompleted ? cfg.color : '#ffffff'} />
-                    </div>
-                    <div className={`text-xs mt-1 font-medium ${isActive ? 'text-white' : 'text-gray-300'}`}>
-                      {cfg.label}
-                    </div>
-                    {isActive && (<div className="text-xs text-yellow-300 font-bold mt-0.5">ATTUALE</div>)}
-                    {isFuture && (<div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1"><Lock size={10} /> Bloccato</div>)}
-                  </div>
-                  {idx < LIVELLI.length - 1 && (
-                    <div className={`flex-1 h-1 mx-2 rounded ${idx < indiceLivello ? 'bg-white bg-opacity-90' : 'bg-white bg-opacity-20'}`} />
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
       </div>
 
       {/* Banner Kaizen chiuso */}
@@ -540,119 +500,6 @@ export default function KaizenDetailPage() {
           >
             <RotateCcw size={16} /> Riapri
           </button>
-        </div>
-      )}
-
-      <div className="flex items-center justify-between mb-6">
-        <div className="relative transform-dropdown">
-          <button
-            onClick={() => setShowDropdown(!showDropdown)}
-            className="bg-white border-2 border-primary text-primary px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary hover:text-white transition-colors shadow-sm"
-          >
-            <RefreshCw size={16} />
-            <span className="font-medium">Trasforma in...</span>
-            <ChevronDown size={16} className={`transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
-          </button>
-
-          {showDropdown && (
-            <div className="absolute top-full left-0 mt-2 bg-white border rounded-lg shadow-xl z-50 min-w-[260px] overflow-hidden">
-              {LIVELLI.filter(lvl => lvl !== 'Major').map(lvl => {
-                const cfg = livelloConfig[lvl]
-                const DropIcon = cfg.Icon
-                const isCurrent = lvl === livelloAttuale
-                return (
-                  <button
-                    key={lvl}
-                    onClick={() => !isCurrent && openTransformModal(lvl)}
-                    disabled={isCurrent}
-                    className={`w-full text-left px-4 py-3 flex items-center gap-3 ${
-                      isCurrent ? 'bg-gray-50 cursor-not-allowed' : 'hover:bg-blue-50 cursor-pointer'
-                    } transition-colors border-b last:border-b-0`}
-                  >
-                    <DropIcon size={22} color={cfg.color} />
-                    <div className="flex-1">
-                      <div className={`font-semibold ${isCurrent ? 'text-gray-400' : 'text-gray-800'}`}>{cfg.label}</div>
-                      <div className={`text-xs ${isCurrent ? 'text-gray-400' : 'text-gray-500'}`}>{cfg.desc}</div>
-                    </div>
-                    {isCurrent && (
-                      <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded font-medium">ATTUALE</span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {kaizen.livello_storia && kaizen.livello_storia.length > 0 && (
-          <button onClick={() => setShowStoria(!showStoria)} className="flex items-center gap-1 text-sm text-gray-600 hover:text-primary transition-colors">
-            <History size={16} />
-            <span>Storia metodologie ({kaizen.livello_storia.length})</span>
-            <ChevronDown size={14} className={`transition-transform ${showStoria ? 'rotate-180' : ''}`} />
-          </button>
-        )}
-      </div>
-
-      {showStoria && kaizen.livello_storia && (
-        <div className="bg-white rounded-xl shadow p-4 mb-6 border-l-4 border-primary">
-          <h3 className="font-bold mb-3 flex items-center gap-2"><History size={16} /> Storia metodologie</h3>
-          <div className="space-y-2">
-            {[...kaizen.livello_storia].reverse().map((entry, i) => {
-              const cfg = livelloConfig[entry.livello]
-              const EntryIcon = cfg?.Icon || FileText
-              return (
-                <div key={i} className="flex items-start gap-3 py-2 border-b last:border-0">
-                  <div className="flex-shrink-0 mt-0.5"><EntryIcon size={20} color={cfg?.color || '#64748b'} /></div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm">
-                      <strong>{entry.livello}</strong>
-                      {entry.livello_precedente && (<span className="text-gray-500"> (da {entry.livello_precedente})</span>)}
-                    </div>
-                    {entry.motivo && (<div className="text-xs text-gray-600 italic mt-0.5">"{entry.motivo}"</div>)}
-                    <div className="text-xs text-gray-400 mt-0.5">{new Date(entry.quando).toLocaleString('it-IT')} · {entry.utente}</div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {showTransformModal && targetLivello && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-md shadow-2xl">
-            <div className="text-white px-6 py-4 rounded-t-xl flex justify-between items-center" style={{ backgroundColor: livelloConfig[targetLivello]?.color || '#3b82f6' }}>
-              <h2 className="text-lg font-bold flex items-center gap-2"><RefreshCw size={20} /> Trasforma in {targetLivello}</h2>
-              <button onClick={() => setShowTransformModal(false)} className="hover:bg-white hover:bg-opacity-20 p-1 rounded"><X size={20} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="flex items-center justify-center gap-3 bg-gray-50 p-4 rounded-lg">
-                <div className="text-center">
-                  {(() => { const I = livelloConfig[livelloAttuale]?.Icon; return I ? <I size={30} color={livelloConfig[livelloAttuale]?.color} /> : null })()}
-                  <div className="text-xs text-gray-600 mt-1">{livelloAttuale}</div>
-                </div>
-                <div className="text-2xl text-gray-400">&rarr;</div>
-                <div className="text-center">
-                  {(() => { const I = livelloConfig[targetLivello]?.Icon; return I ? <I size={30} color={livelloConfig[targetLivello]?.color} /> : null })()}
-                  <div className="text-xs font-bold mt-1" style={{ color: livelloConfig[targetLivello]?.color }}>{targetLivello}</div>
-                </div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
-                <strong className="text-blue-700">{livelloConfig[targetLivello]?.label}</strong>
-                <p className="text-blue-600 text-xs mt-1">{livelloConfig[targetLivello]?.desc}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Motivo della trasformazione <span className="text-gray-400 font-normal ml-1">(opzionale ma consigliato)</span></label>
-                <textarea value={motivoTrasforma} onChange={(e) => setMotivoTrasforma(e.target.value)} rows={3} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Es: Problema più complesso del previsto, richiede team inter-funzionale" autoFocus />
-              </div>
-              <div className="flex gap-2 justify-end pt-3 border-t">
-                <button onClick={() => setShowTransformModal(false)} className="px-4 py-2 border rounded-lg hover:bg-gray-50" disabled={transforming}>Annulla</button>
-                <button onClick={confirmTransform} disabled={transforming} className="px-6 py-2 text-white rounded-lg shadow-sm disabled:opacity-50 flex items-center gap-2" style={{ backgroundColor: livelloConfig[targetLivello]?.color || '#3b82f6' }}>
-                  {transforming ? 'Trasformazione...' : 'Conferma trasformazione'}
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
