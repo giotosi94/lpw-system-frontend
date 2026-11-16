@@ -176,14 +176,14 @@ export default function ActionPlanDetailPanel({
 
   async function chiudiAP() {
     if (closing) return
-    if (!confirm(`Chiudere questo Action Plan?\nLo stato diventerà "${statoChiusura}" e non sarà più modificabile finché non lo riapri.`)) return
+    if (!confirm(`Finalizzare questo Action Plan?\nLo stato diventerà "${statoChiusura}" e non sarà più modificabile finché non lo riapri.`)) return
     setClosing(true)
     try {
       await api.patch(`/action-plans/${plan._id}/stato`, { stato: statoChiusura })
       await reload()
     } catch (error) {
       console.error(error)
-      alert('Errore durante la chiusura: ' + (error.response?.data?.detail || error.message))
+      alert('Errore durante la finalizzazione: ' + (error.response?.data?.detail || error.message))
     } finally {
       setClosing(false)
     }
@@ -560,7 +560,7 @@ export default function ActionPlanDetailPanel({
 
   return (
     <Modal>
-      <div className="max-h-[85vh] overflow-y-auto">
+      <div className="max-h-[calc(90vh-60px)] overflow-y-auto">
         <div>
           <div className="bg-primary text-white px-4 py-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -572,24 +572,6 @@ export default function ActionPlanDetailPanel({
                 <h2 className="text-base font-bold break-words">{detail.titolo}</h2>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
-              {!detail.is_cancelled && (isLocked ? (
-                <button
-                  type="button"
-                  onClick={riapriAP}
-                  className="flex-shrink-0 inline-flex items-center gap-1.5 bg-white text-primary px-3 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-100"
-                >
-                  <RotateCcw size={13} /> Riapri
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={chiudiAP}
-                  disabled={closing}
-                  className="flex-shrink-0 inline-flex items-center gap-1.5 bg-white text-primary px-3 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-100 disabled:opacity-50"
-                >
-                  <Lock size={13} /> {closing ? 'Chiusura...' : 'Chiudi azione'}
-                </button>
-              ))}
               {!isLocked && !detail.is_cancelled && onCancel && (
                 <button
                   type="button"
@@ -645,11 +627,11 @@ export default function ActionPlanDetailPanel({
 
           {isLocked && (
             <div className="bg-gray-100 border-b px-4 py-1.5 text-xs text-gray-600">
-              Azione chiusa · sola lettura
+              Azione finalizzata · sola lettura
             </div>
           )}
 
-          <div className="bg-gray-50 border-b px-4 py-3 space-y-2">
+          <div className="border-b px-4 py-3 space-y-2">
           {detail.is_cancelled && (
               <div className="bg-red-100 border border-red-300 rounded p-2 text-xs">
                 <div className="font-bold text-red-800 mb-1">Action Plan annullato</div>
@@ -664,17 +646,13 @@ export default function ActionPlanDetailPanel({
                 )}
               </div>
             )}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-2">
           <SidebarRow label="Stato">
-            <span className={`text-xs px-2 py-0.5 rounded font-medium ${isLocked ? 'bg-gray-200 text-gray-700' : 'bg-blue-50 text-blue-700'}`}>
-              {detail.stato || '—'}
-            </span>
+            {detail.stato || '—'}
           </SidebarRow>
 
           <SidebarRow label="Priorità">
-            <span className={`px-2 py-0.5 rounded text-xs ${PRIORITA_BG[detail.priorita] || ''}`}>
-              {detail.priorita || '—'}
-            </span>
+            {detail.priorita || '—'}
           </SidebarRow>
 
           {detail.tipo && (
@@ -689,7 +667,7 @@ export default function ActionPlanDetailPanel({
           <SidebarRow label="Responsabile">
             {detail.responsabile ? (
               <div className="flex items-center gap-1">
-                <Avatar name={detail.responsabile} size={20} />
+                <Avatar name={detail.responsabile} size={16} />
                 <span className="text-xs">{detail.responsabile}</span>
               </div>
             ) : (
@@ -715,17 +693,7 @@ export default function ActionPlanDetailPanel({
           {detail.parent_type && detail.parent_type !== 'standalone' && (
             <SidebarRow label="Collegato a">
               <div className="text-xs">
-                <span
-                  className={`px-2 py-0.5 rounded ${
-                    detail.parent_type === 'pillar'
-                      ? 'bg-indigo-100 text-indigo-700'
-                      : detail.parent_type === 'kaizen'
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : detail.parent_type === 'dashboard'
-                          ? 'bg-purple-100 text-purple-700'
-                          : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
+                <span>
                   {detail.parent_type === 'pillar' && 'Pillar'}
                   {detail.parent_type === 'kaizen' && 'Kaizen'}
                   {detail.parent_type === 'dashboard' && 'Dashboard'}
@@ -743,11 +711,7 @@ export default function ActionPlanDetailPanel({
 
           {(detail.reparto || detail.linea || detail.macchina) && (
             <SidebarRow label="Location">
-              <div className="text-xs">
-                {detail.reparto && <div>{detail.reparto}</div>}
-                {detail.linea && <div>{detail.linea}</div>}
-                {detail.macchina && <div>{detail.macchina}</div>}
-              </div>
+              <span title={[detail.reparto, detail.linea, detail.macchina].filter(Boolean).join(' · ')}>{[detail.reparto, detail.linea, detail.macchina].filter(Boolean).join(' · ')}</span>
             </SidebarRow>
           )}
 
@@ -1008,6 +972,33 @@ export default function ActionPlanDetailPanel({
           </div>
         </div>
       </div>
+      <div className="flex flex-wrap justify-end gap-2 border-t bg-white px-4 py-3">
+        <button
+          type="button"
+          onClick={onClose}
+          className="px-4 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
+        >
+          Esci
+        </button>
+        {!detail.is_cancelled && (isLocked ? (
+          <button
+            type="button"
+            onClick={riapriAP}
+            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg border border-primary text-sm font-medium text-primary hover:bg-gray-50"
+          >
+            <RotateCcw size={14} /> Riapri
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={chiudiAP}
+            disabled={closing}
+            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary text-sm font-medium text-white hover:bg-primary-light disabled:opacity-50"
+          >
+            <Lock size={14} /> {closing ? 'Finalizzazione...' : 'Finalizza'}
+          </button>
+        ))}
+      </div>
 
       {showCamera && (
         <div className="fixed inset-0 bg-black bg-opacity-95 z-[70] flex flex-col items-center justify-center p-4">
@@ -1153,8 +1144,8 @@ function Section({ title, actions, children }) {
 function SidebarRow({ label, children }) {
   return (
     <div className="min-w-0">
-      <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
-      <div className="mt-0.5 text-xs truncate">{children}</div>
+      <div className="text-[11px] font-medium text-gray-600 mb-0.5">{label}</div>
+      <div className="h-8 px-2.5 flex items-center border border-gray-200 rounded-md bg-gray-50 text-xs text-gray-800 truncate">{children}</div>
     </div>
   )
 }
