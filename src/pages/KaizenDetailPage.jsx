@@ -42,6 +42,7 @@ function getLivelloFromKaizen(kaizen) {
 function buildTabsForLivello(livello, isAdmin) {
   if (livello === 'Quick') {
     const quickTabs = [
+      { id: 'dati', label: 'Dati progetto' },
       { id: 'quickkaizen', label: 'Problem Solving' },
     ]
 
@@ -88,7 +89,7 @@ export default function KaizenDetailPage() {
   const fromDashboard = searchParams.get('from_dashboard')
   const { isAdmin } = useAuth()
   const [kaizen, setKaizen] = useState(null)
-  const [activeTab, setActiveTab] = useState('quickkaizen')
+  const [activeTab, setActiveTab] = useState('dati')
   const [saving, setSaving] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
   const [showTransformModal, setShowTransformModal] = useState(false)
@@ -217,7 +218,7 @@ export default function KaizenDetailPage() {
 
   useEffect(() => {
     if (kaizen && !tabs.find(t => t.id === activeTab)) {
-      setActiveTab(tabs[0]?.id || 'quickkaizen')
+      setActiveTab(tabs[0]?.id || 'dati')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [livelloAttuale])
@@ -288,6 +289,21 @@ export default function KaizenDetailPage() {
       return false
     } finally {
       setSaving(false)
+    }
+  }
+
+  const saveProjectData = async (payload) => {
+    if (!kaizen) return false
+    const next = { ...kaizen, ...payload }
+    try {
+      await api.put(`/kaizens/${id}`, JSON.parse(JSON.stringify(next)))
+      setKaizen(next)
+      setSavedSnapshot(JSON.stringify(next))
+      return true
+    } catch (err) {
+      console.error(err)
+      alert('Errore durante il salvataggio: ' + (err.response?.data?.detail || err.message))
+      return false
     }
   }
 
@@ -394,49 +410,9 @@ export default function KaizenDetailPage() {
           {fromDashboard ? 'Torna al Meeting' : 'Torna ai Kaizen'}
         </button>
         <div className="flex flex-wrap justify-between items-start gap-3">
-          <div>
-            <h1 className="text-2xl font-bold">{kaizen.titolo || 'Kaizen'}</h1>
-            <div className="flex gap-4 mt-2 text-sm text-gray-200 flex-wrap items-center">
-              <span className="flex items-center gap-1"><FileText size={14} /> {kaizen.numero}</span>
-              <span className="flex items-center gap-1"><Activity size={14} /> {kaizen.stato}</span>
-              {kaizen.creatore_nome && <span className="flex items-center gap-1"><User size={14} /> Creatore: {kaizen.creatore_nome}</span>}
-              {kaizen.team_leader_nome && <span className="flex items-center gap-1"><Target size={14} /> Leader: {kaizen.team_leader_nome}</span>}
-              {kaizen.reparto && <span className="flex items-center gap-1"><Factory size={14} /> {kaizen.reparto}</span>}
-              {kaizen.linea && <span className="flex items-center gap-1"><MapPin size={14} /> {kaizen.linea}</span>}
-              {kaizen.macchina && <span className="flex items-center gap-1"><Cog size={14} /> {kaizen.macchina}</span>}
-              {kaizen.pillar_sigla && (
-                <Link
-                  to={`/pillars/${kaizen.pillar_id}`}
-                  className="flex items-center gap-1 bg-white bg-opacity-20 hover:bg-opacity-30 px-2 py-0.5 rounded-full font-mono font-bold transition-colors"
-                  title={`Pillar Owner: ${kaizen.pillar_sigla}`}
-                >
-                  <Building2 size={14} />
-                  {kaizen.pillar_sigla} · Owner
-                </Link>
-              )}
-
-              {(kaizen.pillar_ids || [])
-                .filter(pillarId => pillarId !== kaizen.pillar_id)
-                .map((pillarId, index) => (
-                  <Link
-                    key={pillarId}
-                    to={`/pillars/${pillarId}`}
-                    className="flex items-center gap-1 bg-white bg-opacity-10 hover:bg-opacity-20 px-2 py-0.5 rounded-full font-mono text-xs transition-colors"
-                  >
-                    <Building2 size={12} />
-                    {kaizen.pillar_sigle?.[index] || 'Pillar'}
-                  </Link>
-                ))}
-              {kaizen.dashboard_id && kaizen.dashboard_nome && (
-                <Link
-                  to={`/dashboard/${kaizen.dashboard_id}`}
-                  className="flex items-center gap-1 bg-purple-500 bg-opacity-30 hover:bg-opacity-50 px-2 py-0.5 rounded-full font-bold transition-colors"
-                  title={`Apri Meeting ${kaizen.dashboard_nome}`}
-                >
-                  <CalendarDays size={14} /> {kaizen.dashboard_nome}
-                </Link>
-              )}
-            </div>
+          <div className="min-w-0 flex items-baseline gap-3">
+            <span className="font-mono text-sm opacity-80 flex-shrink-0">{kaizen.numero}</span>
+            <h1 className="text-2xl font-bold break-words">{kaizen.titolo || 'Kaizen'}</h1>
           </div>
           <div className="flex gap-2">
             {isLocked ? (
@@ -726,6 +702,19 @@ export default function KaizenDetailPage() {
             <p className="text-xs text-gray-500 mt-3">Ricorda di premere Salva in alto per confermare setup e team.</p>
           </div>
 
+        </div>
+      )}
+
+      {activeTab === 'dati' && (
+        <div className="bg-white rounded-xl shadow p-6">
+          <KaizenProjectData
+            kaizen={kaizen}
+            reparti={reparti}
+            pillars={pillars}
+            categorie={configs.categorie_perdita || []}
+            locked={isLocked}
+            onSave={saveProjectData}
+          />
         </div>
       )}
 
@@ -1164,6 +1153,160 @@ export default function KaizenDetailPage() {
       )}
     </div>
   )
+}
+
+function KaizenProjectData({ kaizen, reparti, pillars, categorie, locked, onSave }) {
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [dashboards, setDashboards] = useState([])
+  const build = () => ({
+    titolo: kaizen.titolo || '',
+    reparto: kaizen.reparto || '',
+    linea: kaizen.linea || '',
+    macchina: kaizen.macchina || '',
+    pillar_id: kaizen.pillar_id || '',
+    dashboard_id: kaizen.dashboard_id || '',
+    tipo_perdita: kaizen.tipo_perdita || '',
+    team_leader: kaizen.team_leader_id ? { id: kaizen.team_leader_id, name: kaizen.team_leader_nome || '' } : null,
+    team_members: (kaizen.team_members_ids || []).map((memberId, index) => ({ id: memberId, name: kaizen.team_members_nomi?.[index] || '' })),
+  })
+  const [form, setForm] = useState(build)
+
+  useEffect(() => { if (!editing) setForm(build()) }, [kaizen])
+  useEffect(() => { if (locked) setEditing(false) }, [locked])
+  useEffect(() => {
+    api.get('/dashboards/').then(res => setDashboards(res.data || [])).catch(() => setDashboards([]))
+  }, [])
+
+  const linee = useMemo(() => {
+    if (!form.reparto) return []
+    return reparti.find(item => item.nome === form.reparto)?.linee?.filter(item => item.attivo !== false) || []
+  }, [form.reparto, reparti])
+  const macchine = useMemo(() => {
+    if (!form.linea) return []
+    return linee.find(item => item.nome === form.linea)?.macchine?.filter(item => item.attivo !== false) || []
+  }, [form.linea, linee])
+
+  const pillarLabel = pillar => pillar ? `${pillar.sigla || ''}${pillar.sigla ? ' · ' : ''}${pillar.label || pillar.nome || pillar.titolo || ''}` : ''
+  const dashboardLabel = dashboard => dashboard?.nome || dashboard?.label || dashboard?.titolo || 'Meeting'
+  const formatDate = value => {
+    if (!value) return '—'
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString('it-IT')
+  }
+
+  const save = async () => {
+    if (!form.titolo.trim() || saving) return
+    setSaving(true)
+    const pillar = pillars.find(item => item._id === form.pillar_id)
+    const dashboard = dashboards.find(item => item._id === form.dashboard_id)
+    const ok = await onSave({
+      titolo: form.titolo.trim(),
+      reparto: form.reparto,
+      linea: form.linea,
+      macchina: form.macchina,
+      pillar_id: pillar?._id || null,
+      pillar_sigla: pillar?.sigla || '',
+      pillar_label: pillar?.label || pillar?.nome || pillar?.titolo || '',
+      dashboard_id: dashboard?._id || (form.dashboard_id ? kaizen.dashboard_id : null),
+      dashboard_nome: dashboard ? dashboardLabel(dashboard) : (form.dashboard_id ? kaizen.dashboard_nome : ''),
+      tipo_perdita: form.tipo_perdita,
+      team_leader_id: form.team_leader?.id || null,
+      team_leader_nome: form.team_leader?.name || '',
+      team_members_ids: form.team_members.map(item => item.id),
+      team_members_nomi: form.team_members.map(item => item.name),
+    })
+    setSaving(false)
+    if (ok) setEditing(false)
+  }
+
+  const currentPillar = pillars.find(item => item._id === kaizen.pillar_id)
+  const repartoOptions = reparti.filter(item => item.attivo !== false).map(item => ({ value: item.nome, label: item.nome }))
+  if (form.reparto && !repartoOptions.some(item => item.value === form.reparto)) repartoOptions.unshift({ value: form.reparto, label: form.reparto })
+  const withCurrent = (options, value) => value && !options.some(item => item.value === value) ? [{ value, label: value }, ...options] : options
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        {editing ? (
+          <div className="flex gap-2">
+            <button type="button" onClick={() => { setForm(build()); setEditing(false) }} disabled={saving} className="px-4 py-2 border rounded-lg text-sm">
+              Annulla
+            </button>
+            <button type="button" onClick={save} disabled={saving || !form.titolo.trim()} className="px-4 py-2 bg-primary text-white rounded-lg text-sm flex items-center gap-2 disabled:opacity-50">
+              <Save size={16} /> {saving ? 'Salvataggio...' : 'Salva'}
+            </button>
+          </div>
+        ) : !locked && (
+          <button type="button" onClick={() => setEditing(true)} className="px-4 py-2 bg-primary text-white rounded-lg text-sm">
+            Modifica dati
+          </button>
+        )}
+      </div>
+
+      <PDSection title="Informazioni generali">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <PDField label="Titolo" editing={editing} value={form.titolo} onChange={value => setForm({ ...form, titolo: value })} />
+          <PDDisplay label="Numero" value={kaizen.numero} />
+          <PDDisplay label="Stato" value={kaizen.stato} />
+          <PDDisplay label="Creatore" value={kaizen.creatore_nome} />
+          <PDDisplay label="Data apertura" value={formatDate(kaizen.data_apertura || kaizen.created_at)} />
+          <PDSelect label="Categoria perdita" editing={editing} value={form.tipo_perdita} options={withCurrent(categorie.map(item => ({ value: item.label, label: item.label })), form.tipo_perdita)} onChange={value => setForm({ ...form, tipo_perdita: value })} />
+        </div>
+      </PDSection>
+
+      <PDSection title="Struttura">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <PDSelect label="Reparto" editing={editing} value={form.reparto} options={repartoOptions} onChange={value => setForm({ ...form, reparto: value, linea: '', macchina: '' })} />
+          <PDSelect label="Linea" editing={editing} value={form.linea} disabled={!form.reparto} options={withCurrent(linee.map(item => ({ value: item.nome, label: item.nome })), form.linea)} onChange={value => setForm({ ...form, linea: value, macchina: '' })} />
+          <PDSelect label="Macchina" editing={editing} value={form.macchina} disabled={!form.linea} options={withCurrent(macchine.map(item => ({ value: item.nome, label: item.nome })), form.macchina)} onChange={value => setForm({ ...form, macchina: value })} />
+          <PDSelect label="Pillar" editing={editing} value={form.pillar_id} display={currentPillar ? pillarLabel(currentPillar) : kaizen.pillar_sigla} options={pillars.map(item => ({ value: item._id, label: pillarLabel(item) }))} onChange={value => setForm({ ...form, pillar_id: value })} />
+          <PDSelect label="Meeting di origine" editing={editing} value={form.dashboard_id} display={kaizen.dashboard_nome} options={withCurrent(dashboards.map(item => ({ value: item._id, label: dashboardLabel(item) })), form.dashboard_id).map(item => item.value === kaizen.dashboard_id && item.label === kaizen.dashboard_id ? { ...item, label: kaizen.dashboard_nome || item.label } : item)} onChange={value => setForm({ ...form, dashboard_id: value })} />
+        </div>
+      </PDSection>
+
+      <PDSection title="Team">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <PDLabel>Team Leader</PDLabel>
+            {editing ? (
+              <UserPicker value={form.team_leader} onChange={selected => setForm({ ...form, team_leader: selected ? { id: selected.id, name: selected.name } : null })} mode="single" placeholder="Seleziona team leader..." />
+            ) : (
+              <PDValue>{kaizen.team_leader_nome || '—'}</PDValue>
+            )}
+          </div>
+          <div>
+            <PDLabel>Team Members</PDLabel>
+            {editing ? (
+              <UserPicker value={form.team_members} onChange={selected => setForm({ ...form, team_members: selected.map(item => ({ id: item.id, name: item.name })) })} mode="multi" placeholder="Aggiungi membri al team..." />
+            ) : (
+              <PDValue>{(kaizen.team_members_nomi || []).filter(Boolean).join(', ') || '—'}</PDValue>
+            )}
+          </div>
+        </div>
+      </PDSection>
+    </div>
+  )
+}
+
+function PDSection({ title, children }) {
+  return <div className="border-b border-gray-200 pb-4 last:border-0"><h3 className="font-bold text-gray-800 mb-3">{title}</h3>{children}</div>
+}
+function PDLabel({ children }) {
+  return <div className="text-xs font-semibold text-gray-500 uppercase mb-1">{children}</div>
+}
+function PDValue({ children }) {
+  return <div className="text-sm font-medium text-gray-800 min-h-10 flex items-center">{children}</div>
+}
+function PDDisplay({ label, value }) {
+  return <div><PDLabel>{label}</PDLabel><PDValue>{value || '—'}</PDValue></div>
+}
+function PDField({ label, editing, value, onChange }) {
+  return <div><PDLabel>{label}</PDLabel>{editing ? <input value={value} onChange={event => onChange(event.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" /> : <PDValue>{value || '—'}</PDValue>}</div>
+}
+function PDSelect({ label, editing, value, options, onChange, disabled = false, display }) {
+  const selectedLabel = display || options.find(option => option.value === value)?.label || value || '—'
+  return <div><PDLabel>{label}</PDLabel>{editing ? <select value={value} onChange={event => onChange(event.target.value)} disabled={disabled} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"><option value="">Seleziona</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : <PDValue>{selectedLabel}</PDValue>}</div>
 }
 
 function ReplicaLines({ rows, reparti, onChange }) {
