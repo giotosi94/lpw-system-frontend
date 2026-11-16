@@ -56,10 +56,6 @@ function giorniDaApertura(dataApertura) {
   return Math.floor((oggi - apertura) / (1000 * 60 * 60 * 24))
 }
 
-function numeroBreve(numero) {
-  return String(numero || '').replace(/^[A-Za-z]+-/, '').replace(/^0+(?=\d)/, '')
-}
-
 function annoCreazione(kaizen) {
   const anno = new Date(kaizen.created_at || kaizen.data_apertura || '').getFullYear()
   return Number.isNaN(anno) ? '' : String(anno)
@@ -188,10 +184,9 @@ function SearchableMultiSelect({ title, field, options, filters, setFilters, dis
 
 const CHECK_COLUMN_WIDTH = 44
 const COLUMN_MAX_WIDTH = 1000
-const COLUMN_STORAGE_KEY = 'lpw_kaizen_column_widths_v1'
+const COLUMN_STORAGE_KEY = 'lpw_kaizen_column_widths_v2'
 const TABLE_COLUMNS = [
-  { key: 'numero', label: '#', title: 'Numero', width: 64, min: 52 },
-  { key: 'tipo', label: 'Tipo', width: 100, min: 70 },
+  { key: 'numero', label: '#', title: 'Numero', width: 110, min: 80 },
   { key: 'titolo', label: 'Titolo', width: 340, min: 120 },
   { key: 'stato', label: 'Stato', width: 110, min: 80 },
   { key: 'reparto', label: 'Reparto', width: 170, min: 80 },
@@ -548,7 +543,7 @@ const majorKaizens =
 
     if (
       !confirm(
-        `ELIMINARE ${dettaglio}?\n\nQuesta azione non può essere annullata dalla Kaizen Sheet.`
+        `ELIMINARE ${dettaglio}?\n\nQuesta azione non può essere annullata dalla Kaizen List.`
       )
     ) {
       return
@@ -776,17 +771,10 @@ const majorKaizens =
     })
   }, [kaizens, filters, user])
 
-  const getTipoStyle = (tipo) => {
-    const t = tipo || ''
-    if (t.includes('Major')) return { bg: 'bg-purple-100', color: 'text-purple-700', label: 'Major' }
-    if (t.includes('Standard')) return { bg: 'bg-blue-100', color: 'text-blue-700', label: 'Standard' }
-    return { bg: 'bg-emerald-100', color: 'text-emerald-700', label: 'Quick' }
-  }
-
   return (
     <div>
       <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Kaizen Sheet</h1>
+        <h1 className="text-2xl font-bold text-gray-800">Kaizen List</h1>
         <div className="flex flex-wrap gap-2">
           <Link
             to="/kaizen/archivio"
@@ -948,7 +936,6 @@ const majorKaizens =
           </thead>
           <tbody>
             {filtered.map((k) => {
-              const tipoStyle = getTipoStyle(k.livello || k.tipo)
               const giorni = giorniDaApertura(k.data_apertura)
               return (
                 <tr key={k._id} className={`border-t hover:bg-gray-50 ${selected.has(k._id) ? 'bg-blue-50' : ''}`}>
@@ -971,10 +958,9 @@ const majorKaizens =
                       title={k.numero}
                       className="block truncate text-primary font-mono hover:underline"
                     >
-                      {numeroBreve(k.numero)}
+                      {k.numero}
                     </Link>
                   </td>
-                  <td className="px-3 py-4 truncate">{tipoStyle.label}</td>
                   <td className="px-3 py-4 font-medium overflow-hidden">
                     <span title={k.titolo} className="break-words" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{k.titolo}</span>
                   </td>
