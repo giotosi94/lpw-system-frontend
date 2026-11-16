@@ -14,10 +14,14 @@ import {
   Paperclip,
   Camera,
   FileText,
+  Clipboard,
+  Lock,
+  RotateCcw,
 } from 'lucide-react'
 import api from '../services/api'
 import { useAllConfigurations } from '../hooks/useConfigurations'
 import { useAuth } from '../context/AuthContext'
+import { usePillars } from '../hooks/usePillars'
 import MentionTextarea from './MentionTextarea'
 
 const PRIORITA_BG = {
@@ -117,6 +121,11 @@ export default function ActionPlanDetailPanel({
 
   const { configs } = useAllConfigurations()
   const { user } = useAuth()
+  const { pillars = [] } = usePillars() || {}
+  const [closing, setClosing] = useState(false)
+  const [pasteHint, setPasteHint] = useState('')
+  const pasteRef = useRef(null)
+  const fileInputRef = useRef(null)
   const statiConfig = configs.stato_ap || []
   const statoCorrente = statiConfig.find(stato => stato.label === detail.stato)
   const isLocked = Boolean(statoCorrente?.is_terminal)
@@ -157,6 +166,94 @@ export default function ActionPlanDetailPanel({
       console.error(error)
       alert('Errore durante la riapertura: ' + (error.response?.data?.detail || error.message))
     }
+  }
+
+  const statoChiusura =
+    statiConfig.find(stato => stato.is_terminal && stato.label === 'Chiuso')?.label ||
+    statiConfig.find(stato => stato.is_terminal && !/annull|cancel/i.test(stato.label))?.label ||
+    'Chiuso'
+
+  async function chiudiAP() {
+    if (closing) return
+    if (!confirm(`Chiudere questo Action Plan?\nLo stato diventerà "${statoChiusura}" e non sarà più modificabile finché non lo riapri.`)) return
+    setClosing(true)
+    try {
+      await api.patch(`/action-plans/${plan._id}/stato`, { stato: statoChiusura })
+      await reload()
+    } catch (error) {
+      console.error(error)
+      alert('Errore durante la chiusura: ' + (error.response?.data?.detail || error.message))
+    } finally {
+      setClosing(false)
+    }
+  }
+
+  async function uploadImageFiles(files) {
+    const available = 10 - (detail.allegati || []).length
+    if (available <= 0) {
+      alert('Massimo 10 allegati per Action Plan')
+      return
+    }
+    setUploadingAllegato(true)
+    try {
+      let count = (detail.allegati || []).length
+      for (const file of files.slice(0, available)) {
+        if (await uploadActionPlanFile(file, count)) count += 1
+      }
+      await reload()
+    } catch (error) {
+      console.error(error)
+      alert('Errore durante il caricamento: ' + (error.response?.data?.detail || error.message))
+    } finally {
+      setUploadingAllegato(false)
+    }
+  }
+
+  function pastedImages(items) {
+    const files = []
+    Array.from(items || []).forEach((item, index) => {
+      const file = item instanceof File ? item : item.kind === 'file' ? item.getAsFile() : null
+      if (!file || !file.type.startsWith('image/')) return
+      const extension = (file.type.split('/')[1] || 'png').replace('jpeg', 'jpg')
+      files.push(file.name && file.name !== 'image.png' ? file : new File([file], `incolla_${Date.now()}_${index}.${extension}`, { type: file.type }))
+    })
+    return files
+  }
+
+  async function handlePaste(event) {
+    if (isLocked || uploadingAllegato) return
+    const files = pastedImages(event.clipboardData?.items)
+    if (!files.length) return
+    event.preventDefault()
+    setPasteHint('')
+    await uploadImageFiles(files)
+  }
+
+  async function pasteFromClipboard() {
+    if (navigator.clipboard?.read && window.isSecureContext) {
+      try {
+        const items = await navigator.clipboard.read()
+        const files = []
+        for (const item of items) {
+          const type = item.types.find(value => value.startsWith('image/'))
+          if (type) {
+            const blob = await item.getType(type)
+            files.push(new File([blob], `incolla_${Date.now()}_${files.length}.${type.split('/')[1].replace('jpeg', 'jpg')}`, { type }))
+          }
+        }
+        if (files.length) {
+          setPasteHint('')
+          await uploadImageFiles(files)
+          return
+        }
+        setPasteHint('Nessuna immagine')
+        return
+      } catch {
+        setPasteHint('')
+      }
+    }
+    pasteRef.current?.focus()
+    setPasteHint('Premi Ctrl+V')
   }
 
   async function addCommento() {
@@ -464,32 +561,43 @@ export default function ActionPlanDetailPanel({
     <Modal>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 h-[85vh]">
         <div className="lg:col-span-2 overflow-y-auto border-r">
-          <div className="bg-gradient-to-r from-primary to-primary-light text-white p-4">
-            <div className="flex items-center gap-2 text-sm opacity-90 mb-2">
-              <TipoIcon size={16} />
-              <span>{detail.tipo}</span>
-              <span>·</span>
-              <span className="font-mono">{detail.numero}</span>
+          <div className="bg-primary text-white px-5 py-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-xs opacity-80 mb-1">
+                  <span className="font-mono">{detail.numero}</span>
+                  {detail.tipo && <><span>·</span><span>{detail.tipo}</span></>}
+                </div>
+                <h2 className="text-lg font-bold break-words">{detail.titolo}</h2>
+              </div>
+              {!detail.is_cancelled && (isLocked ? (
+                <button
+                  type="button"
+                  onClick={riapriAP}
+                  className="flex-shrink-0 inline-flex items-center gap-1.5 bg-white text-primary px-3 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-100"
+                >
+                  <RotateCcw size={13} /> Riapri
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={chiudiAP}
+                  disabled={closing}
+                  className="flex-shrink-0 inline-flex items-center gap-1.5 bg-white text-primary px-3 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-100 disabled:opacity-50"
+                >
+                  <Lock size={13} /> {closing ? 'Chiusura...' : 'Chiudi azione'}
+                </button>
+              ))}
             </div>
-            <h2 className="text-xl font-bold">{detail.titolo}</h2>
           </div>
 
           {isLocked && (
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 px-4 py-3 flex items-center justify-between gap-3">
-              <div className="text-sm text-yellow-900">
-                <strong>Action Plan chiuso</strong> · Modalità sola lettura. Per modificarlo, riapri l’Action Plan.
-              </div>
-              <button
-                type="button"
-                onClick={riapriAP}
-                className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded text-sm font-medium whitespace-nowrap"
-              >
-                Riapri
-              </button>
+            <div className="bg-gray-100 border-b px-5 py-2 text-xs text-gray-600">
+              Azione chiusa · sola lettura
             </div>
           )}
 
-          <div className="p-6 space-y-6">
+          <div className="p-5 space-y-6">
 
             <Section title={`Checklist ${checklistTotali ? `(${checklistCompletati}/${checklistTotali})` : ''}`}>
               {checklistTotali > 0 && (
@@ -559,15 +667,40 @@ export default function ActionPlanDetailPanel({
               )}
             </Section>
 
-            <Section title={`Allegati ${allegati.length ? `(${allegati.length}/10)` : ''}`}>
+            <Section
+              title={`Allegati ${allegati.length ? `(${allegati.length}/10)` : ''}`}
+              actions={allegati.length < 10 && !isLocked && (
+                <div className="flex flex-wrap gap-1.5">
+                  <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingAllegato} className={SMALL_BUTTON}>
+                    <Paperclip size={13} /> {uploadingAllegato ? 'Caricamento...' : 'File'}
+                  </button>
+                  <button ref={pasteRef} type="button" onClick={pasteFromClipboard} onPaste={handlePaste} onBlur={() => setPasteHint('')} disabled={uploadingAllegato} title="Incolla uno screenshot con Ctrl+V" className={SMALL_BUTTON}>
+                    <Clipboard size={13} /> {pasteHint || 'Incolla'}
+                  </button>
+                  <button type="button" onClick={openCamera} disabled={uploadingAllegato} className={SMALL_BUTTON}>
+                    <Camera size={13} /> Foto
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                    onChange={handleFileUpload}
+                    disabled={uploadingAllegato}
+                    className="hidden"
+                  />
+                </div>
+              )}
+            >
+              <div onPaste={handlePaste}>
               {immagini.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-3">
                   {immagini.map(image => (
                     <div key={image.id} className="relative group">
                       <img
                         src={image.data}
                         alt={image.nome}
-                        className="w-full h-24 object-cover rounded border cursor-pointer hover:opacity-80"
+                        className="w-full h-20 object-cover rounded border cursor-pointer hover:opacity-80"
                         onClick={() => setLightboxImg(image)}
                       />
                       {!isLocked && (
@@ -619,33 +752,7 @@ export default function ActionPlanDetailPanel({
               )}
 
               {allegati.length === 0 && (
-                <div className="text-sm text-gray-400 italic mb-3">Nessun allegato</div>
-              )}
-
-              {allegati.length < 10 && !isLocked && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <label className="flex items-center justify-center gap-2 px-3 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 hover:border-primary text-sm text-gray-600 transition-colors">
-                    <Paperclip size={16} />
-                    {uploadingAllegato ? 'Caricamento...' : 'Aggiungi file'}
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
-                      onChange={handleFileUpload}
-                      disabled={uploadingAllegato}
-                      className="hidden"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={openCamera}
-                    disabled={uploadingAllegato}
-                    className="flex items-center justify-center gap-2 px-3 py-3 border-2 border-dashed border-primary rounded-lg hover:bg-yellow-50 text-sm text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Camera size={16} />
-                    Scatta foto
-                  </button>
-                </div>
+                <div className="text-sm text-gray-400">Nessun allegato</div>
               )}
 
               {uploadingAllegato && (
@@ -656,6 +763,7 @@ export default function ActionPlanDetailPanel({
                   <div className="text-xs text-gray-500 mt-1">Caricamento allegato in corso...</div>
                 </div>
               )}
+              </div>
             </Section>
 
             <Section title={`Commenti (${detail.commenti?.length || 0})`}>
@@ -779,22 +887,9 @@ export default function ActionPlanDetailPanel({
           )}
 
           <SidebarRow label="Stato">
-            <select
-              value={detail.stato || ''}
-              onChange={event => changeStato(event.target.value)}
-              disabled={isLocked}
-              className="text-xs px-2 py-1 rounded border bg-gray-100 text-gray-700 border-gray-300 disabled:opacity-60"
-            >
-              {statiConfig.length === 0 ? (
-                <option value={detail.stato || ''}>{detail.stato || 'Configura stati'}</option>
-              ) : (
-                statiConfig.map(stato => (
-                  <option key={stato._id} value={stato.label}>
-                    {stato.label}
-                  </option>
-                ))
-              )}
-            </select>
+            <span className={`text-xs px-2 py-0.5 rounded font-medium ${isLocked ? 'bg-gray-200 text-gray-700' : 'bg-blue-50 text-blue-700'}`}>
+              {detail.stato || '—'}
+            </span>
           </SidebarRow>
 
           <SidebarRow label="Priorità">
@@ -866,7 +961,7 @@ export default function ActionPlanDetailPanel({
 
           {detail.pillar_id && detail.parent_type !== 'pillar' && (
             <SidebarRow label="Pillar">
-              <span className="text-xs text-gray-600">{detail.pillar_id.slice(0, 8)}...</span>
+              <span className="text-xs text-gray-700">{pillars.find(item => item._id === detail.pillar_id)?.sigla || '—'}</span>
             </SidebarRow>
           )}
 
@@ -1007,6 +1102,8 @@ export default function ActionPlanDetailPanel({
   )
 }
 
+const SMALL_BUTTON = 'inline-flex items-center gap-1.5 px-2.5 py-1 text-xs border border-gray-300 rounded-md text-gray-600 bg-white hover:border-primary hover:text-primary focus:border-primary focus:text-primary focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed'
+
 function Modal({ children }) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1048,10 +1145,13 @@ function Avatar({ name, size = 24 }) {
   )
 }
 
-function Section({ title, children }) {
+function Section({ title, actions, children }) {
   return (
     <div>
-      <h3 className="text-sm font-bold mb-2">{title}</h3>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <h3 className="text-sm font-bold">{title}</h3>
+        {actions || null}
+      </div>
       {children}
     </div>
   )
