@@ -46,10 +46,7 @@ function buildTabsForLivello(livello, isAdmin) {
     ]
 
     if (isAdmin) {
-      quickTabs.push(
-        { id: 'stdelements', label: '8 Standard Elements' },
-        { id: 'cmladder', label: 'Countermeasure Ladder' }
-      )
+      quickTabs.push({ id: 'valutazione', label: 'Valutazione' })
     }
 
     quickTabs.push(
@@ -926,18 +923,11 @@ export default function KaizenDetailPage() {
         />
       )}
 
-      {activeTab === 'stdelements' && isAdmin && (
-        <StandardElementsTab
-          kaizen={kaizen}
-          onSaved={loadKaizen}
-        />
-      )}
-
-      {activeTab === 'cmladder' && isAdmin && (
-        <CountermeasureLadderTab
-          kaizen={kaizen}
-          onSaved={loadKaizen}
-        />
+      {activeTab === 'valutazione' && isAdmin && (
+        <div className="space-y-6">
+          <StandardElementsTab kaizen={kaizen} />
+          <CountermeasureLadderTab kaizen={kaizen} />
+        </div>
       )}
 
       {activeTab === 'costbenefit' && (
@@ -1755,8 +1745,8 @@ const STD_ELEMENTS = [
   {
     area: 1,
     areaLabel: 'Problem Description',
-    areaColor: 'bg-blue-50 border-blue-300',
-    areaHeaderColor: 'bg-blue-100 text-blue-800',
+    areaColor: 'border-gray-200',
+    areaHeaderColor: 'bg-gray-50 text-gray-800 border-b border-gray-200',
     items: [
       { id: '1.1', label: 'Clear description of phenomenon', desc: 'Descrizione chiara del fenomeno (cosa, dove, quando, chi, quale, come)' },
       { id: '1.2', label: 'Impact quantified with KPI', desc: 'Impatto quantificato con KPI di loss (es: % scarti, tempo perso, costo)' },
@@ -1765,8 +1755,8 @@ const STD_ELEMENTS = [
   {
     area: 2,
     areaLabel: 'Root Cause Analysis',
-    areaColor: 'bg-purple-50 border-purple-300',
-    areaHeaderColor: 'bg-purple-100 text-purple-800',
+    areaColor: 'border-gray-200',
+    areaHeaderColor: 'bg-gray-50 text-gray-800 border-b border-gray-200',
     items: [
       { id: '2.1', label: 'Stratification: clear & understanding', desc: 'Stratificazione del problema chiara e comprensibile' },
       { id: '2.2', label: 'Usage of 5 Whys method', desc: 'Utilizzo del metodo 5 Why per arrivare alla causa radice' },
@@ -1776,8 +1766,8 @@ const STD_ELEMENTS = [
   {
     area: 3,
     areaLabel: 'Implementation',
-    areaColor: 'bg-green-50 border-green-300',
-    areaHeaderColor: 'bg-green-100 text-green-800',
+    areaColor: 'border-gray-200',
+    areaHeaderColor: 'bg-gray-50 text-gray-800 border-b border-gray-200',
     items: [
       { id: '3.1', label: 'Action log filled properly', desc: 'Log azioni completo con responsabile, data e azione chiara' },
       { id: '3.2', label: 'Horizontal/vertical expansion', desc: 'Espansione orizzontale (altre linee) o verticale (altri stabilimenti)' },
@@ -1786,8 +1776,8 @@ const STD_ELEMENTS = [
   {
     area: 4,
     areaLabel: 'Standardization',
-    areaColor: 'bg-orange-50 border-orange-300',
-    areaHeaderColor: 'bg-orange-100 text-orange-800',
+    areaColor: 'border-gray-200',
+    areaHeaderColor: 'bg-gray-50 text-gray-800 border-b border-gray-200',
     items: [
       { id: '4.1', label: 'Loss eradication', desc: 'Eliminazione definitiva della perdita (verificata nel tempo)' },
     ],
@@ -1795,9 +1785,9 @@ const STD_ELEMENTS = [
 ]
 
 const SCORE_OPTIONS = [
-  { value: 0, label: 'Non OK', color: 'bg-red-100 text-red-700 border-red-400' },
-  { value: 0.5, label: 'Parziale', color: 'bg-yellow-100 text-yellow-700 border-yellow-400' },
-  { value: 1, label: 'OK', color: 'bg-green-100 text-green-700 border-green-400' },
+  { value: 0, label: 'Non OK', color: 'bg-primary text-white border-primary' },
+  { value: 0.5, label: 'Parziale', color: 'bg-primary text-white border-primary' },
+  { value: 1, label: 'OK', color: 'bg-primary text-white border-primary' },
 ]
 
 const MAX_SCORE = 8
@@ -1823,9 +1813,9 @@ function StandardElementsTab({ kaizen }) {
 
   let passStatus = { label: 'Da Completare', color: 'bg-gray-100 text-gray-700' }
   if (completedCount === totalElements) {
-    if (totalScore >= 8) passStatus = { label: 'PASS', color: 'bg-green-600 text-white' }
-    else if (totalScore >= 5) passStatus = { label: 'PARTIAL PASS', color: 'bg-yellow-500 text-white' }
-    else passStatus = { label: 'FAIL', color: 'bg-red-600 text-white' }
+    if (totalScore >= 8) passStatus = { label: 'PASS', color: 'bg-gray-100 text-gray-900' }
+    else if (totalScore >= 5) passStatus = { label: 'PARTIAL PASS', color: 'bg-gray-100 text-gray-900' }
+    else passStatus = { label: 'FAIL', color: 'bg-gray-100 text-gray-900' }
   }
 
   const doSave = async (silent = false) => {
@@ -1956,12 +1946,7 @@ function StandardElementsTab({ kaizen }) {
           </div>
           <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
             <div
-              className={`h-full transition-all duration-500 ${
-                totalScore >= 8 ? 'bg-green-500' :
-                totalScore >= 5 ? 'bg-yellow-500' :
-                totalScore > 0 ? 'bg-orange-500' :
-                'bg-gray-300'
-              }`}
+              className="h-full bg-primary transition-all duration-500"
               style={{ width: `${percent}%` }}
             />
           </div>
@@ -1970,7 +1955,7 @@ function StandardElementsTab({ kaizen }) {
       </div>
 
       {STD_ELEMENTS.map(area => (
-        <div key={area.area} className={`rounded-xl border-2 ${area.areaColor} overflow-hidden`}>
+        <div key={area.area} className={`rounded-xl border ${area.areaColor} bg-white shadow overflow-hidden`}>
           <div className={`${area.areaHeaderColor} px-4 py-2.5 font-bold text-sm`}>
             AREA {area.area} — {area.areaLabel}
           </div>
@@ -1996,7 +1981,7 @@ function StandardElementsTab({ kaizen }) {
                           onClick={() => setScore(item.id, opt.value)}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${
                             currentScore === opt.value
-                              ? opt.color + ' shadow-md scale-105'
+                              ? opt.color
                               : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400'
                           }`}
                           title={opt.label}
@@ -2020,13 +2005,13 @@ function StandardElementsTab({ kaizen }) {
         </div>
       ))}
 
-      <div className="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-4 text-sm text-blue-700">
-        <div className="font-semibold mb-1">Come compilare</div>
+      <div className="text-xs text-gray-500 px-1">
+        <div className="sr-only">Come compilare</div>
         <div className="text-xs space-y-1">
           <div><strong>OK (1)</strong> — Elemento pienamente soddisfatto</div>
           <div><strong>Parziale (0.5)</strong> — Soddisfatto ma migliorabile</div>
           <div><strong>Non OK (0)</strong> — Elemento mancante o non sufficiente</div>
-          <div className="mt-2 pt-2 border-t border-blue-200">
+          <div className="mt-1">
             <strong>Soglie Lindt:</strong> PASS = 8 · PARTIAL = 5-7 · FAIL &lt; 5
           </div>
         </div>
@@ -2036,272 +2021,93 @@ function StandardElementsTab({ kaizen }) {
 }
 
 // ──────────────────────────────────────────────────────────
-// COUNTERMEASURE LADDER TAB — Lindt FI Pillar 6 livelli
+// SCALA DELLE CONTROMISURE — piramide (come Fase 6 Major)
 // ──────────────────────────────────────────────────────────
 const CM_LEVELS = [
-  { level: 6, label: 'Innovation / Re-engineering', desc: 'Nuove tecnologie, redesign processo, investimenti strutturali', color: 'bg-emerald-50 border-emerald-400', headerColor: 'bg-emerald-100 text-emerald-900', badge: 'bg-emerald-600 text-white' },
-  { level: 5, label: 'Technological / Process Improvement', desc: 'Meccanizzazione, automazione, modifica processo', color: 'bg-green-50 border-green-400', headerColor: 'bg-green-100 text-green-900', badge: 'bg-green-600 text-white' },
-  { level: 4, label: 'Root Cause Elimination (Poka Yoke)', desc: 'Miglioramento parametri oltre lo standard originale (errore impossibile)', color: 'bg-lime-50 border-lime-400', headerColor: 'bg-lime-100 text-lime-900', badge: 'bg-lime-600 text-white' },
-  { level: 3, label: 'Visual Control / Management', desc: 'Contromisure stabili che eliminano la causa tecnica (visual control)', color: 'bg-yellow-50 border-yellow-400', headerColor: 'bg-yellow-100 text-yellow-900', badge: 'bg-yellow-600 text-white' },
-  { level: 2, label: 'Restoration of Process Standards', desc: 'Azioni che riportano il processo agli standard (cicli pulizia, ruoli chiari)', color: 'bg-orange-50 border-orange-400', headerColor: 'bg-orange-100 text-orange-900', badge: 'bg-orange-600 text-white' },
-  { level: 1, label: 'Restoration of Basic Conditions', desc: 'Pulizia base, 5S, ricordare check agli operatori', color: 'bg-red-50 border-red-400', headerColor: 'bg-red-100 text-red-900', badge: 'bg-red-600 text-white' },
+  '1 - Ripristino delle condizioni di base',
+  '2 - Ripristino degli standard di processo',
+  '3 - Controllo e gestione visiva',
+  '4 - Eliminazione della causa radice',
+  '5 - Miglioramento tecnologico / di processo',
+  '6 - Innovazione / riprogettazione',
 ]
+const CM_EXAMPLES = [
+  'Pulizia, ordine 5S, richiamo al controllo corretto.',
+  'Ripristino delle procedure, cicli di pulizia e responsabilità.',
+  'Controlli e gestione visiva.',
+  'Poka yoke e interventi sulla causa radice.',
+  'Meccanizzazione o automazione dell’operazione.',
+  'Nuove tecnologie o riprogettazione del processo.',
+]
+const CM_COLORS = ['#ff6b6b', '#ffd0a0', '#fff59d', '#c8f7c5', '#9bd34d', '#79963d']
+
+function cmRobustness(level) {
+  if (level >= 4) return 'OTTIMO'
+  if (level >= 3) return 'BUONO'
+  if (level >= 1) return 'DEBOLE'
+  return 'Da Compilare'
+}
 
 function CountermeasureLadderTab({ kaizen }) {
-  const [countermeasures, setCountermeasures] = useState(kaizen.countermeasure_ladder?.items || {})
-  const [saving, setSaving] = useState(false)
-  const [lastSaved, setLastSaved] = useState(null)
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const [newInputs, setNewInputs] = useState({})
+  const saved = kaizen.countermeasure_ladder || {}
+  const [level, setLevel] = useState(() => {
+    const value = parseInt(saved.level ?? saved.max_level, 10)
+    return value >= 1 && value <= 6 ? value : 0
+  })
+  const [status, setStatus] = useState('')
+  const requestRef = useRef(0)
+  const baseRef = useRef(saved)
 
-  const cmRef = useRef(countermeasures)
-  const kaizenIdRef = useRef(kaizen._id)
-  useEffect(() => { cmRef.current = countermeasures }, [countermeasures])
-
-  const livelliPresenti = Object.keys(countermeasures)
-    .filter(lvl => countermeasures[lvl]?.length > 0)
-    .map(lvl => parseInt(lvl))
-
-  const maxLevel = livelliPresenti.length > 0 ? Math.max(...livelliPresenti) : 0
-  const totalCount = Object.values(countermeasures).reduce((sum, arr) => sum + (arr?.length || 0), 0)
-
-  let robustness = { label: 'Da Compilare', color: 'bg-gray-100 text-gray-700' }
-  if (maxLevel >= 4) robustness = { label: 'OTTIMO', color: 'bg-green-600 text-white' }
-  else if (maxLevel >= 3) robustness = { label: 'BUONO', color: 'bg-yellow-500 text-white' }
-  else if (maxLevel >= 1) robustness = { label: 'DEBOLE', color: 'bg-red-600 text-white' }
-
-  const doSave = async (silent = false) => {
-    if (!silent) setSaving(true)
+  const choose = async next => {
+    const value = next === level ? 0 : next
+    setLevel(value)
+    const request = ++requestRef.current
+    setStatus('Salvataggio...')
     try {
-      const currentCM = cmRef.current
-      const currentLivelli = Object.keys(currentCM).filter(lvl => currentCM[lvl]?.length > 0).map(lvl => parseInt(lvl))
-      const currentMax = currentLivelli.length > 0 ? Math.max(...currentLivelli) : 0
-      const currentTotal = Object.values(currentCM).reduce((sum, arr) => sum + (arr?.length || 0), 0)
-      let currentRobust = 'Da Compilare'
-      if (currentMax >= 4) currentRobust = 'OTTIMO'
-      else if (currentMax >= 3) currentRobust = 'BUONO'
-      else if (currentMax >= 1) currentRobust = 'DEBOLE'
-
-      await api.put(`/kaizens/${kaizenIdRef.current}`, {
+      await api.put(`/kaizens/${kaizen._id}`, {
         countermeasure_ladder: {
-          items: currentCM,
-          max_level: currentMax,
-          total_count: currentTotal,
-          robustness: currentRobust,
+          ...baseRef.current,
+          level: value,
+          max_level: value,
+          robustness: cmRobustness(value),
           last_evaluated_at: new Date().toISOString(),
         },
       })
-      if (!silent) {
-        setLastSaved(new Date())
-        setHasUnsavedChanges(false)
-      }
+      if (request === requestRef.current) setStatus('Salvato')
     } catch (err) {
-      console.error('Errore salvataggio Countermeasure Ladder:', err)
-      if (!silent) alert('Errore: ' + (err.response?.data?.detail || err.message))
-    } finally {
-      if (!silent) setSaving(false)
+      if (request === requestRef.current) setStatus('Errore di salvataggio: riprova')
     }
   }
-
-  useEffect(() => {
-    if (Object.keys(countermeasures).length === 0) return
-    setHasUnsavedChanges(true)
-    const timer = setTimeout(() => doSave(false), 400)
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [countermeasures])
-
-  useEffect(() => {
-    return () => {
-      if (Object.keys(cmRef.current).length > 0) {
-        const currentCM = cmRef.current
-        const currentLivelli = Object.keys(currentCM).filter(lvl => currentCM[lvl]?.length > 0).map(lvl => parseInt(lvl))
-        const currentMax = currentLivelli.length > 0 ? Math.max(...currentLivelli) : 0
-        const currentTotal = Object.values(currentCM).reduce((sum, arr) => sum + (arr?.length || 0), 0)
-        let currentRobust = 'Da Compilare'
-        if (currentMax >= 4) currentRobust = 'OTTIMO'
-        else if (currentMax >= 3) currentRobust = 'BUONO'
-        else if (currentMax >= 1) currentRobust = 'DEBOLE'
-
-        api.put(`/kaizens/${kaizenIdRef.current}`, {
-          countermeasure_ladder: {
-            items: currentCM,
-            max_level: currentMax,
-            total_count: currentTotal,
-            robustness: currentRobust,
-            last_evaluated_at: new Date().toISOString(),
-          },
-        }).catch(err => console.error('Errore save unmount:', err))
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  useEffect(() => {
-    const handleBeforeUnload = (e) => {
-      if (hasUnsavedChanges) {
-        e.preventDefault()
-        e.returnValue = ''
-      }
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [hasUnsavedChanges])
-
-  const addCountermeasure = (level) => {
-    const text = (newInputs[level] || '').trim()
-    if (!text) return
-    setCountermeasures(prev => ({
-      ...prev,
-      [level]: [...(prev[level] || []), {
-        id: Date.now().toString(),
-        text,
-        added_at: new Date().toISOString(),
-      }],
-    }))
-    setNewInputs(prev => ({ ...prev, [level]: '' }))
-  }
-
-  const removeCountermeasure = (level, itemId) => {
-    setCountermeasures(prev => ({
-      ...prev,
-      [level]: (prev[level] || []).filter(item => item.id !== itemId),
-    }))
-  }
-
-  const manualSave = async () => { await doSave(false) }
 
   return (
-    <div className="space-y-4">
-      <div className="bg-white rounded-xl shadow p-6">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <h3 className="text-xl font-bold mb-1">Countermeasure Ladder</h3>
-            <p className="text-sm text-gray-500">Robustezza delle contromisure — Lindt FI Pillar</p>
-          </div>
-          <div className="text-right">
-            <div className={`inline-block px-3 py-1.5 rounded-lg font-bold text-sm ${robustness.color}`}>
-              {robustness.label}
-            </div>
-            <div className="text-xs mt-1 flex items-center justify-end gap-2">
-              {saving ? <span className="text-blue-600">Salvataggio...</span> :
-               hasUnsavedChanges ? <span className="text-orange-600 font-medium">Modifiche non salvate</span> :
-               lastSaved ? <span className="text-green-600">Salvato alle {lastSaved.toLocaleTimeString('it-IT')}</span> :
-               <span className="text-gray-400">In attesa</span>}
-              <button onClick={manualSave} disabled={saving} className="bg-primary text-white px-3 py-1 rounded text-xs hover:bg-primary-light disabled:opacity-50">
-                Salva ora
-              </button>
-            </div>
-          </div>
+    <div className="bg-white rounded-xl shadow p-6 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-xl font-bold mb-1">Scala delle contromisure</h3>
+          <p className="text-sm text-gray-500">Clicca il livello raggiunto: la X indica quello raggiunto.</p>
         </div>
-
-        <div className="bg-gray-50 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">LIVELLO MASSIMO RAGGIUNTO</span>
-            <span className="text-sm text-gray-500">Target: &ge; 4 (Poka Yoke)</span>
-          </div>
-          <div className="flex items-baseline gap-2 mb-3">
-            <span className="text-4xl font-bold text-primary">{maxLevel}</span>
-            <span className="text-xl text-gray-400">/ 6</span>
-            <span className="ml-auto text-sm font-medium text-gray-600">
-              {totalCount} contromisur{totalCount === 1 ? 'a' : 'e'}
-            </span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-            <div
-              className={`h-full transition-all duration-500 ${
-                maxLevel >= 5 ? 'bg-emerald-500' :
-                maxLevel >= 4 ? 'bg-green-500' :
-                maxLevel >= 3 ? 'bg-yellow-500' :
-                maxLevel >= 1 ? 'bg-orange-500' :
-                'bg-gray-300'
-              }`}
-              style={{ width: `${(maxLevel / 6) * 100}%` }}
-            />
-          </div>
-        </div>
+        <span role="status" aria-live="polite" className={`text-xs ${status.startsWith('Errore') ? 'text-red-700' : 'text-gray-500'}`}>{status}</span>
       </div>
-
-      {CM_LEVELS.map(lvl => {
-        const items = countermeasures[lvl.level] || []
-        return (
-          <div key={lvl.level} className={`rounded-xl border-2 ${lvl.color} overflow-hidden`}>
-            <div className={`${lvl.headerColor} px-4 py-3 flex items-center gap-3`}>
-              <span className={`${lvl.badge} px-2.5 py-1 rounded-lg font-bold text-sm`}>
-                Liv. {lvl.level}
-              </span>
-              <div className="flex-1">
-                <div className="font-bold text-sm">{lvl.label}</div>
-                <div className="text-xs opacity-80 mt-0.5">{lvl.desc}</div>
-              </div>
-              {items.length > 0 && (
-                <span className="text-xs font-bold bg-white px-2 py-1 rounded-full">
-                  {items.length}
-                </span>
-              )}
-            </div>
-
-            <div className="bg-white p-4 space-y-2">
-              {items.length > 0 ? (
-                items.map(item => (
-                  <div key={item.id} className="flex items-start justify-between gap-2 p-2 bg-gray-50 rounded-lg hover:bg-gray-100">
-                    <div className="flex-1 text-sm">
-                      <span className="text-gray-400 mr-2">•</span>
-                      {item.text}
-                    </div>
-                    <button
-                      onClick={() => removeCountermeasure(lvl.level, item.id)}
-                      className="text-red-500 hover:bg-red-50 p-1 rounded transition-colors flex-shrink-0"
-                      title="Rimuovi"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <div className="text-xs text-gray-400 italic py-1">Nessuna contromisura a questo livello</div>
-              )}
-
-              <div className="flex gap-2 pt-2 border-t">
-                <input
-                  type="text"
-                  value={newInputs[lvl.level] || ''}
-                  onChange={(e) => setNewInputs(prev => ({ ...prev, [lvl.level]: e.target.value }))}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      addCountermeasure(lvl.level)
-                    }
-                  }}
-                  placeholder={`Aggiungi contromisura livello ${lvl.level}...`}
-                  className="flex-1 text-sm border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-                <button
-                  onClick={() => addCountermeasure(lvl.level)}
-                  disabled={!newInputs[lvl.level]?.trim()}
-                  className={`${lvl.badge} px-3 py-1.5 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition-opacity`}
-                >
-                  Aggiungi
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      })}
-
-      <div className="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-4 text-sm text-blue-700">
-        <div className="font-semibold mb-2">Come funziona</div>
-        <div className="text-xs space-y-1">
-          <div>Per ogni livello aggiungi le contromisure che hai implementato (premi <strong>Invio</strong> o click <strong>Aggiungi</strong>).</div>
-          <div>Il <strong>livello più alto raggiunto</strong> determina la robustezza globale.</div>
-          <div className="mt-2 pt-2 border-t border-blue-200">
-            <strong>Soglie Lindt:</strong> OTTIMO &ge; Liv.4 (Poka Yoke) · BUONO = Liv.3 · DEBOLE &le; Liv.2
-          </div>
-          <div className="mt-1 text-blue-600 italic">
-            Più alta la contromisura, più robusta nel tempo. Punta sempre al massimo livello possibile.
-          </div>
-        </div>
+      <div className="space-y-1 max-w-3xl mx-auto" role="group" aria-label="Livello della contromisura">
+        {[...CM_LEVELS].reverse().map(label => {
+          const index = CM_LEVELS.indexOf(label)
+          const selected = level === index + 1
+          return (
+            <button
+              key={label}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => choose(index + 1)}
+              title={CM_EXAMPLES[index]}
+              className="block mx-auto border border-gray-700 rounded px-2 py-3 text-center text-xs md:text-sm text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+              style={{ width: `${100 - index * 8}%`, backgroundColor: CM_COLORS[index], fontWeight: selected ? 700 : 500 }}
+            >
+              <span className="inline-block w-6 font-bold" aria-hidden="true">{selected ? 'X' : ''}</span>{label}
+            </button>
+          )
+        })}
       </div>
+      {level > 0 && <p className="text-xs text-gray-600 text-center">{CM_EXAMPLES[level - 1]}</p>}
     </div>
   )
 }
