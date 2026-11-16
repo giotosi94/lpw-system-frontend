@@ -120,6 +120,26 @@ function getStatoStyle(stato, statiConfig = []) {
   }
 }
 
+export function ActionPlanViewSwitch({ value, onChange, showKanban = true, showCalendar = true }) {
+  const options = [['list', 'Lista'], ...(showKanban ? [['kanban', 'Kanban']] : []), ...(showCalendar ? [['calendar', 'Calendario']] : [])]
+  if (options.length < 2) return null
+  return (
+    <div className="inline-flex border rounded-md overflow-hidden" role="group" aria-label="Vista">
+      {options.map(([id, label]) => (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={value === id}
+          onClick={() => onChange(id)}
+          className={`px-2.5 py-1 text-xs ${value === id ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function ActionPlanViews({
   plans = [],
   statiConfig = [],
@@ -140,14 +160,19 @@ export default function ActionPlanViews({
   readOnly = false,
   emptyMessage = 'Nessun Action Plan',
   emptyAction = null,
+  viewMode: controlledView,
+  onViewModeChange,
+  hideViewSwitch = false,
 }) {
-  const [viewMode, setViewMode] = useState(defaultView)
+  const [internalView, setInternalView] = useState(defaultView)
+  const viewMode = controlledView || internalView
+  const setViewMode = onViewModeChange || setInternalView
   const [calendarDays, setCalendarDays] = useState(30)
 
   if (plans.length === 0) {
     return (
-      <div className="bg-white rounded-xl shadow p-12 text-center">
-        <p className="text-gray-500 mb-3">{emptyMessage}</p>
+      <div className="py-8 text-center">
+        <p className="text-sm text-gray-500 mb-2">{emptyMessage}</p>
         {emptyAction && (
           <button onClick={emptyAction.onClick} className="text-primary hover:underline text-sm">
             {emptyAction.label}
@@ -160,7 +185,7 @@ export default function ActionPlanViews({
   return (
     <div className="space-y-3">
       
-      {(showKanban || showCalendar) && (
+      {(showKanban || showCalendar) && !hideViewSwitch && (
         <div className="flex justify-end">
           <div className="bg-white border rounded-lg p-1 flex gap-1 shadow-sm">
             <button
