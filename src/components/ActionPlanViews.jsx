@@ -307,26 +307,10 @@ function ListView({
                 <td data-label="Responsabile" className="px-3 py-2">
                   <Avatar name={ap.responsabile} />
                 </td>
-                <td data-label="Stato" className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                <td data-label="Stato" className="px-3 py-2">
                   {(() => {
                     const statoStyle = getStatoStyle(ap.stato, statiConfig)
-                    if (readOnly) return <span className={`inline-block text-xs px-2 py-1 rounded ${statoStyle.className}`} style={statoStyle.style}>{ap.stato || 'Non definito'}</span>
-                    return (
-                      <select
-                        value={ap.stato || ''}
-                        onChange={(e) => onChangeStato?.(ap, e.target.value)}
-                        className={`text-xs px-1.5 py-1 rounded ${statoStyle.className}`}
-                        style={statoStyle.style}
-                      >
-                        {statiConfig.length === 0 ? (
-                          <option value={ap.stato || ''}>{ap.stato || '— Configura stati —'}</option>
-                        ) : (
-                          statiConfig.map(s => (
-                            <option key={s._id} value={s.label}>{s.label}</option>
-                          ))
-                        )}
-                      </select>
-                    )
+                    return <span className={`inline-block text-xs px-2 py-1 rounded whitespace-nowrap ${statoStyle.className}`} style={statoStyle.style}>{ap.stato || 'Non definito'}</span>
                   })()}
                 </td>
                 <td data-label="Scadenza" className="px-3 py-2 text-xs">
@@ -499,10 +483,10 @@ function KanbanView({ plans, statiConfig, onSelectAP, onChangeStato }) {
                     style={{ minHeight: '300px' }}
                   >
                     {grouped[col.id].length === 0 && !snapshot.isDraggingOver && (
-                      <div className="text-center text-xs text-gray-400 py-8">Trascina qui</div>
+                      <div className="text-center text-xs text-gray-400 py-8">Nessuna azione</div>
                     )}
                     {grouped[col.id].map((plan, index) => (
-                      <Draggable key={plan._id} draggableId={plan._id} index={index}>
+                      <Draggable key={plan._id} draggableId={plan._id} index={index} isDragDisabled>
                         {(provided, snapshot) => (
                           <div
                             ref={provided.innerRef}
