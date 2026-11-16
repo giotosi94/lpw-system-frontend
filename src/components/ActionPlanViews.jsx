@@ -1,9 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useState, useMemo } from 'react'
-import {
-  Eye, Edit2, Trash2, Link2, Lock, AlertCircle, CheckSquare, Bug,
-  TrendingUp, Shield, Wrench
-} from 'lucide-react'
+import { AlertCircle, CheckSquare, Bug, TrendingUp, Shield, Wrench } from 'lucide-react'
 const PRIORITA_BG = {
   Lowest: 'bg-gray-100 text-gray-700',
   Low: 'bg-blue-100 text-blue-700',
@@ -30,25 +27,11 @@ export function isAPLocked(ap, statiConfig = []) {
   if (['Done', 'Chiuso', 'Cancelled'].includes(ap.stato)) return true
   return false
 }
-function Avatar({ name, size = 24, showName = true }) {
+function Avatar({ name, showName = true }) {
   if (!name) {
-    return showName ? <span className="text-xs text-gray-400 italic">— Non assegnato</span> : null
+    return showName ? <span className="text-xs text-gray-400">—</span> : null
   }
-  const initials = name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase()
-  const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-orange-500']
-  const color = colors[name.charCodeAt(0) % colors.length]
-  return (
-    <div className="flex items-center gap-2">
-      <div
-        className={`${color} text-white rounded-full flex items-center justify-center font-bold flex-shrink-0`}
-        style={{ width: size, height: size, fontSize: size * 0.45 }}
-        title={name}
-      >
-        {initials}
-      </div>
-      {showName && <span className="text-xs truncate">{name}</span>}
-    </div>
-  )
+  return showName ? <span className="text-xs truncate" title={name}>{name}</span> : null
 }
 
 export function getActionPlanOrigin(ap) {
@@ -219,46 +202,27 @@ function ListView({
           <tr>
             <th className="px-3 py-2 text-left w-24">Numero</th>
             <th className="px-3 py-2 text-left">Titolo</th>
-            <th className="px-3 py-2 text-left w-24">Tipo</th>
-            <th className="px-3 py-2 text-left w-24">Priorità</th>
-            <th className="px-3 py-2 text-left w-40">Responsabile</th>
+            <th className="px-3 py-2 text-left w-44">Responsabile</th>
             <th className="px-3 py-2 text-left w-32">Stato</th>
             <th className="px-3 py-2 text-left w-28">Scadenza</th>
             {showStepGant && <th className="px-3 py-2 text-left w-48">Step Gant</th>}
             {showCollegato && <th className="px-3 py-2 text-left w-32">Collegato a</th>}
-            {!readOnly && <th className="px-3 py-2 text-center w-32">Azioni</th>}
           </tr>
         </thead>
         <tbody>
           {plans.map(ap => {
-            const TipoIcon = TIPO_ICONS[ap.tipo] || CheckSquare
             const isOverdue = isActionPlanOverdue(ap, statiConfig)
             const isCancelled = ap.is_cancelled
             const locked = isAPLocked(ap, statiConfig)
             return (
               <tr
                 key={ap._id}
-                className={`border-b hover:bg-gray-50 cursor-pointer ${isCancelled ? 'opacity-60' : ''}`}
+                className={`group border-b hover:bg-gray-50 ${onSelectAP ? 'cursor-pointer' : ''} ${isCancelled ? 'opacity-60' : ''}`}
                 onClick={() => onSelectAP?.(ap)}
               >
-                <td data-label="Numero" className="px-3 py-2 font-mono text-primary text-xs font-bold">{ap.numero}</td>
+                <td data-label="Numero" className="px-3 py-2 font-mono text-primary text-xs font-bold group-hover:underline">{ap.numero}</td>
                 <td data-label="Titolo" className="px-3 py-2">
                   <button type="button" className="font-medium text-left break-words hover:text-primary" onClick={event => { event.stopPropagation(); onSelectAP?.(ap) }}>{ap.titolo}</button>
-                </td>
-                <td data-label="Tipo" className="px-3 py-2">
-                  {ap.tipo ? (
-                    <div className={`flex items-center gap-1 text-xs ${TIPO_COLORS[ap.tipo] || 'text-gray-500'}`}>
-                      <TipoIcon size={14} />
-                      <span>{ap.tipo}</span>
-                    </div>
-                  ) : <span className="text-xs text-gray-300">—</span>}
-                </td>
-                <td data-label="Priorità" className="px-3 py-2">
-                  {ap.priorita ? (
-                    <span className={`px-2 py-0.5 rounded text-xs ${PRIORITA_BG[ap.priorita] || 'bg-gray-100 text-gray-700'}`}>
-                      {ap.priorita}
-                    </span>
-                  ) : <span className="text-xs text-gray-300">—</span>}
                 </td>
                 <td data-label="Responsabile" className="px-3 py-2">
                   <Avatar name={ap.responsabile} />
@@ -300,42 +264,6 @@ function ListView({
                     <CollegatoBadge ap={ap} />
                   </td>
                 )}
-                {!readOnly && <td data-label="Collegato a" className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex justify-center gap-1">
-                    {onSelectAP && (
-                      <button onClick={() => onSelectAP(ap)} className="p-1 hover:bg-blue-100 rounded text-blue-600" title="Apri dettaglio">
-                        <Eye size={14} />
-                      </button>
-                    )}
-                    {locked ? (
-                      <button
-                        disabled
-                        className="p-1 rounded text-gray-300 cursor-not-allowed"
-                        title="Action Plan chiuso — apri il dettaglio per riaprirlo"
-                      >
-                        <Lock size={14} />
-                      </button>
-                    ) : (
-                      <>
-                        {onEditAP && (
-                          <button onClick={() => onEditAP(ap)} className="p-1 hover:bg-yellow-100 rounded text-yellow-600" title="Modifica">
-                            <Edit2 size={14} />
-                          </button>
-                        )}
-                        {onUnlinkAP && (
-                          <button onClick={() => onUnlinkAP(ap)} className="p-1 hover:bg-orange-100 rounded text-orange-600" title={unlinkLabel}>
-                            <Link2 size={14} />
-                          </button>
-                        )}
-                        {onDeleteAP && (
-                          <button onClick={() => onDeleteAP(ap)} className="p-1 hover:bg-red-100 rounded text-red-600" title="Elimina definitivamente">
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </td>}
               </tr>
             )
           })}
@@ -476,9 +404,9 @@ function CalendarCard({ ap, onClick, compact }) {
       {ap.parent_type && ap.parent_type !== 'standalone' && (
         <div className="mb-2"><CollegatoBadge ap={ap} /></div>
       )}
-      <div className="flex justify-between items-center pt-2 border-t mt-2 text-xs">
-        <Avatar name={ap.responsabile} size={20} showName={false} />
-      </div>
+      {ap.responsabile && (
+        <div className="pt-2 border-t mt-2 text-xs text-gray-700 truncate" title={ap.responsabile}>{ap.responsabile}</div>
+      )}
       {ap.data_scadenza && (
         <div className="mt-2 pt-2 border-t flex items-center justify-between text-xs">
           <span className="text-gray-500">{new Date(ap.data_scadenza).toLocaleDateString('it-IT')}</span>
