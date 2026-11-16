@@ -1155,7 +1155,6 @@ const majorKaizens =
               <div>
                 <label className="block text-sm font-medium mb-1">
                   Meeting di origine
-                  <span className="text-xs text-gray-500 font-normal ml-1">(opzionale — es. PCS Daily da cui nasce)</span>
                 </label>
                 <select
                   value={newKaizen.dashboard_id}
@@ -1191,11 +1190,6 @@ const majorKaizens =
                 <div>
                   <label className="block text-sm font-medium mb-1">
                     Team Leader
-                    {newKaizen.tipo === 'Quick' && (
-                      <span className="text-xs text-gray-500 font-normal ml-1">
-                        (di default: tu come creatore)
-                      </span>
-                    )}
                   </label>
                   <UserPicker
                     value={
