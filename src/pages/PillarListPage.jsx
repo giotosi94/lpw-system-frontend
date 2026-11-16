@@ -166,8 +166,7 @@ const CSS = `
 .pt-step{display:block;height:13px;border:1px solid #b9ad92;border-radius:2px;background:linear-gradient(180deg,#fffdf8,#e2d9c4);box-shadow:0 2px 3px rgba(59,42,28,.15)}
 .pt-step:nth-child(1){margin:0 -4px}
 .pt-step:nth-child(2){margin:2px -11px 0}
-.pt-step:nth-child(3){margin:2px -18px 0;height:auto;padding:13px 18px;text-align:center;font-weight:800;letter-spacing:.1em;font-size:14px;color:#3b2a1c;background:linear-gradient(180deg,#f3ecda,#d9cfb7)}
-.pt-step small{display:block;font-weight:600;letter-spacing:.16em;font-size:10px;color:#6b5b3c;margin-top:2px}
+.pt-step:nth-child(3){margin:2px -18px 0;height:16px}
 .pillar-list{display:none}
 @media(max-width:900px){
   .pt-stage{display:none}
@@ -213,7 +212,7 @@ export default function PillarListPage() {
             <div className="pt-steps" aria-hidden="true">
               <span className="pt-step" />
               <span className="pt-step" />
-              <span className="pt-step">PCS<small>PERFORMANCE CONTROL SYSTEM</small></span>
+              <span className="pt-step" />
             </div>
           </div>
 
