@@ -10,7 +10,6 @@ import {
 import ActionPlanFormShared from '../components/ActionPlanFormShared'
 import IshikawaDiagram from '../components/kaizen/IshikawaDiagram'
 import FiveWhysFlowChart from '../components/kaizen/FiveWhysFlowChart'
-import RiskPrioritizationChart from '../components/kaizen/RiskPrioritizationChart'
 import KaizenGantMasterPlan from '../components/kaizen/KaizenGantMasterPlan'
 import KaizenAzioniList from '../components/kaizen/KaizenAzioniList'
 import ConsolidatedActionPlans from '../components/kaizen/ConsolidatedActionPlans'
@@ -820,17 +819,6 @@ export default function KaizenDetailPage() {
                   },
                 }))
               }}
-            />
-          </div>
-
-          <div className="bg-white rounded-xl shadow p-6">
-            <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">
-              PRIORITÀ RISCHIO (FMEA)
-            </h3>
-            <RiskPrioritizationChart
-              effetto={kaizen.passo2_cause_probabili?.effetto || ''}
-              rami={kaizen.passo2_cause_probabili?.rami || {}}
-              onCreateActionPlan={handleCreateAPFromRootCause}
             />
           </div>
 
