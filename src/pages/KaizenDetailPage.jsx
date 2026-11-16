@@ -763,7 +763,7 @@ export default function KaizenDetailPage() {
             </div>
                         <div className="mt-4">
               <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
-                Categoria Perdita (TPM)
+                Categoria Perdita
               </label>
 
               <select
