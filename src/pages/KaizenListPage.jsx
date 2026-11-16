@@ -1095,7 +1095,7 @@ const majorKaizens =
                     disabled={!newKaizen.reparto}
                     className="w-full border rounded-lg px-2 py-2 text-sm disabled:bg-gray-100"
                   >
-                    <option value="">{!newKaizen.reparto ? 'Prima il reparto' : 'Seleziona'}</option>
+                    <option value="">Seleziona</option>
                     {lineeFormDisponibili.map(l => (
                       <option key={l.id} value={l.nome}>
                         {l.nome}{l.codice ? ` [${l.codice}]` : ''}
@@ -1111,7 +1111,7 @@ const majorKaizens =
                     disabled={!newKaizen.linea}
                     className="w-full border rounded-lg px-2 py-2 text-sm disabled:bg-gray-100"
                   >
-                    <option value="">{!newKaizen.linea ? 'Prima la linea' : 'Seleziona'}</option>
+                    <option value="">Seleziona</option>
                     {macchineFormDisponibili.map(m => (
                       <option key={m.id} value={m.nome}>
                         {m.nome}{m.codice ? ` [${m.codice}]` : ''}
@@ -1142,7 +1142,7 @@ const majorKaizens =
                   onChange={(e) => setNewKaizen({ ...newKaizen, pillar_id: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2"
                 >
-                  <option value="">Nessuno (kaizen autonomo)</option>
+                  <option value="">Nessuno</option>
                   {pillars.map(p => (
                     <option key={p._id} value={p._id}>
                       {p.sigla} — {p.label}{p.leader ? ` (${p.leader})` : ''}
