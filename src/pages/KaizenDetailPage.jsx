@@ -1182,7 +1182,7 @@ function ReplicaLines({ rows, reparti, onChange }) {
     <div className="mt-4">
       <div className="flex items-center justify-between gap-2 mb-2">
         <span className="block text-xs font-bold text-gray-600 uppercase">Linee di replica</span>
-        <button type="button" onClick={add} className="text-xs bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-primary-light">+ Aggiungi linea</button>
+        <button type="button" onClick={add} className="px-2.5 py-1 text-xs border border-gray-300 rounded-md text-gray-600 bg-white hover:border-primary hover:text-primary">+ Aggiungi linea</button>
       </div>
       {rows.length === 0 ? (
         <p className="text-xs text-gray-400">Nessuna linea di replica.</p>
