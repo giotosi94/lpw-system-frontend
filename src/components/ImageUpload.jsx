@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Camera, Upload, X } from 'lucide-react'
+import { Camera, Clipboard, Upload, X } from 'lucide-react'
 import api from '../services/api'
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/api\/?$/, '')
@@ -17,6 +17,9 @@ export default function ImageUpload({
   const [showCamera, setShowCamera] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
   const [previewUrl, setPreviewUrl] = useState(null)
+  const [pasteHint, setPasteHint] = useState('')
+  const [dragging, setDragging] = useState(false)
+  const pasteZoneRef = useRef(null)
 
   const fileInputRef = useRef(null)
   const videoRef = useRef(null)
@@ -122,6 +125,59 @@ export default function ImageUpload({
     const files = Array.from(event.target.files || [])
     await uploadFiles(files)
     event.target.value = ''
+  }
+
+  const imageFilesFrom = (items) => {
+    const files = []
+    Array.from(items || []).forEach((item, index) => {
+      const file = item instanceof File ? item : item.kind === 'file' ? item.getAsFile() : null
+      if (!file || !file.type.startsWith('image/')) return
+      const extension = (file.type.split('/')[1] || 'png').replace('jpeg', 'jpg')
+      files.push(file.name && file.name !== 'image.png' ? file : new File([file], `incolla_${Date.now()}_${index}.${extension}`, { type: file.type }))
+    })
+    return files
+  }
+
+  const handlePaste = async (event) => {
+    const files = imageFilesFrom(event.clipboardData?.items)
+    if (!files.length) return
+    event.preventDefault()
+    setPasteHint('')
+    await uploadFiles(files)
+  }
+
+  const pasteFromClipboard = async () => {
+    if (navigator.clipboard?.read && window.isSecureContext) {
+      try {
+        const items = await navigator.clipboard.read()
+        const files = []
+        for (const item of items) {
+          const type = item.types.find(value => value.startsWith('image/'))
+          if (type) {
+            const blob = await item.getType(type)
+            files.push(new File([blob], `incolla_${Date.now()}_${files.length}.${type.split('/')[1].replace('jpeg', 'jpg')}`, { type }))
+          }
+        }
+        if (files.length) {
+          setPasteHint('')
+          await uploadFiles(files)
+          return
+        }
+        setPasteHint('Negli appunti non c’è un’immagine')
+        return
+      } catch {
+        setPasteHint('')
+      }
+    }
+    pasteZoneRef.current?.focus()
+    setPasteHint('Premi Ctrl+V')
+  }
+
+  const handleDrop = async (event) => {
+    event.preventDefault()
+    setDragging(false)
+    const files = imageFilesFrom(event.dataTransfer?.files)
+    if (files.length) await uploadFiles(files)
   }
 
   const removeImage = (index) => {
@@ -264,7 +320,13 @@ export default function ImageUpload({
   const canAddImages = images.length < maxImages
 
   return (
-    <div className="w-full">
+    <div
+      className={`w-full rounded-lg ${dragging ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+      onPaste={handlePaste}
+      onDragOver={event => { if (canAddImages && Array.from(event.dataTransfer?.types || []).includes('Files')) { event.preventDefault(); setDragging(true) } }}
+      onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget)) setDragging(false) }}
+      onDrop={handleDrop}
+    >
       <div className="flex items-center justify-between gap-3 mb-2">
         <label className="block text-sm font-medium text-gray-700">
           {label}
@@ -326,6 +388,22 @@ export default function ImageUpload({
 
         {canAddImages && (
           <button
+            ref={pasteZoneRef}
+            type="button"
+            onClick={pasteFromClipboard}
+            onBlur={() => setPasteHint('')}
+            disabled={uploading}
+            className="h-28 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:border-primary hover:text-primary hover:bg-yellow-50 focus:border-primary focus:text-primary focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Clipboard size={22} />
+            <span className="text-xs font-medium mt-2 px-2 text-center">
+              {pasteHint || 'Incolla screenshot'}
+            </span>
+          </button>
+        )}
+
+        {canAddImages && (
+          <button
             type="button"
             onClick={openCamera}
             disabled={uploading}
@@ -350,7 +428,7 @@ export default function ImageUpload({
 
       {showHelp && (
       <div className="text-xs text-gray-400 mt-2">
-        Formati supportati: JPG, PNG, WEBP e immagini del dispositivo. Massimo {maxImages} immagini, 10 MB ciascuna.
+        Incolla uno screenshot con Ctrl+V, trascina o carica le immagini. Massimo {maxImages}, 10 MB ciascuna.
       </div>
       )}
 
