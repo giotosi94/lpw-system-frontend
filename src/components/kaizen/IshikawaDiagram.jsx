@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Plus, X, ChevronRight, ChevronDown, Target, AlertTriangle } from 'lucide-react'
+import { Plus, X, ChevronRight, ChevronDown, Target } from 'lucide-react'
 
 const RAMI = [
   { id: 'people',      label: 'People' },
@@ -12,21 +12,6 @@ const RAMI = [
 
 const NEUTRAL_COLOR = '#475569'
 const PRIMARY_COLOR = '#1e3a8a'
-
-function calcRpn(node) {
-  const s = parseInt(node?.severity) || 0
-  const o = parseInt(node?.occurrence) || 0
-  const d = parseInt(node?.detection) || 0
-  return s * o * d
-}
-
-function rpnClass(rpn) {
-  if (rpn >= 200) return { label: 'CRITICO', badge: 'bg-red-600 text-white', border: 'border-red-500' }
-  if (rpn >= 100) return { label: 'ALTO', badge: 'bg-orange-500 text-white', border: 'border-orange-400' }
-  if (rpn >= 40) return { label: 'MEDIO', badge: 'bg-yellow-500 text-white', border: 'border-yellow-400' }
-  if (rpn > 0) return { label: 'BASSO', badge: 'bg-green-500 text-white', border: 'border-green-400' }
-  return { label: '', badge: 'bg-gray-200 text-gray-600', border: 'border-gray-200' }
-}
 
 export default function IshikawaDiagram({ effetto = '', rami = {}, onChange }) {
   const [localEffetto, setLocalEffetto] = useState(effetto)
@@ -200,14 +185,10 @@ function RamoCard({
 
 // Componente ricorsivo: rappresenta una causa o un perché
 function NodoView({ nodo, depth, isCausa, expandedNodes, onUpdate, onAddChild, onRemove, onToggleRootCause, onToggleExpand }) {
-  const [showRisk, setShowRisk] = useState(false)
   const hasChildren = nodo.children?.length > 0
   const expanded = expandedNodes.has(nodo.id)
   const tipoLabel = isCausa ? 'Causa' : `Perché`
 
-  const rpn = calcRpn(nodo)
-  const rpnInfo = rpnClass(rpn)
-  const hasRisk = rpn > 0
   
   return (
     <div className="border rounded-lg overflow-hidden bg-gray-50">
@@ -238,28 +219,6 @@ function NodoView({ nodo, depth, isCausa, expandedNodes, onUpdate, onAddChild, o
           value={nodo.voti || 0}
           onChange={(v) => onUpdate(nodo.id, { voti: v })}
         />
-
-        {hasRisk && (
-          <span
-            className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${rpnInfo.badge}`}
-            title={`RPN ${rpn} · ${rpnInfo.label}`}
-          >
-            {rpn}
-          </span>
-        )}
-
-
-        <button
-          onClick={() => setShowRisk(v => !v)}
-          className={`p-1 rounded ${
-            showRisk || hasRisk
-              ? 'bg-orange-500 text-white'
-              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-          }`}
-          title="Valutazione rischio (S/O/D)"
-        >
-          <AlertTriangle size={12} />
-        </button>
 
         <button
           onClick={() => onToggleRootCause(nodo.id)}
@@ -293,51 +252,6 @@ function NodoView({ nodo, depth, isCausa, expandedNodes, onUpdate, onAddChild, o
         </button>
       </div>
       
-      {showRisk && (
-        <div className={`mx-2 mb-2 rounded-lg border-2 ${rpnInfo.border} bg-white p-3`}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-gray-700">Valutazione rischio (FMEA)</span>
-            {hasRisk && (
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${rpnInfo.badge}`}>
-                RPN {rpn} · {rpnInfo.label}
-              </span>
-            )}
-          </div>
-
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { field: 'severity', label: 'Severità' },
-              { field: 'occurrence', label: 'Occorrenza' },
-              { field: 'detection', label: 'Rilevabilità' },
-            ].map(item => (
-              <div key={item.field}>
-                <label className="block text-[10px] uppercase font-semibold text-gray-500 mb-1">
-                  {item.label}
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={nodo[item.field] ?? ''}
-                  onChange={(e) => {
-                    let n = parseInt(e.target.value)
-                    if (isNaN(n)) n = ''
-                    else if (n < 1) n = 1
-                    else if (n > 10) n = 10
-                    onUpdate(nodo.id, { [item.field]: n })
-                  }}
-                  className="w-full border rounded px-2 py-1 text-sm text-center"
-                />
-              </div>
-            ))}
-          </div>
-
-          <div className="text-[10px] text-gray-400 mt-2">
-            RPN = Severità × Occorrenza × Rilevabilità. Scala 1-10 per ciascun fattore.
-          </div>
-        </div>
-      )}
-
       {(expanded || hasChildren) && hasChildren && (
         <div className="px-2 pb-2 pl-6 space-y-1">
           {nodo.children.map(child => (
@@ -473,9 +387,6 @@ function createNewNode() {
     voti: 0,
     is_root_cause: false,
     root_cause_stato: 'da_valutare',
-    severity: '',
-    occurrence: '',
-    detection: '',
     children: [],
   }
 }
