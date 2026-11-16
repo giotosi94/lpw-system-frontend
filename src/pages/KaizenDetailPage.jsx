@@ -1748,8 +1748,8 @@ const STD_ELEMENTS = [
     areaColor: 'border-gray-200',
     areaHeaderColor: 'bg-gray-50 text-gray-800 border-b border-gray-200',
     items: [
-      { id: '1.1', label: 'Clear description of phenomenon', desc: 'Descrizione chiara del fenomeno (cosa, dove, quando, chi, quale, come)' },
-      { id: '1.2', label: 'Impact quantified with KPI', desc: 'Impatto quantificato con KPI di loss (es: % scarti, tempo perso, costo)' },
+      { id: '1.1', label: 'Clear description of phenomenon' },
+      { id: '1.2', label: 'Impact quantified with KPI' },
     ],
   },
   {
@@ -1758,9 +1758,9 @@ const STD_ELEMENTS = [
     areaColor: 'border-gray-200',
     areaHeaderColor: 'bg-gray-50 text-gray-800 border-b border-gray-200',
     items: [
-      { id: '2.1', label: 'Stratification: clear & understanding', desc: 'Stratificazione del problema chiara e comprensibile' },
-      { id: '2.2', label: 'Usage of 5 Whys method', desc: 'Utilizzo del metodo 5 Why per arrivare alla causa radice' },
-      { id: '2.3', label: 'Only relevant causes verified', desc: 'Verificate solo cause realmente rilevanti (no analisi inutili)' },
+      { id: '2.1', label: 'Stratification: clear & understanding' },
+      { id: '2.2', label: 'Usage of 5 Whys method' },
+      { id: '2.3', label: 'Only relevant causes verified' },
     ],
   },
   {
@@ -1769,8 +1769,8 @@ const STD_ELEMENTS = [
     areaColor: 'border-gray-200',
     areaHeaderColor: 'bg-gray-50 text-gray-800 border-b border-gray-200',
     items: [
-      { id: '3.1', label: 'Action log filled properly', desc: 'Log azioni completo con responsabile, data e azione chiara' },
-      { id: '3.2', label: 'Horizontal/vertical expansion', desc: 'Espansione orizzontale (altre linee) o verticale (altri stabilimenti)' },
+      { id: '3.1', label: 'Action log filled properly' },
+      { id: '3.2', label: 'Horizontal/vertical expansion' },
     ],
   },
   {
@@ -1779,14 +1779,14 @@ const STD_ELEMENTS = [
     areaColor: 'border-gray-200',
     areaHeaderColor: 'bg-gray-50 text-gray-800 border-b border-gray-200',
     items: [
-      { id: '4.1', label: 'Loss eradication', desc: 'Eliminazione definitiva della perdita (verificata nel tempo)' },
+      { id: '4.1', label: 'Loss eradication' },
     ],
   },
 ]
 
 const SCORE_OPTIONS = [
-  { value: 0, label: 'Non OK', color: 'bg-primary text-white border-primary' },
-  { value: 0.5, label: 'Parziale', color: 'bg-primary text-white border-primary' },
+  { value: 0, label: 'Not OK', color: 'bg-primary text-white border-primary' },
+  { value: 0.5, label: 'Partial', color: 'bg-primary text-white border-primary' },
   { value: 1, label: 'OK', color: 'bg-primary text-white border-primary' },
 ]
 
@@ -1811,7 +1811,7 @@ function StandardElementsTab({ kaizen }) {
   const completedCount = Object.keys(scores).length
   const totalElements = STD_ELEMENTS.reduce((sum, area) => sum + area.items.length, 0)
 
-  let passStatus = { label: 'Da Completare', color: 'bg-gray-100 text-gray-700' }
+  let passStatus = { label: 'To complete', color: 'bg-gray-100 text-gray-700' }
   if (completedCount === totalElements) {
     if (totalScore >= 8) passStatus = { label: 'PASS', color: 'bg-gray-100 text-gray-900' }
     else if (totalScore >= 5) passStatus = { label: 'PARTIAL PASS', color: 'bg-gray-100 text-gray-900' }
@@ -1911,111 +1911,80 @@ function StandardElementsTab({ kaizen }) {
   const manualSave = async () => { await doSave(false) }
 
   return (
-    <div className="space-y-4">
-      <div className="bg-white rounded-xl shadow p-6">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <h3 className="text-xl font-bold mb-1">8 Standard Elements</h3>
-            <p className="text-sm text-gray-500">Valutazione qualità Quick Kaizen — Lindt FI Pillar</p>
-          </div>
-          <div className="text-right">
-            <div className={`inline-block px-3 py-1.5 rounded-lg font-bold text-sm ${passStatus.color}`}>
-              {passStatus.label}
-            </div>
-            <div className="text-xs mt-1 flex items-center justify-end gap-2">
-              {saving ? <span className="text-blue-600">Salvataggio...</span> :
-               hasUnsavedChanges ? <span className="text-orange-600 font-medium">Modifiche non salvate</span> :
-               lastSaved ? <span className="text-green-600">Salvato alle {lastSaved.toLocaleTimeString('it-IT')}</span> :
-               <span className="text-gray-400">In attesa</span>}
-              <button onClick={manualSave} disabled={saving} className="bg-primary text-white px-3 py-1 rounded text-xs hover:bg-primary-light disabled:opacity-50">
-                Salva ora
-              </button>
-            </div>
+    <div className="bg-white rounded-xl shadow overflow-hidden">
+      <div className="p-4 border-b space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-lg font-bold">8 Standard Elements</h3>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span role="status" aria-live="polite">
+              {saving ? <span className="text-gray-500">Saving...</span> :
+               hasUnsavedChanges ? <span className="text-orange-600 font-medium">Unsaved changes</span> :
+               lastSaved ? <span className="text-gray-500">Saved at {lastSaved.toLocaleTimeString('en-GB')}</span> : null}
+            </span>
+            <span className={`px-2.5 py-1 rounded-md font-bold ${passStatus.color}`}>{passStatus.label}</span>
+            <button type="button" onClick={manualSave} disabled={saving} className="bg-primary text-white px-3 py-1 rounded hover:bg-primary-light disabled:opacity-50">
+              Save
+            </button>
           </div>
         </div>
-
-        <div className="bg-gray-50 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">SCORE TOTALE</span>
-            <span className="text-sm text-gray-500">Target Lindt: 8/8</span>
-          </div>
-          <div className="flex items-baseline gap-2 mb-3">
-            <span className="text-4xl font-bold text-primary">{totalScore.toFixed(1)}</span>
-            <span className="text-xl text-gray-400">/ {MAX_SCORE}</span>
-            <span className="ml-auto text-lg font-semibold text-gray-600">{percent.toFixed(0)}%</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-            <div
-              className="h-full bg-primary transition-all duration-500"
-              style={{ width: `${percent}%` }}
-            />
-          </div>
-          <div className="text-xs text-gray-500 mt-2">{completedCount}/{totalElements} elementi valutati</div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <span><span className="text-2xl font-bold text-primary">{totalScore.toFixed(1)}</span><span className="text-gray-400"> / {MAX_SCORE}</span></span>
+          <span className="font-semibold text-gray-600">{percent.toFixed(0)}%</span>
+          <span className="text-xs text-gray-500">{completedCount}/{totalElements} evaluated · Target 8/8</span>
+        </div>
+        <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+          <div className="h-full bg-primary transition-all duration-500" style={{ width: `${percent}%` }} />
         </div>
       </div>
 
       {STD_ELEMENTS.map(area => (
-        <div key={area.area} className={`rounded-xl border ${area.areaColor} bg-white shadow overflow-hidden`}>
-          <div className={`${area.areaHeaderColor} px-4 py-2.5 font-bold text-sm`}>
-            AREA {area.area} — {area.areaLabel}
-          </div>
-          <div className="bg-white">
-            {area.items.map((item, idx) => {
-              const currentScore = scores[item.id]
-              return (
-                <div key={item.id} className={`p-4 ${idx < area.items.length - 1 ? 'border-b' : ''}`}>
-                  <div className="flex items-start justify-between gap-4 mb-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-mono text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                          {item.id}
-                        </span>
-                        <span className="font-semibold text-sm">{item.label}</span>
-                      </div>
-                      <p className="text-xs text-gray-600 mb-2">{item.desc}</p>
-                    </div>
-                    <div className="flex gap-1 flex-shrink-0">
-                      {SCORE_OPTIONS.map(opt => (
-                        <button
-                          key={opt.value}
-                          onClick={() => setScore(item.id, opt.value)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${
-                            currentScore === opt.value
-                              ? opt.color
-                              : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400'
-                          }`}
-                          title={opt.label}
-                        >
-                          {opt.label} ({opt.value})
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <textarea
-                    value={notes[item.id] || ''}
-                    onChange={(e) => setNote(item.id, e.target.value)}
-                    placeholder="Note opzionali (giustificazione, evidenze, riferimenti)..."
-                    rows={2}
-                    className="w-full text-xs border rounded-lg px-3 py-2 mt-1 resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
+        <section key={area.area} aria-labelledby={`se-area-${area.area}`}>
+          <h4 id={`se-area-${area.area}`} className="bg-gray-50 border-b px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-gray-700">
+            Area {area.area} — {area.areaLabel}
+          </h4>
+          {area.items.map(item => {
+            const currentScore = scores[item.id]
+            return (
+              <div key={item.id} className="se-row grid gap-2 items-center px-4 py-2 border-b">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-mono text-xs font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded flex-shrink-0">{item.id}</span>
+                  <span className="text-sm font-medium">{item.label}</span>
                 </div>
-              )
-            })}
-          </div>
-        </div>
+                <input
+                  type="text"
+                  value={notes[item.id] || ''}
+                  onChange={(e) => setNote(item.id, e.target.value)}
+                  placeholder="Notes (optional)"
+                  aria-label={`Notes ${item.id}`}
+                  className="w-full min-w-0 text-xs border rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <div className="flex gap-1 flex-shrink-0" role="group" aria-label={`Score ${item.id}`}>
+                  {SCORE_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      aria-pressed={currentScore === opt.value}
+                      onClick={() => setScore(item.id, opt.value)}
+                      className={`px-2.5 py-1.5 rounded-md text-xs font-bold border whitespace-nowrap transition-colors ${
+                        currentScore === opt.value
+                          ? opt.color
+                          : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                      }`}
+                    >
+                      {opt.label} ({opt.value})
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </section>
       ))}
 
-      <div className="text-xs text-gray-500 px-1">
-        <div className="sr-only">Come compilare</div>
-        <div className="text-xs space-y-1">
-          <div><strong>OK (1)</strong> — Elemento pienamente soddisfatto</div>
-          <div><strong>Parziale (0.5)</strong> — Soddisfatto ma migliorabile</div>
-          <div><strong>Non OK (0)</strong> — Elemento mancante o non sufficiente</div>
-          <div className="mt-1">
-            <strong>Soglie Lindt:</strong> PASS = 8 · PARTIAL = 5-7 · FAIL &lt; 5
-          </div>
-        </div>
-      </div>
+      <p className="px-4 py-2 text-xs text-gray-500">
+        <strong>OK (1)</strong> fully met · <strong>Partial (0.5)</strong> met, can improve · <strong>Not OK (0)</strong> missing · Thresholds: PASS = 8 · PARTIAL = 5–7 · FAIL &lt; 5
+      </p>
+      <style>{`.se-row{grid-template-columns:minmax(0,1fr)}@media(min-width:900px){.se-row{grid-template-columns:minmax(220px,1fr) minmax(0,1.4fr) auto}}`}</style>
     </div>
   )
 }
