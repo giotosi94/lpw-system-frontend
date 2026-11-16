@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import api from '../../services/api'
 import { Plus, Trash2 } from 'lucide-react'
 import { MilestoneMarkers, ActivityInspector, withDeadlines, columnForDate } from './MajorPlanMilestones'
@@ -16,11 +16,6 @@ const GRANULARITIES = [
   { id: 'quarter', label: 'Trimestre' },
 ]
 
-const ZOOM_LEVELS = [
-  { id: 'compact', label: 'Compatto', factor: 0.72 },
-  { id: 'normal', label: 'Normale', factor: 1 },
-  { id: 'wide', label: 'Ampio', factor: 1.35 },
-]
 
 function getDefaultGantData() {
   const currentYear = new Date().getFullYear()
@@ -148,12 +143,23 @@ export default function KaizenGantMasterPlan({ kaizen, onSaved, value, onChange,
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [lastSaved, setLastSaved] = useState(null)
   const [dragState, setDragState] = useState(null)
-  const [zoom, setZoom] = useState('normal')
   const [selectedActivityIds, setSelectedActivityIds] = useState(null)
   const [saveError, setSaveError] = useState('')
   const saveInFlight = useRef(false)
+  const gridScrollRef = useRef(null)
+  const [gridWidth, setGridWidth] = useState(0)
   const saveQueued = useRef(false)
   const dataRef = useRef(data)
+  useLayoutEffect(() => {
+    const element = gridScrollRef.current
+    if (!element) return undefined
+    const measure = () => setGridWidth(element.clientWidth)
+    measure()
+    if (typeof ResizeObserver !== 'function') return undefined
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => { dataRef.current = data }, [data])
 
@@ -718,8 +724,11 @@ function getDurationLabel(interval) {
         ? 54
         : 72
 
-  const zoomFactor = ZOOM_LEVELS.find(level => level.id === zoom)?.factor || 1
-  const CELL_WIDTH = Math.round(baseCellWidth * zoomFactor)
+  const FIXED_COLUMNS_WIDTH = 432
+  const fittedCellWidth = columns.length && gridWidth > FIXED_COLUMNS_WIDTH
+    ? Math.floor((gridWidth - FIXED_COLUMNS_WIDTH) / columns.length)
+    : 0
+  const CELL_WIDTH = Math.max(baseCellWidth, fittedCellWidth)
   const today = new Date().toISOString().slice(0, 10)
   const milestoneItems = withDeadlines(activities || [], data.activity_deadlines || {})
   const rowIds = new Set(data.steps.map(step => step.id))
@@ -734,8 +743,7 @@ function getDurationLabel(interval) {
     <div className="w-full max-w-full min-w-0 overflow-hidden space-y-4">
       {/* Header config */}
       <div className="w-full max-w-full min-w-0 bg-white rounded-xl shadow p-4 overflow-hidden">
-        <div className="flex justify-between items-start mb-3">
-          <p className="text-xs text-gray-500">Pianificazione multi-anno per macro-fasi del Kaizen</p>
+        <div className="flex justify-end mb-3">
           <div className="flex items-center gap-3 text-xs">
             {saving ? <span className="text-blue-600">Salvataggio...</span> :
              hasUnsavedChanges ? <span className="text-orange-600 font-medium">Non salvato</span> :
@@ -751,7 +759,7 @@ function getDurationLabel(interval) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end pt-3 border-t">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
           {/* Granularità */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Granularità</label>
@@ -824,61 +832,36 @@ function getDurationLabel(interval) {
           </button>
         </div>
 
-        <div className="flex gap-3 mt-3 pt-3 border-t text-xs items-center flex-wrap">
-          {ROW_TYPES.map(row => (
-            <div key={row.id} className="flex items-center gap-1">
-              <div className="w-4 h-4 border rounded" style={{ backgroundColor: row.color }} />
-              <span>{row.label}</span>
-            </div>
-          ))}
-
-          <div className="flex items-center gap-1 ml-4">
-            <span className="font-medium text-gray-600">Zoom:</span>
-            <div className="flex bg-gray-100 rounded-lg p-1 gap-1">
-              {ZOOM_LEVELS.map(level => (
-                <button
-                  key={level.id}
-                  type="button"
-                  onClick={() => setZoom(level.id)}
-                  className={`px-2 py-1 rounded text-xs ${
-                    zoom === level.id
-                      ? 'bg-white text-primary font-medium shadow-sm'
-                      : 'text-gray-500 hover:bg-gray-200'
-                  }`}
-                >
-                  {level.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1 ml-2">
-            <div className="w-0.5 h-4 bg-red-500" />
-            <span>Oggi</span>
-          </div>
-
-          <span className="ml-auto text-gray-500 italic">Trascina sul vuoto per creare, al centro per spostare, sui bordi per ridimensionare</span>
-        </div>
       </div>
 
       {saveError && <p role="alert" className="text-sm text-red-700">Master Plan non salvato: {saveError}. Premi Salva ora per riprovare.</p>}
-      {activities !== null && <div className="bg-white border rounded-lg p-3 text-xs space-y-2">
-        <div className="flex flex-wrap gap-3 items-center">
-          <span>Rombi: blu pianificato · verde completato · rosso scaduto · grigio respinto/annullato.</span>
-          <button type="button" className="border rounded px-2 py-1" onClick={() => setSelectedActivityIds(milestoneItems.map(item => item.id))}>Attivita e scadenze ({milestoneItems.length})</button>
-          <button type="button" disabled={activitiesLoading} className="border rounded px-2 py-1 disabled:opacity-50" onClick={onRefreshActivities}>{activitiesLoading ? 'Caricamento...' : 'Aggiorna attivita'}</button>
+      {activities !== null && activitiesError && <p role="alert" className="text-xs text-red-700">{activitiesError}</p>}
+      {selectedActivityIds !== null && <ActivityInspector items={milestoneItems.filter(item => selectedActivityIds.includes(item.id))} onClose={() => setSelectedActivityIds(null)} onOpenPhase={onOpenActivityPhase} onDeadlineChange={updateDeadline} />}
+
+      <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-xs">
+        {activities !== null && <>
+          <button type="button" className="border rounded px-2 py-1" onClick={() => setSelectedActivityIds(milestoneItems.map(item => item.id))}>Attività e scadenze ({milestoneItems.length})</button>
+          <button type="button" disabled={activitiesLoading} className="border rounded px-2 py-1 disabled:opacity-50" onClick={onRefreshActivities}>{activitiesLoading ? 'Caricamento...' : 'Aggiorna attività'}</button>
           {withoutDate.length > 0 && <button type="button" className="text-amber-800 underline" onClick={() => setSelectedActivityIds(withoutDate.map(item => item.id))}>Senza scadenza ({withoutDate.length})</button>}
           {outside.length > 0 && <button type="button" className="text-amber-800 underline" onClick={() => setSelectedActivityIds(outside.map(item => item.id))}>Fuori intervallo ({outside.length})</button>}
           {withoutPhase.length > 0 && <button type="button" className="text-amber-800 underline" onClick={() => setSelectedActivityIds(withoutPhase.map(item => item.id))}>Senza fase corrispondente ({withoutPhase.length})</button>}
+        </>}
+        {ROW_TYPES.map(row => (
+          <div key={row.id} className="flex items-center gap-1">
+            <div className="w-3.5 h-3.5 border rounded" style={{ backgroundColor: row.color }} />
+            <span>{row.label}</span>
+          </div>
+        ))}
+        <div className="flex items-center gap-1">
+          <div className="w-0.5 h-4 bg-red-500" />
+          <span>Oggi</span>
         </div>
-        <p>Ogni rombo indica la fine programmata nel periodo visualizzato. Il numero raggruppa piu attivita nella stessa colonna. Le date LPW non vengono inviate a CARL.</p>
-        {activitiesError && <p role="alert" className="text-red-700">{activitiesError}</p>}
-      </div>}
-      {selectedActivityIds !== null && <ActivityInspector items={milestoneItems.filter(item => selectedActivityIds.includes(item.id))} onClose={() => setSelectedActivityIds(null)} onOpenPhase={onOpenActivityPhase} onDeadlineChange={updateDeadline} />}
+      </div>
 
       {/* Griglia Gant */}
       <div className="w-full max-w-full min-w-0 bg-white rounded-xl shadow overflow-hidden">
         <div
+          ref={gridScrollRef}
           className="block w-full max-w-full min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain"
           style={{
             WebkitOverflowScrolling: 'touch',
@@ -888,8 +871,8 @@ function getDurationLabel(interval) {
           <div
             className="inline-block align-top"
             style={{
-              width: columns.length * CELL_WIDTH + 432,
-              minWidth: columns.length * CELL_WIDTH + 432,
+              width: columns.length * CELL_WIDTH + FIXED_COLUMNS_WIDTH,
+              minWidth: columns.length * CELL_WIDTH + FIXED_COLUMNS_WIDTH,
             }}
           >
           {/* Header anni */}
