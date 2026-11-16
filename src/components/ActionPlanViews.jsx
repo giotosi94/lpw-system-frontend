@@ -1,9 +1,8 @@
 import { Link } from 'react-router-dom'
 import { useState, useMemo } from 'react'
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import {
   Eye, Edit2, Trash2, Link2, Lock, AlertCircle, CheckSquare, Bug,
-  TrendingUp, Shield, Wrench, MessageSquare, Calendar
+  TrendingUp, Shield, Wrench
 } from 'lucide-react'
 const PRIORITA_BG = {
   Lowest: 'bg-gray-100 text-gray-700',
@@ -23,17 +22,6 @@ const TIPO_COLORS = {
   Audit: 'text-purple-600', Manutenzione: 'text-orange-600', Sicurezza: 'text-yellow-600',
 }
 
-const KANBAN_PALETTE = [
-  { color: 'bg-gray-50 border-gray-300', headerColor: 'bg-gray-200 text-gray-700' },
-  { color: 'bg-blue-50 border-blue-200', headerColor: 'bg-blue-200 text-blue-800' },
-  { color: 'bg-indigo-50 border-indigo-200', headerColor: 'bg-indigo-200 text-indigo-800' },
-  { color: 'bg-purple-50 border-purple-200', headerColor: 'bg-purple-200 text-purple-800' },
-  { color: 'bg-green-50 border-green-200', headerColor: 'bg-green-200 text-green-800' },
-  { color: 'bg-yellow-50 border-yellow-200', headerColor: 'bg-yellow-200 text-yellow-800' },
-  { color: 'bg-orange-50 border-orange-200', headerColor: 'bg-orange-200 text-orange-800' },
-  { color: 'bg-red-50 border-red-200', headerColor: 'bg-red-200 text-red-800' },
-  { color: 'bg-pink-50 border-pink-200', headerColor: 'bg-pink-200 text-pink-800' },
-]
 export function isAPLocked(ap, statiConfig = []) {
   if (!ap) return false
   if (ap.is_cancelled) return true
@@ -120,8 +108,8 @@ function getStatoStyle(stato, statiConfig = []) {
   }
 }
 
-export function ActionPlanViewSwitch({ value, onChange, showKanban = true, showCalendar = true }) {
-  const options = [['list', 'Lista'], ...(showKanban ? [['kanban', 'Kanban']] : []), ...(showCalendar ? [['calendar', 'Calendario']] : [])]
+export function ActionPlanViewSwitch({ value, onChange, showCalendar = true }) {
+  const options = [['list', 'Lista'], ...(showCalendar ? [['calendar', 'Calendario']] : [])]
   if (options.length < 2) return null
   return (
     <div className="inline-flex border rounded-md overflow-hidden" role="group" aria-label="Vista">
@@ -153,7 +141,6 @@ export default function ActionPlanViews({
   unlinkLabel = 'Scollega',
   showCollegato = true,
   showStepGant = false,
-  showKanban = true,
   showCalendar = true,
   defaultView = 'list',
   compact = false,
@@ -165,7 +152,8 @@ export default function ActionPlanViews({
   hideViewSwitch = false,
 }) {
   const [internalView, setInternalView] = useState(defaultView)
-  const viewMode = controlledView || internalView
+  const requestedView = controlledView || internalView
+  const viewMode = requestedView === 'calendar' && showCalendar ? 'calendar' : 'list'
   const setViewMode = onViewModeChange || setInternalView
   const [calendarDays, setCalendarDays] = useState(30)
 
@@ -185,36 +173,12 @@ export default function ActionPlanViews({
   return (
     <div className="space-y-3">
       
-      {(showKanban || showCalendar) && !hideViewSwitch && (
+      {showCalendar && !hideViewSwitch && (
         <div className="flex justify-end">
-          <div className="bg-white border rounded-lg p-1 flex gap-1 shadow-sm">
-            <button
-              onClick={() => setViewMode('list')}
-              className={`px-3 py-1.5 rounded text-sm transition-all ${viewMode === 'list' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-100'}`}
-            >
-              Lista
-            </button>
-            {showKanban && (
-              <button
-                onClick={() => setViewMode('kanban')}
-                className={`px-3 py-1.5 rounded text-sm transition-all ${viewMode === 'kanban' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                Kanban
-              </button>
-            )}
-            {showCalendar && (
-              <button
-                onClick={() => setViewMode('calendar')}
-                className={`px-3 py-1.5 rounded text-sm transition-all ${viewMode === 'calendar' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                Calendario
-              </button>
-            )}
-          </div>
+          <ActionPlanViewSwitch value={viewMode} onChange={setViewMode} />
         </div>
       )}
 
-      
       {viewMode === 'list' && (
         <ListView
           plans={plans}
@@ -231,14 +195,6 @@ export default function ActionPlanViews({
           showStepGant={showStepGant}
           compact={compact}
           readOnly={readOnly}
-        />
-      )}
-      {viewMode === 'kanban' && (
-        <KanbanView
-          plans={plans}
-          statiConfig={statiConfig}
-          onSelectAP={onSelectAP}
-          onChangeStato={onChangeStato}
         />
       )}
       {viewMode === 'calendar' && (
@@ -388,209 +344,6 @@ function ListView({
     </div>
   )
 }
-function KanbanView({ plans, statiConfig, onSelectAP, onChangeStato }) {
-  if (statiConfig.length === 0) {
-    return (
-      <div className="bg-white rounded-lg shadow-sm p-12 text-center">
-        <h3 className="font-bold text-lg mb-2">Nessuno stato configurato</h3>
-        <p className="text-sm text-gray-500 mb-4">
-          Per usare la vista Kanban devi prima configurare gli <strong>Stati Action Plan</strong> nelle Settings.
-        </p>
-        <a href="/settings" className="inline-block bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary-light text-sm">
-          Vai in Settings
-        </a>
-      </div>
-    )
-  }
-
-  const columns = statiConfig.map((s, idx) => {
-    const palette = KANBAN_PALETTE[idx % KANBAN_PALETTE.length]
-    const hex = s.color
-    if (hex) {
-      return {
-        id: s.label,
-        label: s.label,
-        isTerminal: !!s.is_terminal,
-        color: 'border',
-        colorStyle: { backgroundColor: hex + '15', borderColor: hex + '60' },
-        headerColor: '',
-        headerStyle: { backgroundColor: hex + '40', color: hex },
-      }
-    }
-    return {
-      id: s.label,
-      label: s.label,
-      isTerminal: !!s.is_terminal,
-      color: palette.color,
-      headerColor: palette.headerColor,
-      colorStyle: {},
-      headerStyle: {},
-    }
-  })
-
-  const cancelledPlans = plans.filter(p => p.is_cancelled)
-  const activePlans = plans.filter(p => !p.is_cancelled)
-
-  const grouped = columns.reduce((acc, col) => {
-    acc[col.id] = activePlans.filter(p => p.stato === col.id)
-    return acc
-  }, {})
-
-  const knownStati = new Set(columns.map(c => c.id))
-  const orphans = activePlans.filter(p => !knownStati.has(p.stato))
-  if (orphans.length > 0) {
-    columns.push({
-      id: '__orphans__',
-      label: 'Stato non riconosciuto',
-      color: 'bg-red-50 border-red-300',
-      headerColor: 'bg-red-200 text-red-800',
-    })
-    grouped['__orphans__'] = orphans
-  }
-
-  async function onDragEnd(result) {
-    const { source, destination, draggableId } = result
-    if (!destination) return
-    if (source.droppableId === destination.droppableId) return
-    if (destination.droppableId === '__orphans__') return
-    const ap = plans.find(p => p._id === draggableId)
-    if (ap) await onChangeStato?.(ap, destination.droppableId)
-  }
-
-  return (
-    <>
-      <DragDropContext onDragEnd={onDragEnd}>
-        <div className="flex gap-3 overflow-x-auto pb-3" style={{ minHeight: '70vh' }}>
-          {columns.map(col => (
-            <div
-              key={col.id}
-              className={`flex-shrink-0 w-72 rounded-lg border-2 ${col.color} flex flex-col`}
-              style={col.colorStyle}
-            >
-              <div
-                className={`${col.headerColor} px-3 py-2 rounded-t-md font-semibold text-sm flex justify-between items-center`}
-                style={col.headerStyle}
-              >
-                <span>{col.label}</span>
-                <span className="bg-white bg-opacity-50 px-2 py-0.5 rounded-full text-xs">{grouped[col.id].length}</span>
-              </div>
-              <Droppable droppableId={col.id} isDropDisabled={col.id === '__orphans__'}>
-                {(provided, snapshot) => (
-                  <div
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                    className={`flex-1 p-2 space-y-2 overflow-y-auto transition-colors ${snapshot.isDraggingOver ? 'bg-white bg-opacity-50' : ''}`}
-                    style={{ minHeight: '300px' }}
-                  >
-                    {grouped[col.id].length === 0 && !snapshot.isDraggingOver && (
-                      <div className="text-center text-xs text-gray-400 py-8">Nessuna azione</div>
-                    )}
-                    {grouped[col.id].map((plan, index) => (
-                      <Draggable key={plan._id} draggableId={plan._id} index={index} isDragDisabled>
-                        {(provided, snapshot) => (
-                          <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            onClick={() => !snapshot.isDragging && onSelectAP?.(plan)}
-                            className={`bg-white rounded-md p-3 shadow-sm border cursor-pointer hover:shadow-md transition-all ${snapshot.isDragging ? 'rotate-2 shadow-2xl ring-2 ring-primary' : ''}`}
-                          >
-                            <KanbanCard plan={plan} />
-                          </div>
-                        )}
-                      </Draggable>
-                    ))}
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
-            </div>
-          ))}
-        </div>
-      </DragDropContext>
-
-      {cancelledPlans.length > 0 && (
-        <div className="mt-6 bg-red-50 border-2 border-red-200 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <h3 className="font-bold text-red-800">Action Plan annullati ({cancelledPlans.length})</h3>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-            {cancelledPlans.map(plan => (
-              <div
-                key={plan._id}
-                onClick={() => onSelectAP?.(plan)}
-                className="bg-white rounded-md p-3 shadow-sm border border-red-300 cursor-pointer hover:shadow-md transition-all opacity-75 hover:opacity-100"
-              >
-                <span className="font-mono text-xs text-red-600 font-bold">{plan.numero}</span>
-                <div className="font-medium text-sm mb-1 line-clamp-2">{plan.titolo}</div>
-                {plan.cancelled_reason && (
-                  <div className="text-xs text-red-700 italic mt-2 bg-red-100 px-2 py-1 rounded">
-                    {plan.cancelled_reason}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
-
-function KanbanCard({ plan }) {
-  const TipoIcon = TIPO_ICONS[plan.tipo] || CheckSquare
-  const checklistCompletati = plan.checklist?.filter(c => c.completato).length || 0
-  const checklistTotali = plan.checklist?.length || 0
-  const isOverdue = plan.stato_visuale === 'In Ritardo'
-
-  return (
-    <>
-      <div className="flex justify-between items-center mb-1">
-        <span className="font-mono text-xs text-primary font-bold">{plan.numero}</span>
-        {plan.priorita && (
-          <span className={`text-xs px-1.5 py-0.5 rounded ${PRIORITA_BG[plan.priorita] || ''}`}>
-            {plan.priorita}
-          </span>
-        )}
-      </div>
-      <div className="font-medium text-sm mb-2 line-clamp-2">{plan.titolo}</div>
-      {plan.tipo && (
-        <div className={`flex items-center gap-1 text-xs mb-2 ${TIPO_COLORS[plan.tipo] || ''}`}>
-          <TipoIcon size={12} />
-          <span>{plan.tipo}</span>
-        </div>
-      )}
-      {plan.parent_type && plan.parent_type !== 'standalone' && (
-        <div className="mb-2"><CollegatoBadge ap={plan} /></div>
-      )}
-      {checklistTotali > 0 && (
-        <div className="mb-2">
-          <div className="flex justify-between text-xs text-gray-500 mb-0.5">
-            <span>{checklistCompletati}/{checklistTotali}</span>
-            <span>{Math.round((checklistCompletati / checklistTotali) * 100)}%</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-1">
-            <div className="bg-green-500 h-1 rounded-full" style={{ width: `${(checklistCompletati / checklistTotali) * 100}%` }} />
-          </div>
-        </div>
-      )}
-      <div className="flex justify-between items-center pt-2 border-t mt-2">
-        <Avatar name={plan.responsabile} size={20} showName={false} />
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          {plan.commenti?.length > 0 && (
-            <span className="flex items-center gap-0.5"><MessageSquare size={10} /> {plan.commenti.length}</span>
-          )}
-          {plan.data_scadenza && (
-            <span className={`flex items-center gap-0.5 ${isOverdue ? 'text-red-600 font-bold' : ''}`}>
-              <Calendar size={10} />
-              {new Date(plan.data_scadenza).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}
-            </span>
-          )}
-        </div>
-      </div>
-    </>
-  )
-}
 function CalendarView({ plans, calendarDays, setCalendarDays, onSelectAP }) {
   const oggi = new Date()
   oggi.setHours(0, 0, 0, 0)
@@ -663,7 +416,6 @@ function CalendarView({ plans, calendarDays, setCalendarDays, onSelectAP }) {
             </button>
           ))}
         </div>
-        <span className="text-xs text-gray-500 ml-auto">Solo AP attivi (esclusi Done/Chiuso e Annullati)</span>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
