@@ -27,7 +27,7 @@ const [form, setForm] = useState({
   reparto: plan?.reparto || prefilledParent?.reparto || '',
   linea: plan?.linea || prefilledParent?.linea || '',
   macchina: plan?.macchina || prefilledParent?.macchina || '',
-  data_inizio: plan?.data_inizio ? plan.data_inizio.slice(0, 10) : '',
+  data_inizio: plan?.data_inizio ? plan.data_inizio.slice(0, 10) : plan ? '' : new Date().toLocaleDateString('sv-SE'),
   data_scadenza: plan?.data_scadenza ? plan.data_scadenza.slice(0, 10) : '',
   parent_type: plan?.parent_type || prefilledParent?.parent_type || 'standalone',
   parent_id: plan?.parent_id || prefilledParent?.parent_id || null,
@@ -203,7 +203,7 @@ const [form, setForm] = useState({
             />
           </Field>
 
-          <div className={`grid gap-3 ${plan ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          <div className="grid gap-3 grid-cols-2">
             <Field label="Tipo">
               <DynamicSelect
                 value={form.tipo}
@@ -224,17 +224,6 @@ const [form, setForm] = useState({
               />
             </Field>
 
-            {plan && (
-              <Field label="Stato">
-                <DynamicSelect
-                  value={form.stato}
-                  onChange={(v) => setForm({ ...form, stato: v })}
-                  options={statiConfig}
-                  placeholder="Seleziona"
-                  emptyHint="Settings → Stato"
-                />
-              </Field>
-            )}
           </div>
 
           {/* Categoria Perdita + 5M */}
@@ -312,7 +301,7 @@ const [form, setForm] = useState({
                 className="w-full border rounded-lg px-3 py-2 disabled:bg-gray-100"
               >
                 <option value="">
-                  {!form.reparto ? 'Prima il reparto' : 'Seleziona'}
+                  Seleziona
                 </option>
                 {lineeDisponibili.map(l => (
                   <option key={l.id} value={l.nome}>
@@ -329,7 +318,7 @@ const [form, setForm] = useState({
                 className="w-full border rounded-lg px-3 py-2 disabled:bg-gray-100"
               >
                 <option value="">
-                  {!form.linea ? 'Prima la linea' : 'Seleziona'}
+                  Seleziona
                 </option>
                 {macchineDisponibili.map(m => (
                   <option key={m.id} value={m.nome}>
