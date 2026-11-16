@@ -560,8 +560,8 @@ export default function ActionPlanDetailPanel({
 
   return (
     <Modal>
-      <div className="flex flex-col md:flex-row max-h-[85vh] overflow-y-auto md:overflow-hidden">
-        <div className="md:flex-1 min-w-0 md:overflow-y-auto md:max-h-[85vh] border-b md:border-b-0 md:border-r">
+      <div className="max-h-[85vh] overflow-y-auto">
+        <div>
           <div className="bg-primary text-white px-4 py-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
@@ -571,6 +571,7 @@ export default function ActionPlanDetailPanel({
                 </div>
                 <h2 className="text-base font-bold break-words">{detail.titolo}</h2>
               </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
               {!detail.is_cancelled && (isLocked ? (
                 <button
                   type="button"
@@ -589,6 +590,56 @@ export default function ActionPlanDetailPanel({
                   <Lock size={13} /> {closing ? 'Chiusura...' : 'Chiudi azione'}
                 </button>
               ))}
+              {!isLocked && !detail.is_cancelled && onCancel && (
+                <button
+                  type="button"
+                  onClick={() => onCancel(detail)}
+                  className="p-1.5 rounded text-white hover:bg-white hover:bg-opacity-10"
+                  title="Annulla"
+                >
+                  <AlertCircle size={14} />
+                </button>
+              )}
+              {!isLocked && detail.is_cancelled && onRestore && (
+                <button
+                  type="button"
+                  onClick={() => onRestore(detail)}
+                  className="p-1.5 rounded text-white hover:bg-white hover:bg-opacity-10"
+                  title="Ripristina"
+                >
+                  ↺
+                </button>
+              )}
+              {!isLocked && onDelete && (
+                <button
+                  type="button"
+                  onClick={() => onDelete(detail._id)}
+                  className="p-1.5 rounded text-white hover:bg-white hover:bg-opacity-10"
+                  title="Elimina"
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+              {!isLocked && onEdit && (
+                <button
+                  type="button"
+                  onClick={() => onEdit(detail)}
+                  className="p-1.5 rounded text-white hover:bg-white hover:bg-opacity-10"
+                  title="Modifica"
+                >
+                  <Edit2 size={14} />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 rounded text-white hover:bg-white hover:bg-opacity-10"
+                title="Chiudi"
+                aria-label="Chiudi"
+              >
+                <X size={16} />
+              </button>
+              </div>
             </div>
           </div>
 
@@ -597,6 +648,112 @@ export default function ActionPlanDetailPanel({
               Azione chiusa · sola lettura
             </div>
           )}
+
+          <div className="bg-gray-50 border-b px-4 py-3 space-y-2">
+          {detail.is_cancelled && (
+              <div className="bg-red-100 border border-red-300 rounded p-2 text-xs">
+                <div className="font-bold text-red-800 mb-1">Action Plan annullato</div>
+                {detail.cancelled_reason && (
+                  <div className="text-red-700 italic">“{detail.cancelled_reason}”</div>
+                )}
+                {detail.cancelled_at && (
+                  <div className="text-red-600 mt-1">
+                    {new Date(detail.cancelled_at).toLocaleDateString('it-IT')}
+                    {detail.cancelled_by && ` da ${detail.cancelled_by}`}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
+          <SidebarRow label="Stato">
+            <span className={`text-xs px-2 py-0.5 rounded font-medium ${isLocked ? 'bg-gray-200 text-gray-700' : 'bg-blue-50 text-blue-700'}`}>
+              {detail.stato || '—'}
+            </span>
+          </SidebarRow>
+
+          <SidebarRow label="Priorità">
+            <span className={`px-2 py-0.5 rounded text-xs ${PRIORITA_BG[detail.priorita] || ''}`}>
+              {detail.priorita || '—'}
+            </span>
+          </SidebarRow>
+
+          {detail.tipo && (
+            <SidebarRow label="Tipo">
+              <span className={`text-xs flex items-center gap-1 ${TIPO_COLORS[detail.tipo] || ''}`}>
+                <TipoIcon size={12} />
+                {detail.tipo}
+              </span>
+            </SidebarRow>
+          )}
+
+          <SidebarRow label="Responsabile">
+            {detail.responsabile ? (
+              <div className="flex items-center gap-1">
+                <Avatar name={detail.responsabile} size={20} />
+                <span className="text-xs">{detail.responsabile}</span>
+              </div>
+            ) : (
+              <span className="text-xs text-gray-400">—</span>
+            )}
+          </SidebarRow>
+
+
+          <SidebarRow label="Scadenza">
+            <span className={`text-xs ${detail.stato_visuale === 'In Ritardo' ? 'text-red-600 font-bold' : ''}`}>
+              {detail.data_scadenza
+                ? new Date(detail.data_scadenza).toLocaleDateString('it-IT')
+                : '—'}
+            </span>
+          </SidebarRow>
+
+          <SidebarRow label="Categoria Perdita">
+            <span className="text-xs">
+              {detail.categoria_perdita || detail.tipo_perdita || '—'}
+            </span>
+          </SidebarRow>
+
+          {detail.parent_type && detail.parent_type !== 'standalone' && (
+            <SidebarRow label="Collegato a">
+              <div className="text-xs">
+                <span
+                  className={`px-2 py-0.5 rounded ${
+                    detail.parent_type === 'pillar'
+                      ? 'bg-indigo-100 text-indigo-700'
+                      : detail.parent_type === 'kaizen'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : detail.parent_type === 'dashboard'
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  {detail.parent_type === 'pillar' && 'Pillar'}
+                  {detail.parent_type === 'kaizen' && 'Kaizen'}
+                  {detail.parent_type === 'dashboard' && 'Dashboard'}
+                  {detail.parent_label && ` · ${detail.parent_label}`}
+                </span>
+              </div>
+            </SidebarRow>
+          )}
+
+          {detail.pillar_id && detail.parent_type !== 'pillar' && (
+            <SidebarRow label="Pillar">
+              <span className="text-xs text-gray-700">{pillars.find(item => item._id === detail.pillar_id)?.sigla || '—'}</span>
+            </SidebarRow>
+          )}
+
+          {(detail.reparto || detail.linea || detail.macchina) && (
+            <SidebarRow label="Location">
+              <div className="text-xs">
+                {detail.reparto && <div>{detail.reparto}</div>}
+                {detail.linea && <div>{detail.linea}</div>}
+                {detail.macchina && <div>{detail.macchina}</div>}
+              </div>
+            </SidebarRow>
+          )}
+
+
+            </div>
+          </div>
 
           <div className="p-4 space-y-4">
 
@@ -814,166 +971,6 @@ export default function ActionPlanDetailPanel({
 </div>
               )}
             </Section>
-          </div>
-        </div>
-
-        <div className="md:w-64 md:flex-shrink-0 md:overflow-y-auto md:max-h-[85vh] bg-gray-50 p-3 space-y-2.5">
-          <div className="flex justify-between items-center pb-2 border-b">
-            <span className="text-sm font-medium">Dettagli</span>
-            <div className="flex gap-1">
-              {!isLocked && !detail.is_cancelled && onCancel && (
-                <button
-                  type="button"
-                  onClick={() => onCancel(detail)}
-                  className="p-1.5 hover:bg-orange-100 rounded text-orange-600"
-                  title="Annulla"
-                >
-                  <AlertCircle size={14} />
-                </button>
-              )}
-              {!isLocked && detail.is_cancelled && onRestore && (
-                <button
-                  type="button"
-                  onClick={() => onRestore(detail)}
-                  className="p-1.5 hover:bg-green-100 rounded text-green-600"
-                  title="Ripristina"
-                >
-                  ↺
-                </button>
-              )}
-              {!isLocked && onDelete && (
-                <button
-                  type="button"
-                  onClick={() => onDelete(detail._id)}
-                  className="p-1.5 hover:bg-red-100 rounded text-red-600"
-                  title="Elimina"
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
-              {!isLocked && onEdit && (
-                <button
-                  type="button"
-                  onClick={() => onEdit(detail)}
-                  className="p-1.5 hover:bg-gray-200 rounded"
-                  title="Modifica"
-                >
-                  <Edit2 size={14} />
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-1.5 hover:bg-gray-200 rounded"
-                title="Chiudi"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          </div>
-
-          {detail.is_cancelled && (
-            <div className="bg-red-100 border border-red-300 rounded p-2 text-xs">
-              <div className="font-bold text-red-800 mb-1">Action Plan annullato</div>
-              {detail.cancelled_reason && (
-                <div className="text-red-700 italic">“{detail.cancelled_reason}”</div>
-              )}
-              {detail.cancelled_at && (
-                <div className="text-red-600 mt-1">
-                  {new Date(detail.cancelled_at).toLocaleDateString('it-IT')}
-                  {detail.cancelled_by && ` da ${detail.cancelled_by}`}
-                </div>
-              )}
-            </div>
-          )}
-
-          <SidebarRow label="Stato">
-            <span className={`text-xs px-2 py-0.5 rounded font-medium ${isLocked ? 'bg-gray-200 text-gray-700' : 'bg-blue-50 text-blue-700'}`}>
-              {detail.stato || '—'}
-            </span>
-          </SidebarRow>
-
-          <SidebarRow label="Priorità">
-            <span className={`px-2 py-0.5 rounded text-xs ${PRIORITA_BG[detail.priorita] || ''}`}>
-              {detail.priorita || '—'}
-            </span>
-          </SidebarRow>
-
-          {detail.tipo && (
-            <SidebarRow label="Tipo">
-              <span className={`text-xs flex items-center gap-1 ${TIPO_COLORS[detail.tipo] || ''}`}>
-                <TipoIcon size={12} />
-                {detail.tipo}
-              </span>
-            </SidebarRow>
-          )}
-
-          <SidebarRow label="Responsabile">
-            {detail.responsabile ? (
-              <div className="flex items-center gap-1">
-                <Avatar name={detail.responsabile} size={20} />
-                <span className="text-xs">{detail.responsabile}</span>
-              </div>
-            ) : (
-              <span className="text-xs text-gray-400">—</span>
-            )}
-          </SidebarRow>
-
-
-          <SidebarRow label="Scadenza">
-            <span className={`text-xs ${detail.stato_visuale === 'In Ritardo' ? 'text-red-600 font-bold' : ''}`}>
-              {detail.data_scadenza
-                ? new Date(detail.data_scadenza).toLocaleDateString('it-IT')
-                : '—'}
-            </span>
-          </SidebarRow>
-
-          <SidebarRow label="Categoria Perdita">
-            <span className="text-xs">
-              {detail.categoria_perdita || detail.tipo_perdita || '—'}
-            </span>
-          </SidebarRow>
-
-          {detail.parent_type && detail.parent_type !== 'standalone' && (
-            <SidebarRow label="Collegato a">
-              <div className="text-xs text-right">
-                <span
-                  className={`px-2 py-0.5 rounded ${
-                    detail.parent_type === 'pillar'
-                      ? 'bg-indigo-100 text-indigo-700'
-                      : detail.parent_type === 'kaizen'
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : detail.parent_type === 'dashboard'
-                          ? 'bg-purple-100 text-purple-700'
-                          : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  {detail.parent_type === 'pillar' && 'Pillar'}
-                  {detail.parent_type === 'kaizen' && 'Kaizen'}
-                  {detail.parent_type === 'dashboard' && 'Dashboard'}
-                  {detail.parent_label && ` · ${detail.parent_label}`}
-                </span>
-              </div>
-            </SidebarRow>
-          )}
-
-          {detail.pillar_id && detail.parent_type !== 'pillar' && (
-            <SidebarRow label="Pillar">
-              <span className="text-xs text-gray-700">{pillars.find(item => item._id === detail.pillar_id)?.sigla || '—'}</span>
-            </SidebarRow>
-          )}
-
-          {(detail.reparto || detail.linea || detail.macchina) && (
-            <SidebarRow label="Location">
-              <div className="text-xs text-right">
-                {detail.reparto && <div>{detail.reparto}</div>}
-                {detail.linea && <div>{detail.linea}</div>}
-                {detail.macchina && <div>{detail.macchina}</div>}
-              </div>
-            </SidebarRow>
-          )}
-
-
             {(detail.feed || []).length > 0 && (
               <div className="pt-2 border-t">
                 <button
@@ -1008,6 +1005,7 @@ export default function ActionPlanDetailPanel({
                 )}
               </div>
             )}
+          </div>
         </div>
       </div>
 
@@ -1102,7 +1100,7 @@ const SMALL_BUTTON = 'inline-flex items-center gap-1.5 px-2.5 py-1 text-xs borde
 function Modal({ children }) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
         {children}
       </div>
     </div>
@@ -1154,9 +1152,9 @@ function Section({ title, actions, children }) {
 
 function SidebarRow({ label, children }) {
   return (
-    <div className="flex justify-between items-center gap-2 text-xs min-w-0">
-      <span className="text-gray-500 text-[11px] uppercase flex-shrink-0">{label}</span>
-      <div className="min-w-0 text-right truncate">{children}</div>
+    <div className="min-w-0">
+      <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
+      <div className="mt-0.5 text-xs truncate">{children}</div>
     </div>
   )
 }
