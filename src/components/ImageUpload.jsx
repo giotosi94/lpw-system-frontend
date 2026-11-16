@@ -327,95 +327,80 @@ export default function ImageUpload({
       onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget)) setDragging(false) }}
       onDrop={handleDrop}
     >
-      <div className="flex items-center justify-between gap-3 mb-2">
-        <label className="block text-sm font-medium text-gray-700">
-          {label}
-        </label>
-
-        <span className="text-xs text-gray-400">
-          {images.length}/{maxImages}
-        </span>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        {images.map((url, index) => (
-          <div
-            key={`${url}_${index}`}
-            className="relative group overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
-          >
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-700">{label}</label>
+          <span className="text-xs text-gray-400">{images.length}/{maxImages}</span>
+        </div>
+        {canAddImages && (
+          <div className="flex flex-wrap gap-1.5">
             <button
               type="button"
-              onClick={() => setPreviewUrl(url)}
-              className="block w-full"
-              title="Apri immagine"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs border border-gray-300 rounded-md text-gray-600 bg-white hover:border-primary hover:text-primary focus:border-primary focus:text-primary focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {React.createElement('img', {
-                src: resolveImageUrl(url),
-                alt: `Evidenza ${index + 1}`,
-                className: 'w-full h-28 object-cover',
-                loading: 'lazy',
-              })}
+              <Upload size={13} />
+              {uploading ? 'Caricamento...' : 'Carica'}
             </button>
-
-            <div className="absolute left-1.5 bottom-1.5 px-1.5 py-0.5 rounded bg-black bg-opacity-60 text-white text-[10px]">
-              Foto {index + 1}
-            </div>
-
+            <button
+              ref={pasteZoneRef}
+              type="button"
+              onClick={pasteFromClipboard}
+              onBlur={() => setPasteHint('')}
+              disabled={uploading}
+              title="Incolla uno screenshot con Ctrl+V"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs border border-gray-300 rounded-md text-gray-600 bg-white hover:border-primary hover:text-primary focus:border-primary focus:text-primary focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Clipboard size={13} />
+              {pasteHint || 'Incolla'}
+            </button>
             <button
               type="button"
-              onClick={() => removeImage(index)}
-              className="absolute top-1.5 right-1.5 bg-red-500 text-white rounded-full p-1 shadow opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
-              title="Rimuovi immagine"
+              onClick={openCamera}
+              disabled={uploading}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs border border-gray-300 rounded-md text-gray-600 bg-white hover:border-primary hover:text-primary focus:border-primary focus:text-primary focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <X size={14} />
+              <Camera size={13} />
+              Foto
             </button>
           </div>
-        ))}
-
-        {canAddImages && (
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="h-28 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:border-primary hover:text-primary hover:bg-yellow-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Upload size={22} />
-            <span className="text-xs font-medium mt-2">
-              {uploading ? 'Caricamento...' : 'Carica immagini'}
-            </span>
-          </button>
-        )}
-
-        {canAddImages && (
-          <button
-            ref={pasteZoneRef}
-            type="button"
-            onClick={pasteFromClipboard}
-            onBlur={() => setPasteHint('')}
-            disabled={uploading}
-            className="h-28 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:border-primary hover:text-primary hover:bg-yellow-50 focus:border-primary focus:text-primary focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Clipboard size={22} />
-            <span className="text-xs font-medium mt-2 px-2 text-center">
-              {pasteHint || 'Incolla screenshot'}
-            </span>
-          </button>
-        )}
-
-        {canAddImages && (
-          <button
-            type="button"
-            onClick={openCamera}
-            disabled={uploading}
-            className="h-28 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:border-primary hover:text-primary hover:bg-yellow-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Camera size={22} />
-            <span className="text-xs font-medium mt-2">
-              Scatta foto
-            </span>
-          </button>
         )}
       </div>
+
+      {images.length > 0 && (
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+          {images.map((url, index) => (
+            <div
+              key={`${url}_${index}`}
+              className="relative group overflow-hidden rounded-md border border-gray-200 bg-gray-50"
+            >
+              <button
+                type="button"
+                onClick={() => setPreviewUrl(url)}
+                className="block w-full"
+                title="Apri immagine"
+              >
+                {React.createElement('img', {
+                  src: resolveImageUrl(url),
+                  alt: `Evidenza ${index + 1}`,
+                  className: 'w-full h-20 object-cover',
+                  loading: 'lazy',
+                })}
+              </button>
+              <button
+                type="button"
+                onClick={() => removeImage(index)}
+                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-0.5 shadow opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                title="Rimuovi immagine"
+                aria-label={`Rimuovi immagine ${index + 1}`}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <input
         ref={fileInputRef}
@@ -426,11 +411,6 @@ export default function ImageUpload({
         className="hidden"
       />
 
-      {showHelp && (
-      <div className="text-xs text-gray-400 mt-2">
-        Incolla uno screenshot con Ctrl+V, trascina o carica le immagini. Massimo {maxImages}, 10 MB ciascuna.
-      </div>
-      )}
 
       {uploading && (
         <div className="mt-3">
