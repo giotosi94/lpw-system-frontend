@@ -14,6 +14,15 @@ import CloseTheLoopChart from '../components/pillar/CloseTheLoopChart'
 import SkillMatrixTab from '../components/pillar/SkillMatrixTab'
 import StoricoAnalisiModal from '../components/pillar/StoricoAnalisiModal'
 
+function readableColor(value) {
+  const match = /^#?([0-9a-f]{6})$/i.exec(String(value || '').trim())
+  if (!match) return '#4b5563'
+  const [r, g, b] = [0, 2, 4].map(index => parseInt(match[1].slice(index, index + 2), 16) / 255)
+  const channel = v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+  const luminance = 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+  return luminance > 0.45 ? '#4b5563' : `#${match[1]}`
+}
+
 export default function PillarDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -57,7 +66,7 @@ export default function PillarDetailPage() {
     )
   }
 
-  const color = pillar.color || '#6366f1'
+  const color = readableColor(pillar.color)
   const stepsCompleted = stats?.steps_completed || 0
   const stepsTotal = stats?.steps_total || 5
 
@@ -81,20 +90,16 @@ export default function PillarDetailPage() {
         <span className="font-medium text-gray-700">{pillar.sigla}</span>
       </div>
 
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-300 pb-4">
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-300 pb-4">
         <div className="flex items-center gap-4 min-w-0 flex-1">
-          {pillar.icon_image && <img src={pillar.icon_image} alt="" className="h-16 w-16 shrink-0 object-contain" onError={event => { event.currentTarget.style.display = 'none' }} />}
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-gray-900 break-words">{pillar.sigla} · {pillar.label}</h1>
-            {pillar.descrizione && <p className="text-sm text-gray-600 mt-1">{pillar.descrizione}</p>}
-            <p className="text-xs text-gray-500 mt-2">{[pillar.leader, pillar.anno, pillar.attivo === false ? 'Disattivo' : 'Attivo'].filter(Boolean).join(' · ')}</p>
-          </div>
+          {pillar.icon_image && <img src={pillar.icon_image} alt="" className="h-14 w-14 shrink-0 object-contain" onError={event => { event.currentTarget.style.display = 'none' }} />}
+          <h1 className="text-2xl font-bold text-gray-900 break-words min-w-0">{pillar.sigla} · {pillar.label}</h1>
         </div>
         <button type="button" onClick={() => navigate('/settings')} className="border border-gray-300 rounded px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Modifica pilastro</button>
       </header>
       <div className="flex gap-1 border-b overflow-x-auto">
         {tabs.map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-4 py-2 font-medium text-sm whitespace-nowrap transition-colors ${activeTab === tab.id ? 'border-b-2 text-primary' : 'text-gray-500 hover:text-gray-700'}`} style={activeTab === tab.id ? { borderColor: color, color } : {}}>
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)} aria-current={activeTab === tab.id ? 'page' : undefined} className={`px-4 py-2 font-medium text-sm whitespace-nowrap transition-colors border-b-2 ${activeTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
             {tab.label}
           </button>
         ))}
