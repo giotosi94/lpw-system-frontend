@@ -1122,7 +1122,7 @@ const majorKaizens =
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Categoria Perdita (TPM)</label>
+                <label className="block text-sm font-medium mb-1">Categoria Perdita</label>
                 <select
                   value={newKaizen.tipo_perdita}
                   onChange={(e) => setNewKaizen({ ...newKaizen, tipo_perdita: e.target.value })}
