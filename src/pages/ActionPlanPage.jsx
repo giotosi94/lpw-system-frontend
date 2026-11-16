@@ -5,7 +5,7 @@ import api from '../services/api'
 import { useAllConfigurations } from '../hooks/useConfigurations'
 import ActionPlanFormShared from '../components/ActionPlanFormShared'
 import ActionPlanDetailPanel from '../components/ActionPlanDetailPanel'
-import ActionPlanViews from '../components/ActionPlanViews'
+import ActionPlanViews, { ActionPlanViewSwitch } from '../components/ActionPlanViews'
 
 export default function ActionPlanPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -14,7 +14,7 @@ export default function ActionPlanPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingPlan, setEditingPlan] = useState(null)
   const [selectedPlan, setSelectedPlan] = useState(null)
-  const [viewMode] = useState('list')
+  const [viewMode, setViewMode] = useState('list')
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState({
     search: '', stato: [], tipo: [], priorita: [], parent_type: [],
@@ -165,17 +165,11 @@ export default function ActionPlanPage() {
   return (
     <div className="space-y-4">
       
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">Action Plan Management</h1>
-          <p className="text-gray-500 text-sm">Gestione piani d'azione trasversali</p>
-        </div>
-
-      </div>
+      <h1 className="text-2xl font-bold">Piani d'azione</h1>
 
       <div className="bg-white p-4 rounded-xl shadow-sm space-y-4">
-        <div className="flex gap-3 items-center">
-          <div className="relative flex-1">
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative flex-1 min-w-[200px]">
             <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
             <input
               type="text"
@@ -206,6 +200,9 @@ export default function ActionPlanPage() {
               <X size={15} /> Azzera filtri
             </button>
           )}
+          <div className="ml-auto">
+            <ActionPlanViewSwitch value={viewMode} onChange={setViewMode} />
+          </div>
         </div>
 
         {showFilters && (
@@ -308,11 +305,12 @@ export default function ActionPlanPage() {
           onSelectAP={setSelectedPlan}
           onEditAP={(p) => { setEditingPlan(p); setShowForm(true) }}
           onDeleteAP={(p) => handleDelete(p._id)}
-          onChangeStato={(ap, nuovoStato) => quickStateChange(ap._id, nuovoStato)}
           showCollegato={true}
           showKanban={true}
           showCalendar={true}
-          defaultView={viewMode}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          hideViewSwitch
           emptyMessage="Nessun Action Plan trovato"
 
         />
