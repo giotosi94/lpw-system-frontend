@@ -123,6 +123,7 @@ export default function ActionPlanDetailPanel({
   const { user } = useAuth()
   const { pillars = [] } = usePillars() || {}
   const [closing, setClosing] = useState(false)
+  const [showFeed, setShowFeed] = useState(false)
   const [pasteHint, setPasteHint] = useState('')
   const pasteRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -559,16 +560,16 @@ export default function ActionPlanDetailPanel({
 
   return (
     <Modal>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 h-[85vh]">
-        <div className="lg:col-span-2 overflow-y-auto border-r">
-          <div className="bg-primary text-white px-5 py-4">
+      <div className="flex flex-col md:flex-row max-h-[85vh] overflow-y-auto md:overflow-hidden">
+        <div className="md:flex-1 min-w-0 md:overflow-y-auto md:max-h-[85vh] border-b md:border-b-0 md:border-r">
+          <div className="bg-primary text-white px-4 py-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 text-xs opacity-80 mb-1">
                   <span className="font-mono">{detail.numero}</span>
                   {detail.tipo && <><span>·</span><span>{detail.tipo}</span></>}
                 </div>
-                <h2 className="text-lg font-bold break-words">{detail.titolo}</h2>
+                <h2 className="text-base font-bold break-words">{detail.titolo}</h2>
               </div>
               {!detail.is_cancelled && (isLocked ? (
                 <button
@@ -592,12 +593,12 @@ export default function ActionPlanDetailPanel({
           </div>
 
           {isLocked && (
-            <div className="bg-gray-100 border-b px-5 py-2 text-xs text-gray-600">
+            <div className="bg-gray-100 border-b px-4 py-1.5 text-xs text-gray-600">
               Azione chiusa · sola lettura
             </div>
           )}
 
-          <div className="p-5 space-y-6">
+          <div className="p-4 space-y-4">
 
             <Section title={`Checklist ${checklistTotali ? `(${checklistCompletati}/${checklistTotali})` : ''}`}>
               {checklistTotali > 0 && (
@@ -621,9 +622,9 @@ export default function ActionPlanDetailPanel({
                       className={isLocked ? 'cursor-not-allowed' : ''}
                     >
                       {item.completato ? (
-                        <CheckSquare size={18} className="text-green-600" />
+                        <CheckSquare size={16} className="text-green-600" />
                       ) : (
-                        <Square size={18} className="text-gray-400" />
+                        <Square size={16} className="text-gray-400" />
                       )}
                     </button>
                     <span className={`flex-1 text-sm ${item.completato ? 'line-through text-gray-400' : ''}`}>
@@ -654,12 +655,12 @@ export default function ActionPlanDetailPanel({
                       }
                     }}
                     placeholder="Aggiungi item..."
-                    className="flex-1 border rounded px-3 py-1.5 text-sm"
+                    className="flex-1 min-w-0 border rounded px-2.5 py-1 text-sm"
                   />
                   <button
                     type="button"
                     onClick={addChecklistItem}
-                    className="px-3 py-1.5 bg-gray-200 rounded text-sm hover:bg-gray-300"
+                    className="px-2.5 py-1 bg-gray-100 border border-gray-300 rounded text-xs hover:bg-gray-200"
                   >
                     + Item
                   </button>
@@ -752,7 +753,7 @@ export default function ActionPlanDetailPanel({
               )}
 
               {allegati.length === 0 && (
-                <div className="text-sm text-gray-400">Nessun allegato</div>
+                <div className="text-xs text-gray-400">Nessun allegato</div>
               )}
 
               {uploadingAllegato && (
@@ -767,16 +768,16 @@ export default function ActionPlanDetailPanel({
             </Section>
 
             <Section title={`Commenti (${detail.commenti?.length || 0})`}>
-              <div className="space-y-3 mb-3">
+              <div className="space-y-2 mb-2">
                 {(detail.commenti || [])
                   .slice()
                   .reverse()
                   .map(commento => (
                     <div key={commento.id} className="flex gap-2">
-                      <Avatar name={commento.autore} size={32} />
-                      <div className="flex-1 bg-gray-50 p-3 rounded-lg">
+                      <Avatar name={commento.autore} size={24} />
+                      <div className="flex-1 min-w-0 bg-gray-50 px-2.5 py-1.5 rounded-lg">
                         <div className="flex justify-between items-center gap-3 mb-1">
-                          <strong className="text-sm">{commento.autore}</strong>
+                          <strong className="text-xs">{commento.autore}</strong>
                           <span className="text-xs text-gray-400">
                             {new Date(commento.timestamp).toLocaleString('it-IT')}
                           </span>
@@ -789,7 +790,7 @@ export default function ActionPlanDetailPanel({
                   ))}
 
                 {(!detail.commenti || detail.commenti.length === 0) && (
-                  <div className="text-sm text-gray-400 italic">Nessun commento</div>
+                  <div className="text-xs text-gray-400">Nessun commento</div>
                 )}
               </div>
 
@@ -806,9 +807,9 @@ export default function ActionPlanDetailPanel({
     type="button"
     onClick={addCommento}
     disabled={!nuovoCommento.trim()}
-    className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-light self-end disabled:opacity-50 disabled:cursor-not-allowed"
+    className="px-3 py-1.5 bg-primary text-white rounded-md hover:bg-primary-light self-end disabled:opacity-50 disabled:cursor-not-allowed"
   >
-    <Send size={16} />
+    <Send size={14} />
   </button>
 </div>
               )}
@@ -816,7 +817,7 @@ export default function ActionPlanDetailPanel({
           </div>
         </div>
 
-        <div className="overflow-y-auto bg-gray-50 p-4 space-y-4">
+        <div className="md:w-64 md:flex-shrink-0 md:overflow-y-auto md:max-h-[85vh] bg-gray-50 p-3 space-y-2.5">
           <div className="flex justify-between items-center pb-2 border-b">
             <span className="text-sm font-medium">Dettagli</span>
             <div className="flex gap-1">
@@ -918,9 +919,6 @@ export default function ActionPlanDetailPanel({
             )}
           </SidebarRow>
 
-          <SidebarRow label="Reporter">
-            <span className="text-xs">{detail.reporter || '—'}</span>
-          </SidebarRow>
 
           <SidebarRow label="Scadenza">
             <span className={`text-xs ${detail.stato_visuale === 'In Ritardo' ? 'text-red-600 font-bold' : ''}`}>
@@ -975,44 +973,41 @@ export default function ActionPlanDetailPanel({
             </SidebarRow>
           )}
 
-          {detail.links?.length > 0 && (
-            <SidebarRow label={`Links (${detail.links.length})`}>
-              <div className="text-xs space-y-1">
-                {detail.links.map((link, index) => (
-                  <div
-                    key={`${link.entity_id}_${index}`}
-                    className="bg-white px-2 py-1 rounded border"
-                  >
-                    <span className="text-gray-500">{link.entity_type}:</span>{' '}
-                    {link.entity_label || link.entity_id}
-                  </div>
-                ))}
-              </div>
-            </SidebarRow>
-          )}
 
-          <div className="pt-3 border-t">
-            <div className="text-xs font-medium mb-2">Attività</div>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {(detail.feed || [])
-                .slice()
-                .reverse()
-                .slice(0, 20)
-                .map((activity, index) => (
-                  <div
-                    key={`${activity.timestamp}_${index}`}
-                    className="text-xs border-l-2 border-primary pl-2"
-                  >
-                    <div className="text-gray-500">
-                      {new Date(activity.timestamp).toLocaleString('it-IT')}
-                    </div>
-                    <div>
-                      <strong>{activity.utente}</strong> · {activity.azione}
-                    </div>
+            {(detail.feed || []).length > 0 && (
+              <div className="pt-2 border-t">
+                <button
+                  type="button"
+                  aria-expanded={showFeed}
+                  onClick={() => setShowFeed(value => !value)}
+                  className="w-full flex items-center justify-between text-xs text-gray-600 hover:text-gray-900"
+                >
+                  <span>Attività ({detail.feed.length})</span>
+                  <span aria-hidden="true">{showFeed ? '−' : '+'}</span>
+                </button>
+                {showFeed && (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto mt-2">
+                    {(detail.feed || [])
+                      .slice()
+                      .reverse()
+                      .slice(0, 20)
+                      .map((activity, index) => (
+                        <div
+                          key={`${activity.timestamp}_${index}`}
+                          className="text-[11px] border-l-2 border-gray-300 pl-2"
+                        >
+                          <div className="text-gray-500">
+                            {new Date(activity.timestamp).toLocaleString('it-IT')}
+                          </div>
+                          <div>
+                            <strong>{activity.utente}</strong> · {activity.azione}
+                          </div>
+                        </div>
+                      ))}
                   </div>
-                ))}
-            </div>
-          </div>
+                )}
+              </div>
+            )}
         </div>
       </div>
 
@@ -1107,7 +1102,7 @@ const SMALL_BUTTON = 'inline-flex items-center gap-1.5 px-2.5 py-1 text-xs borde
 function Modal({ children }) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden">
+      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
         {children}
       </div>
     </div>
@@ -1149,7 +1144,7 @@ function Section({ title, actions, children }) {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-        <h3 className="text-sm font-bold">{title}</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wide text-gray-700">{title}</h3>
         {actions || null}
       </div>
       {children}
@@ -1159,9 +1154,9 @@ function Section({ title, actions, children }) {
 
 function SidebarRow({ label, children }) {
   return (
-    <div className="flex justify-between items-center gap-3 text-sm">
-      <span className="text-gray-600 text-xs uppercase">{label}</span>
-      <div>{children}</div>
+    <div className="flex justify-between items-center gap-2 text-xs min-w-0">
+      <span className="text-gray-500 text-[11px] uppercase flex-shrink-0">{label}</span>
+      <div className="min-w-0 text-right truncate">{children}</div>
     </div>
   )
 }
