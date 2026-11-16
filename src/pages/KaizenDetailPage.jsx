@@ -873,6 +873,14 @@ export default function KaizenDetailPage() {
               <textarea value={kaizen.fase5_valutazione_efficacia?.osservazioni || ''}
                 onChange={(e) => updateField('fase5_valutazione_efficacia', 'osservazioni', e.target.value)}
                 className="w-full border rounded-lg px-3 py-2 text-sm" rows={5} />
+              <div className="mt-4">
+                <ImageUpload
+                  images={kaizen.fase5_valutazione_efficacia?.immagini || []}
+                  onChange={(immagini) => updateField('fase5_valutazione_efficacia', 'immagini', immagini)}
+                  label="Immagini dei risultati"
+                  maxImages={10}
+                />
+              </div>
             </div>
 
             {/* FASE 7 — Standardizzazione e Replica */}
@@ -897,6 +905,11 @@ export default function KaizenDetailPage() {
               <textarea value={kaizen.fase6_standardizzazione?.osservazioni || ''}
                 onChange={(e) => updateField('fase6_standardizzazione', 'osservazioni', e.target.value)}
                 className="w-full border rounded-lg px-3 py-2 text-sm" rows={5} />
+              <ReplicaLines
+                rows={kaizen.fase6_standardizzazione?.repliche || []}
+                reparti={reparti}
+                onChange={(repliche) => updateField('fase6_standardizzazione', 'repliche', repliche)}
+              />
             </div>
           </div>
 
@@ -1148,6 +1161,70 @@ export default function KaizenDetailPage() {
             alert('Action Plan creato e collegato al Kaizen.')
           }}
         />
+      )}
+    </div>
+  )
+}
+
+function ReplicaLines({ rows, reparti, onChange }) {
+  const lineOptions = reparti
+    .filter(reparto => reparto.attivo !== false)
+    .map(reparto => ({
+      reparto: reparto.nome,
+      linee: (reparto.linee || []).filter(linea => linea.attivo !== false),
+    }))
+    .filter(group => group.linee.length > 0)
+  const known = new Set(lineOptions.flatMap(group => group.linee.map(linea => `${group.reparto}||${linea.nome}`)))
+  const update = (id, patch) => onChange(rows.map(row => row.id === id ? { ...row, ...patch } : row))
+  const add = () => onChange([...rows, { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, reparto: '', linea: '', scadenza: '' }])
+  const remove = id => onChange(rows.filter(row => row.id !== id))
+  return (
+    <div className="mt-4">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="block text-xs font-bold text-gray-600 uppercase">Linee di replica</span>
+        <button type="button" onClick={add} className="text-xs bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-primary-light">+ Aggiungi linea</button>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-xs text-gray-400">Nessuna linea di replica.</p>
+      ) : (
+        <div className="space-y-2">
+          {rows.map(row => {
+            const value = row.linea ? `${row.reparto || ''}||${row.linea}` : ''
+            return (
+              <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 items-center">
+                <select
+                  value={value}
+                  aria-label="Linea di replica"
+                  onChange={(e) => {
+                    const [reparto, linea] = e.target.value.split('||')
+                    update(row.id, { reparto: reparto || '', linea: linea || '' })
+                  }}
+                  className="w-full min-w-0 border rounded-lg px-2 py-2 text-sm"
+                >
+                  <option value="">Seleziona linea</option>
+                  {value && !known.has(value) && <option value={value}>{row.linea}</option>}
+                  {lineOptions.map(group => (
+                    <optgroup key={group.reparto} label={group.reparto}>
+                      {group.linee.map(linea => (
+                        <option key={`${group.reparto}-${linea.id || linea.nome}`} value={`${group.reparto}||${linea.nome}`}>{linea.nome}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <input
+                  type="date"
+                  value={row.scadenza || ''}
+                  aria-label="Scadenza replica"
+                  onChange={(e) => update(row.id, { scadenza: e.target.value })}
+                  className="border rounded-lg px-2 py-2 text-sm"
+                />
+                <button type="button" onClick={() => remove(row.id)} aria-label="Rimuovi linea" title="Rimuovi" className="p-2 text-red-500 hover:bg-red-50 rounded">
+                  <X size={16} />
+                </button>
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )
