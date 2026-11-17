@@ -395,7 +395,7 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
         <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">PASSO 2 - ANALISI DEI DATI STAIN</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
           {field('Periodo da', 'periodo_da', 'date')}{field('Periodo a', 'periodo_a', 'date')}
-          <label className="text-sm">Linea STAIN<select className={`${input} mt-1`} value={form.stain_linea} onChange={event => change({ stain_linea: event.target.value })}><option value="">Seleziona linea macchina</option>{stainLines.map(row => <option key={`${row.reparto}-${row.valore}`} value={row.valore}>{row.nome} / {row.reparto}</option>)}</select></label>
+          <label className="text-sm">Linea STAIN<select className={`${input} mt-1`} value={form.stain_linea} onChange={event => change({ stain_linea: event.target.value })}><option value="">Seleziona linea</option>{form.stain_linea && stainLines.length > 0 && !stainLines.some(row => row.valore === form.stain_linea) && <option value={form.stain_linea}>{form.stain_linea} (non più disponibile)</option>}{stainLines.map(row => <option key={`${row.reparto}-${row.valore}`} value={row.valore}>{row.nome} / {row.reparto}</option>)}</select></label>
         </div>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-3">
           <span className="text-sm font-medium">Tipo di perdita</span>
