@@ -418,13 +418,12 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
           {field('Periodo da', 'periodo_da', 'date')}{field('Periodo a', 'periodo_a', 'date')}
           <label className="text-sm">Linea STAIN<select className={`${input} mt-1`} value={form.stain_linea} onChange={event => change({ stain_linea: event.target.value })}><option value="">Seleziona linea macchina</option>{stainLines.map(row => <option key={`${row.reparto}-${row.valore}`} value={row.valore}>{row.nome} / {row.reparto}</option>)}</select></label>
         </div>
-          <fieldset className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-3" disabled={stainBusy}>
-            <legend className="text-sm font-medium mb-2">Tipo di perdita</legend>
-            {[['rework', 'Rework · Sacco blu e lilla'], ['scarto', 'Scarto · Sacco verde'], ['non_classificato', 'Altre causali']].map(([value, label]) => <label key={value} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.stain_tipi.includes(value)} onChange={event => change({ stain_tipi: event.target.checked ? [...form.stain_tipi, value] : form.stain_tipi.filter(item => item !== value) })} />{label}</label>)}
-          </fieldset>
-        <button type="button" className={button} disabled={stainBusy} onClick={loadStain}>{stainBusy ? 'Caricamento...' : 'Carica da STAIN'}</button>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-3">
+          <span className="text-sm font-medium">Tipo di perdita</span>
+            {[['rework', 'Rework · Sacco blu e lilla'], ['scarto', 'Scarto · Sacco verde'], ['non_classificato', 'Altre causali']].map(([value, label]) => <label key={value} className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={stainBusy} checked={form.stain_tipi.includes(value)} onChange={event => change({ stain_tipi: event.target.checked ? [...form.stain_tipi, value] : form.stain_tipi.filter(item => item !== value) })} />{label}</label>)}
+          <button type="button" className={button} disabled={stainBusy} onClick={loadStain}>{stainBusy ? 'Caricamento...' : 'Carica da STAIN'}</button>
+        </div>
         {stainError && <p role="alert" className="mt-2 text-sm text-red-700">{stainError}</p>}
-        {form.stain_snapshot && <p className="mt-3 text-sm text-gray-600">{form.stain_snapshot.linea.trim()} · {form.stain_snapshot.dal} / {form.stain_snapshot.al} · {fmt(form.stain_snapshot.totale_kg)} kg · Caricato {new Date(form.stain_snapshot.caricato_il).toLocaleString('it-IT')}</p>}
         {form.stain_snapshot && <div className="mt-4 space-y-2">
           <p className="rounded-lg border-l-4 border-primary bg-amber-50 px-4 py-3 text-base font-bold text-primary">Seleziona il prodotto e la perdita che vuoi attaccare</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
