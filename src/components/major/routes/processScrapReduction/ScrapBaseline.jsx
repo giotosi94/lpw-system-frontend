@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import api from '../../../../services/api'
 import * as XLSX from 'xlsx'
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
-
 const SCRAP_GUIDES = {
   che_cosa: {
     titolo: 'CHE COSA?',
@@ -60,7 +59,6 @@ const SCRAP_GUIDES = {
     ],
   },
 }
-
 function filterStainByProduct(snapshot, products = []) {
   const selected = new Set(products)
   const useFilter = products.length > 0 && Boolean(snapshot?.dettaglio)
@@ -98,13 +96,11 @@ function filterStainByProduct(snapshot, products = []) {
     production,
   }
 }
-
 function stainProducts(snapshot) {
   const totals = new Map()
   ;(snapshot?.dettaglio || []).forEach(row => totals.set(row.prodotto, (totals.get(row.prodotto) || 0) + row.kg))
   return [...totals].sort((a, b) => b[1] - a[1]).map(([nome, kg]) => ({ nome, kg }))
 }
-
 const HEADERS = ['Data', 'Prodotto', 'Formato', 'Operazione / fase macchina', 'Scarto / Rework', 'Quantità', 'Note']
 const KEYS = ['periodo', 'prodotto', 'formato', 'operazione', 'tipo', 'quantita', 'note']
 const uid = () => globalThis.crypto?.randomUUID?.() || `r_${Date.now()}_${Math.random().toString(16).slice(2)}`
@@ -114,7 +110,6 @@ const fmt = value => value == null || !Number.isFinite(value) ? 'Non disponibile
 const blank = () => ({ id: uid(), periodo: '', categoria: '', prodotto: '', formato: '', operazione: '', componente: '', tipo: 'Scarto', quantita: '', produzione: '', note: '' })
 const button = 'border border-gray-300 rounded px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50'
 const input = 'w-full min-w-0 border border-gray-300 rounded px-2 py-2 text-sm bg-white'
-
 function productOptions(form, source) {
   const clean = values => [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))].sort()
   if (source === 'manuale') return clean((form.categorie_scarto || []).map(row => row.prodotto))
@@ -197,9 +192,6 @@ function calculate(form, staleStain) {
     const categoryTimelines = Object.fromEntries([...categoryDays].map(([key, days]) => [key, allPeriods.map(periodo => ({ periodo, totale: days.get(periodo) || 0 }))]))
     return { pareto, total, selected, timeline, categoryTimelines, baseline, issues, production }
   }
-
-
-
 function evaluateObjective(row, form, stainAnalysis, manualAnalysis) {
   const globalSource = row.fonte === 'manuale' ? manualAnalysis : stainAnalysis
   const products = productOptions(form, row.fonte)
@@ -233,7 +225,6 @@ function evaluateObjective(row, form, stainAnalysis, manualAnalysis) {
   const target = baseline !== null && reduction !== null && !errors.length ? baseline * (1 - reduction / 100) : null
   return { baseline, target, reduction, unit, categories, errors: [...new Set(errors)], avoided: target === null ? null : baseline - target, kg: target !== null && unit === '%' ? (baseline - target) / 100 * source.production : target !== null && unit === 'kg' ? baseline - target : null }
 }
-
 function initial(data, major) {
   return {
     ...data,
@@ -245,7 +236,6 @@ function initial(data, major) {
     priorita_manuali: data.priorita_manuali || (data.origine === 'manuale' ? data.priorita : []) || [],
     priorita_stain: data.priorita_stain || (data.origine === 'stain' ? data.priorita : []) || [],
     baseline_fonte: data.baseline_fonte || data.origine || 'stain',
-
     origine: data.origine || 'manuale',
     stain_linea: data.stain_linea || '',
     stain_snapshot: data.stain_snapshot || null,
@@ -274,7 +264,6 @@ function initial(data, major) {
     scadenza: data.scadenza || major?.data_target || '',
   }
 }
-
 export default function ScrapBaseline({ stepData, onChange, major }) {
   const [form, setForm] = useState(() => initial(stepData?.dati || {}, major))
   const [status, setStatus] = useState('')
@@ -288,17 +277,14 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
   const revision = useRef(0)
   const dirty = useRef(false)
   const printArea = useRef(null)
-
   useEffect(() => {
     if (!dirty.current && !saving) setForm(initial(stepData?.dati || {}, major))
   }, [stepData?.dati])
-
   useEffect(() => {
     const guard = event => { if (dirty.current) { event.preventDefault(); event.returnValue = '' } }
     window.addEventListener('beforeunload', guard)
     return () => window.removeEventListener('beforeunload', guard)
   }, [])
-
   const change = update => {
     dirty.current = true
     revision.current += 1
@@ -306,7 +292,6 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
     setForm(current => typeof update === 'function' ? update(current) : { ...current, ...update })
   }
   const updateRow = (id, key, value) => change(current => ({ ...current, categorie_scarto: current.categorie_scarto.map(row => row.id === id ? { ...row, [key]: value } : row) }))
-
   useEffect(() => {
     let cancelled = false
     api.get('/stain/linee').then(res => {
@@ -314,7 +299,6 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
     }).catch(error => { if (!cancelled) setStainError(error.response?.data?.detail || 'Impossibile caricare le linee STAIN') })
     return () => { cancelled = true }
   }, [])
-
   const loadStain = async () => {
     if (!form.stain_tipi.length) { setStainError('Seleziona almeno un tipo di perdita'); return }
     if (!form.periodo_da || !form.periodo_a || !form.stain_linea) { setStainError('Seleziona periodo e linea STAIN'); return }
@@ -328,7 +312,6 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
     finally { setStainBusy(false) }
   }
   const staleStain = form.stain_snapshot && (form.stain_snapshot.dal !== form.periodo_da || form.stain_snapshot.al !== form.periodo_a || form.stain_snapshot.linea !== form.stain_linea || JSON.stringify([...(form.stain_snapshot.tipi || ['rework', 'scarto', 'non_classificato'])].sort()) !== JSON.stringify([...form.stain_tipi].sort()))
-
   const stainAnalysis = useMemo(() => calculate({ ...form, origine: 'stain', priorita: form.priorita_stain }, staleStain), [form, staleStain])
   const manualAnalysis = useMemo(() => calculate({ ...form, origine: 'manuale', unita_misura: form.unita_manuale, priorita: form.priorita_manuali, metrica: 'quantita' }, false), [form])
   const analysis = form.baseline_fonte === 'stain' ? stainAnalysis : manualAnalysis
@@ -337,9 +320,7 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
   const stainProductOptions = productOptions(form, 'stain')
   const evaluatedObjectives = form.obiettivi.map(row => ({ ...row, ...evaluateObjective(row, form, stainAnalysis, manualAnalysis) }))
   const updateObjective = (id, patch) => change(current => ({ ...current, obiettivi: current.obiettivi.map(row => row.id === id ? { ...row, ...patch, target_precedente: '' } : row) }))
-
   const save = async () => {
-
     if (form.manuale_da && form.manuale_a && form.manuale_da > form.manuale_a) { setStatus('Periodo della raccolta manuale non valido'); return }
     if (form.periodo_da && form.periodo_a && form.periodo_da > form.periodo_a) { setStatus('Il periodo finale precede quello iniziale'); return }
     const currentRevision = revision.current
@@ -353,7 +334,6 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
     } catch (error) { setStatus('Errore di salvataggio. I dati restano nella pagina: riprova.') }
     finally { setSaving(false) }
   }
-
   const exportExcel = (template = false) => {
     const workbook = XLSX.utils.book_new()
     const rows = template ? [] : form.categorie_scarto.map(row => KEYS.map(key => row[key]))
@@ -408,7 +388,6 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
   }
   const reductionAmount = analysis.baseline > 0 && valid(form.target) ? analysis.baseline - number(form.target) : null
   const reductionKg = form.baseline_fonte === 'stain' && form.stain_kpi === 'percentuale' && reductionAmount !== null && analysis.production ? reductionAmount / 100 * analysis.production : null
-
   return (
     <div ref={printArea} className="space-y-7">
       <ProblemDefinition value={form.definizione} onChange={value => change({ definizione: value })} guides={SCRAP_GUIDES} />
@@ -439,7 +418,6 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
           {field('Periodo raccolta da', 'manuale_da', 'date')}{field('Periodo raccolta a', 'manuale_a', 'date')}
           <label className="text-sm">Unità raccolta manuale<select className={`${input} mt-1`} value={form.unita_manuale} onChange={event => change({ unita_manuale: event.target.value })}><option value="kg">kg</option><option value="pezzi">pezzi</option><option value="%">%</option></select></label>
         </div>
-
         <div className="flex flex-wrap gap-2 mb-3">
           <button type="button" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" onClick={() => change(current => ({ ...current, categorie_scarto: [...current.categorie_scarto, blank()] }))}>Aggiungi riga</button>
           <button type="button" className={button} onClick={() => file.current?.click()}>Importa Excel</button>
@@ -488,7 +466,6 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
     </div>
   )
 }
-
 function lossColor(row) {
   const label = String(row.causale || row.categoria || '').toUpperCase()
   if (label.endsWith(' · REWORK')) return '#2563eb'
@@ -497,7 +474,6 @@ function lossColor(row) {
   if (row.tipo === 'scarto' || /SACCO\s+VERDE/.test(label)) return '#16a34a'
   return '#76513b'
 }
-
 function AnalysisPanel({ analysis, unit, priorities, onPriorities, showPriorities = true }) {
   const [focus, setFocus] = useState('')
   const focused = focus && analysis.categoryTimelines?.[focus] ? focus : ''
@@ -505,7 +481,7 @@ function AnalysisPanel({ analysis, unit, priorities, onPriorities, showPrioritie
   const stainPct = 'productionWarning' in analysis
   return <div className="mt-4 space-y-3">
     {analysis.issues.length > 0 && <p role="alert" className="text-sm text-amber-800">{analysis.issues.join(' ')}</p>}
-    {stainPct && analysis.production && <p className="text-sm text-gray-700">Scarto <strong>{fmt(analysis.total)} kg</strong> su <strong>{fmt(analysis.production)} kg</strong> prodotti · <strong>{fmt(analysis.total / analysis.production * 100)}%</strong>{analysis.productionMachines?.length > 1 && <span className="text-gray-500"> · produzione {analysis.productionMachines.join(' + ')}</span>}</p>}
+    {stainPct && analysis.production && <p className="text-sm text-gray-700">Scarto <strong>{fmt(analysis.total)} kg</strong> su <strong>{fmt(analysis.production)} kg</strong> prodotti · <strong>{fmt(analysis.total / analysis.production * 100)}%</strong></p>}
     {stainPct && !analysis.production && analysis.productionWarning && <p className="text-sm text-gray-500">{analysis.productionWarning}</p>}
     {unit === '%' ? <p className="text-sm text-gray-600">Le percentuali restano singole rilevazioni: non vengono sommate. Per la baseline complessiva servono i denominatori di produzione.</p> : analysis.pareto.length ? <>
       {showPriorities && <p className="rounded-lg border-l-4 border-primary bg-amber-50 px-4 py-3 text-base font-bold text-primary">Seleziona nella tabella le priorità che vuoi attaccare</p>}
@@ -515,7 +491,6 @@ function AnalysisPanel({ analysis, unit, priorities, onPriorities, showPrioritie
     {unit !== '%' && !analysis.pareto.length && <TrendChart timeline={focused ? analysis.categoryTimelines[focused] : analysis.timeline} unit={unit} withProduction={Boolean(analysis.production)} focus={focused} onClearFocus={() => setFocus('')} />}
   </div>
 }
-
 function LossTable({ rows, unit, total, production, focus, onFocus, priorities = [], onPriorities }) {
   const sum = rows.reduce((acc, row) => acc + (Number(row.quantita) || 0), 0)
   const max = Math.max(0, ...rows.map(row => Number(row.quantita) || 0))
@@ -584,12 +559,10 @@ function LossTable({ rows, unit, total, production, focus, onFocus, priorities =
         </tfoot>
       </table>
     </div>
-    {unit === 'kg' && <p className="text-xs text-gray-500">{hasProduction ? `Kg scarto / kg prodotti (${fmt(production)} kg prodotti nel periodo).` : 'Kg prodotti non disponibili: la percentuale non viene calcolata.'}</p>}
+    {unit === 'kg' && !hasProduction && <p className="text-xs text-gray-500">Kg prodotti non disponibili: la percentuale non viene calcolata.</p>}
   </div>
 }
-
 const GROUPINGS = [['giorno', 'Giorno'], ['settimana', 'Settimana'], ['mese', 'Mese']]
-
 function periodKey(value, grouping) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || grouping === 'giorno') return value
   if (grouping === 'mese') return value.slice(0, 7)
@@ -600,7 +573,6 @@ function periodKey(value, grouping) {
   const week = Math.ceil(((date - yearStart) / 86400000 + 1) / 7)
   return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`
 }
-
 function periodLabel(key) {
   const week = key.match(/^(\d{4})-W(\d{2})$/)
   if (week) return `Sett. ${Number(week[2])} ${week[1]}`
@@ -610,7 +582,6 @@ function periodLabel(key) {
   if (day) return `${day[3]}/${day[2]}`
   return key
 }
-
 function groupTimeline(timeline, grouping) {
   const totals = new Map()
   timeline.forEach(row => {
@@ -626,7 +597,6 @@ function groupTimeline(timeline, grouping) {
     percentuale: item.produzione > 0 ? item.totale / item.produzione * 100 : null,
   }))
 }
-
 function TrendChart({ timeline, unit, withProduction = false, focus = '', onClearFocus }) {
   const [grouping, setGrouping] = useState('giorno')
   const [measure, setMeasure] = useState('kg')
@@ -653,7 +623,6 @@ function TrendChart({ timeline, unit, withProduction = false, focus = '', onClea
     <div className="h-40"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={data} margin={{ top: 5, right: 10, bottom: 0, left: 0 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="periodo" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} width={45} /><Tooltip formatter={value => [`${fmt(value)} ${valueUnit}`, showPercent ? 'Scarto sul prodotto' : 'Quantità']} />{data.length > 1 ? <Line dataKey={dataKey} name={`${showPercent ? 'Scarto' : 'Quantità'} (${valueUnit})`} stroke="#76513b" strokeWidth={2} dot={{ r: 3 }} connectNulls /> : <Bar dataKey={dataKey} name={`${showPercent ? 'Scarto' : 'Quantità'} (${valueUnit})`} fill="#76513b" barSize={40} />}</ComposedChart></ResponsiveContainer></div>
   </div>
 }
-
 function MultiPicker({ label, items, value, onChange, emptyMeansAll = false, allText, emptyText = '', pluralText }) {
   const [open, setOpen] = useState(false)
   const box = useRef(null)
