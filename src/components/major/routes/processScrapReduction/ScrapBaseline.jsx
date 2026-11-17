@@ -2,7 +2,7 @@ import ProblemDefinition from '../../../kaizen/ProblemDefinition'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import api from '../../../../services/api'
 import * as XLSX from 'xlsx'
-import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Cell } from 'recharts'
+import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 
 const SCRAP_GUIDES = {
   che_cosa: {
@@ -503,22 +503,91 @@ function AnalysisPanel({ analysis, unit, priorities, onPriorities, showPrioritie
   const [focus, setFocus] = useState('')
   const focused = focus && analysis.categoryTimelines?.[focus] ? focus : ''
   const toggleFocus = categoria => setFocus(current => (current === categoria || !analysis.categoryTimelines?.[categoria] ? '' : categoria))
-    const labelHeight = Math.max(170, Math.min(620, Math.max(0, ...analysis.pareto.map(row => String(row.categoria).length)) * 6 + 20))
-    const chartHeight = 280 + labelHeight
-    const chartMinWidth = Math.max(600, analysis.pareto.length * 70 + 130)
   const stainPct = 'productionWarning' in analysis
   return <div className="mt-4 space-y-3">
     {analysis.issues.length > 0 && <p role="alert" className="text-sm text-amber-800">{analysis.issues.join(' ')}</p>}
     {stainPct && analysis.production && <p className="text-sm text-gray-700">Scarto <strong>{fmt(analysis.total)} kg</strong> su <strong>{fmt(analysis.production)} kg</strong> prodotti · <strong>{fmt(analysis.total / analysis.production * 100)}%</strong>{analysis.productionMachines?.length > 1 && <span className="text-gray-500"> · produzione {analysis.productionMachines.join(' + ')}</span>}</p>}
     {stainPct && !analysis.production && analysis.productionWarning && <p className="text-sm text-gray-500">{analysis.productionWarning}</p>}
     {unit === '%' ? <p className="text-sm text-gray-600">Le percentuali restano singole rilevazioni: non vengono sommate. Per la baseline complessiva servono i denominatori di produzione.</p> : analysis.pareto.length ? <>
-        <div className="overflow-x-auto"><div style={{ height: chartHeight, minWidth: chartMinWidth }}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.pareto} margin={{ top: 10, right: 15, bottom: 15, left: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="categoria" interval={0} height={labelHeight} tick={<VerticalCategoryTick />} /><YAxis yAxisId="quantity" /><Tooltip formatter={(value, name, item) => [item?.payload?.perc_produzione != null ? `${fmt(value)} ${unit} · ${fmt(item.payload.perc_produzione)}% sul prodotto` : `${fmt(value)} ${unit}`, 'Quantità']} /><Legend /><Bar yAxisId="quantity" dataKey="quantita" name={`Quantità (${unit})`} fill="#64748b" cursor="pointer" onClick={entry => toggleFocus(entry?.payload?.categoria ?? entry?.categoria)}>{analysis.pareto.map(row => <Cell key={row.categoria} fill={lossColor(row)} fillOpacity={focused && focused !== row.categoria ? 0.3 : 1} />)}</Bar></ComposedChart></ResponsiveContainer></div></div>
-      <p className="text-xs text-gray-500">Clicca una colonna per vederne l'andamento qui sotto.</p>
+      {showPriorities && <p className="rounded-lg border-l-4 border-primary bg-amber-50 px-4 py-3 text-base font-bold text-primary">Seleziona nella tabella le priorità che vuoi attaccare</p>}
+        <LossTable rows={analysis.pareto} unit={unit} total={analysis.total} production={analysis.production} focus={focused} onFocus={toggleFocus} priorities={priorities} onPriorities={showPriorities ? onPriorities : null} />
       <TrendChart timeline={focused ? analysis.categoryTimelines[focused] : analysis.timeline} unit={unit} withProduction={Boolean(analysis.production)} focus={focused} onClearFocus={() => setFocus('')} />
-      {showPriorities && <p className="rounded-lg border-l-4 border-primary bg-amber-50 px-4 py-3 text-base font-bold text-primary">Seleziona solamente le priorità che vuoi attaccare</p>}
-      {showPriorities && <div className="flex flex-wrap gap-x-5 gap-y-2">{analysis.pareto.map(row => <label key={row.categoria} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={priorities.includes(row.categoria)} onChange={event => onPriorities(event.target.checked ? [...priorities, row.categoria] : priorities.filter(value => value !== row.categoria))} />{row.categoria}</label>)}</div>}
     </> : <p className="text-sm text-gray-500">Nessun dato disponibile per il Pareto.</p>}
     {unit !== '%' && !analysis.pareto.length && <TrendChart timeline={focused ? analysis.categoryTimelines[focused] : analysis.timeline} unit={unit} withProduction={Boolean(analysis.production)} focus={focused} onClearFocus={() => setFocus('')} />}
+  </div>
+}
+
+function LossTable({ rows, unit, total, production, focus, onFocus, priorities = [], onPriorities }) {
+  const sum = rows.reduce((acc, row) => acc + (Number(row.quantita) || 0), 0)
+  const base = sum > 0 ? sum : total
+  const selectedRows = rows.filter(row => priorities.includes(row.categoria))
+  const selectedSum = selectedRows.reduce((acc, row) => acc + (Number(row.quantita) || 0), 0)
+  const showProduction = Boolean(production) && rows.some(row => row.perc_produzione != null)
+  const togglePriority = categoria => onPriorities(priorities.includes(categoria) ? priorities.filter(item => item !== categoria) : [...priorities, categoria])
+  let cumulative = 0
+  return <div className="overflow-x-auto rounded-lg border border-gray-200">
+    <table className="w-full text-sm">
+      <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+        <tr>
+          {onPriorities && <th className="w-10 px-3 py-2"><span className="sr-only">Priorità</span></th>}
+          <th className="w-10 px-3 py-2 text-right">#</th>
+          <th className="px-3 py-2 text-left">Perdita</th>
+          <th className="px-3 py-2 text-right whitespace-nowrap">Quantità ({unit})</th>
+          <th className="px-3 py-2 text-right whitespace-nowrap">% sul totale</th>
+          <th className="px-3 py-2 text-right whitespace-nowrap">% cumulata</th>
+          {showProduction && <th className="px-3 py-2 text-right whitespace-nowrap">% sul prodotto</th>}
+          <th className="w-24 px-3 py-2 text-center">Andamento</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-gray-100">
+        {rows.map((row, index) => {
+          const qty = Number(row.quantita) || 0
+          cumulative += qty
+          const share = base > 0 ? qty / base * 100 : null
+          const cumShare = base > 0 ? cumulative / base * 100 : null
+          const isPriority = priorities.includes(row.categoria)
+          const isFocus = focus === row.categoria
+          return <tr key={row.categoria} className={isFocus ? 'bg-amber-50' : isPriority ? 'bg-emerald-50/60' : 'hover:bg-gray-50'}>
+            {onPriorities && <td className="px-3 py-2 text-center"><input type="checkbox" aria-label={`Priorità ${row.categoria}`} checked={isPriority} onChange={() => togglePriority(row.categoria)} /></td>}
+            <td className="px-3 py-2 text-right text-gray-500 tabular-nums">{index + 1}</td>
+            <td className="px-3 py-2 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: lossColor(row) }} aria-hidden="true" />
+                <span className={`truncate ${isPriority ? 'font-semibold text-gray-900' : 'text-gray-700'}`} title={row.categoria}>{row.categoria}</span>
+              </div>
+              <div className="mt-1 h-1.5 w-full max-w-xs rounded bg-gray-100" aria-hidden="true"><div className="h-1.5 rounded" style={{ width: `${Math.min(100, share || 0)}%`, backgroundColor: lossColor(row) }} /></div>
+            </td>
+            <td className="px-3 py-2 text-right font-medium tabular-nums">{fmt(qty)}</td>
+            <td className="px-3 py-2 text-right tabular-nums">{share == null ? '—' : `${fmt(share)}%`}</td>
+            <td className="px-3 py-2 text-right tabular-nums text-gray-600">{cumShare == null ? '—' : `${fmt(cumShare)}%`}</td>
+            {showProduction && <td className="px-3 py-2 text-right tabular-nums">{row.perc_produzione == null ? '—' : `${fmt(row.perc_produzione)}%`}</td>}
+            <td className="px-3 py-2 text-center"><button type="button" aria-pressed={isFocus} onClick={() => onFocus(row.categoria)} className={`rounded border px-2 py-0.5 text-xs ${isFocus ? 'border-primary bg-white text-primary font-semibold' : 'border-gray-300 hover:bg-white'}`}>{isFocus ? 'Attivo' : 'Vedi'}</button></td>
+          </tr>
+        })}
+      </tbody>
+      <tfoot className="border-t border-gray-200 bg-gray-50 font-semibold">
+        <tr>
+          {onPriorities && <td />}
+          <td />
+          <td className="px-3 py-2">Totale</td>
+          <td className="px-3 py-2 text-right tabular-nums">{fmt(sum)}</td>
+          <td className="px-3 py-2 text-right tabular-nums">{sum > 0 ? '100%' : '—'}</td>
+          <td />
+          {showProduction && <td className="px-3 py-2 text-right tabular-nums">{fmt(sum / production * 100)}%</td>}
+          <td />
+        </tr>
+        {selectedRows.length > 0 && <tr className="text-primary">
+          {onPriorities && <td />}
+          <td />
+          <td className="px-3 py-2">Priorità selezionate ({selectedRows.length})</td>
+          <td className="px-3 py-2 text-right tabular-nums">{fmt(selectedSum)}</td>
+          <td className="px-3 py-2 text-right tabular-nums">{base > 0 ? `${fmt(selectedSum / base * 100)}%` : '—'}</td>
+          <td />
+          {showProduction && <td className="px-3 py-2 text-right tabular-nums">{fmt(selectedSum / production * 100)}%</td>}
+          <td />
+        </tr>}
+      </tfoot>
+    </table>
   </div>
 }
 
@@ -586,10 +655,6 @@ function TrendChart({ timeline, unit, withProduction = false, focus = '', onClea
     </div>
     <div className="h-40"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={data} margin={{ top: 5, right: 10, bottom: 0, left: 0 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="periodo" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} width={45} /><Tooltip formatter={value => [`${fmt(value)} ${valueUnit}`, showPercent ? 'Scarto sul prodotto' : 'Quantità']} />{data.length > 1 ? <Line dataKey={dataKey} name={`${showPercent ? 'Scarto' : 'Quantità'} (${valueUnit})`} stroke="#76513b" strokeWidth={2} dot={{ r: 3 }} connectNulls /> : <Bar dataKey={dataKey} name={`${showPercent ? 'Scarto' : 'Quantità'} (${valueUnit})`} fill="#76513b" barSize={40} />}</ComposedChart></ResponsiveContainer></div>
   </div>
-}
-
-function VerticalCategoryTick({ x, y, payload }) {
-  return <g transform={`translate(${x},${y})`}><text transform="rotate(-90)" x={-10} y={0} textAnchor="end" dominantBaseline="central" fontSize={11} fill="#4b5563">{payload?.value}</text></g>
 }
 
 function MultiPicker({ label, items, value, onChange, emptyMeansAll = false, allText, emptyText = '', pluralText }) {
