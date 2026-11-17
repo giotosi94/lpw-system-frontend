@@ -519,75 +519,73 @@ function AnalysisPanel({ analysis, unit, priorities, onPriorities, showPrioritie
 
 function LossTable({ rows, unit, total, production, focus, onFocus, priorities = [], onPriorities }) {
   const sum = rows.reduce((acc, row) => acc + (Number(row.quantita) || 0), 0)
-  const base = sum > 0 ? sum : total
+  const max = Math.max(0, ...rows.map(row => Number(row.quantita) || 0))
   const selectedRows = rows.filter(row => priorities.includes(row.categoria))
   const selectedSum = selectedRows.reduce((acc, row) => acc + (Number(row.quantita) || 0), 0)
-  const showProduction = Boolean(production) && rows.some(row => row.perc_produzione != null)
+  const hasProduction = Boolean(production) && unit === 'kg'
+  const pct = value => hasProduction ? `${fmt(value / production * 100)}%` : '—'
   const togglePriority = categoria => onPriorities(priorities.includes(categoria) ? priorities.filter(item => item !== categoria) : [...priorities, categoria])
   let cumulative = 0
-  return <div className="overflow-x-auto rounded-lg border border-gray-200">
-    <table className="w-full text-sm">
-      <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
-        <tr>
-          {onPriorities && <th className="w-10 px-3 py-2"><span className="sr-only">Priorità</span></th>}
-          <th className="w-10 px-3 py-2 text-right">#</th>
-          <th className="px-3 py-2 text-left">Perdita</th>
-          <th className="px-3 py-2 text-right whitespace-nowrap">Quantità ({unit})</th>
-          <th className="px-3 py-2 text-right whitespace-nowrap">% sul totale</th>
-          <th className="px-3 py-2 text-right whitespace-nowrap">% cumulata</th>
-          {showProduction && <th className="px-3 py-2 text-right whitespace-nowrap">% sul prodotto</th>}
-          <th className="w-24 px-3 py-2 text-center">Andamento</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-gray-100">
-        {rows.map((row, index) => {
-          const qty = Number(row.quantita) || 0
-          cumulative += qty
-          const share = base > 0 ? qty / base * 100 : null
-          const cumShare = base > 0 ? cumulative / base * 100 : null
-          const isPriority = priorities.includes(row.categoria)
-          const isFocus = focus === row.categoria
-          return <tr key={row.categoria} className={isFocus ? 'bg-amber-50' : isPriority ? 'bg-emerald-50/60' : 'hover:bg-gray-50'}>
-            {onPriorities && <td className="px-3 py-2 text-center"><input type="checkbox" aria-label={`Priorità ${row.categoria}`} checked={isPriority} onChange={() => togglePriority(row.categoria)} /></td>}
-            <td className="px-3 py-2 text-right text-gray-500 tabular-nums">{index + 1}</td>
-            <td className="px-3 py-2 min-w-0">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: lossColor(row) }} aria-hidden="true" />
-                <span className={`truncate ${isPriority ? 'font-semibold text-gray-900' : 'text-gray-700'}`} title={row.categoria}>{row.categoria}</span>
-              </div>
-              <div className="mt-1 h-1.5 w-full max-w-xs rounded bg-gray-100" aria-hidden="true"><div className="h-1.5 rounded" style={{ width: `${Math.min(100, share || 0)}%`, backgroundColor: lossColor(row) }} /></div>
-            </td>
-            <td className="px-3 py-2 text-right font-medium tabular-nums">{fmt(qty)}</td>
-            <td className="px-3 py-2 text-right tabular-nums">{share == null ? '—' : `${fmt(share)}%`}</td>
-            <td className="px-3 py-2 text-right tabular-nums text-gray-600">{cumShare == null ? '—' : `${fmt(cumShare)}%`}</td>
-            {showProduction && <td className="px-3 py-2 text-right tabular-nums">{row.perc_produzione == null ? '—' : `${fmt(row.perc_produzione)}%`}</td>}
-            <td className="px-3 py-2 text-center"><button type="button" aria-pressed={isFocus} onClick={() => onFocus(row.categoria)} className={`rounded border px-2 py-0.5 text-xs ${isFocus ? 'border-primary bg-white text-primary font-semibold' : 'border-gray-300 hover:bg-white'}`}>{isFocus ? 'Attivo' : 'Vedi'}</button></td>
+  return <div className="space-y-1">
+    <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+          <tr>
+            {onPriorities && <th className="w-10 px-3 py-2"><span className="sr-only">Priorità</span></th>}
+            <th className="w-10 px-3 py-2 text-right">#</th>
+            <th className="px-3 py-2 text-left">Perdita</th>
+            <th className="px-3 py-2 text-right whitespace-nowrap">Quantità ({unit})</th>
+            <th className="px-3 py-2 text-right whitespace-nowrap">% sui kg prodotti</th>
+            <th className="px-3 py-2 text-right whitespace-nowrap">% cumulata</th>
+            <th className="w-24 px-3 py-2 text-center">Andamento</th>
           </tr>
-        })}
-      </tbody>
-      <tfoot className="border-t border-gray-200 bg-gray-50 font-semibold">
-        <tr>
-          {onPriorities && <td />}
-          <td />
-          <td className="px-3 py-2">Totale</td>
-          <td className="px-3 py-2 text-right tabular-nums">{fmt(sum)}</td>
-          <td className="px-3 py-2 text-right tabular-nums">{sum > 0 ? '100%' : '—'}</td>
-          <td />
-          {showProduction && <td className="px-3 py-2 text-right tabular-nums">{fmt(sum / production * 100)}%</td>}
-          <td />
-        </tr>
-        {selectedRows.length > 0 && <tr className="text-primary">
-          {onPriorities && <td />}
-          <td />
-          <td className="px-3 py-2">Priorità selezionate ({selectedRows.length})</td>
-          <td className="px-3 py-2 text-right tabular-nums">{fmt(selectedSum)}</td>
-          <td className="px-3 py-2 text-right tabular-nums">{base > 0 ? `${fmt(selectedSum / base * 100)}%` : '—'}</td>
-          <td />
-          {showProduction && <td className="px-3 py-2 text-right tabular-nums">{fmt(selectedSum / production * 100)}%</td>}
-          <td />
-        </tr>}
-      </tfoot>
-    </table>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {rows.map((row, index) => {
+            const qty = Number(row.quantita) || 0
+            cumulative += qty
+            const isPriority = priorities.includes(row.categoria)
+            const isFocus = focus === row.categoria
+            return <tr key={row.categoria} className={isFocus ? 'bg-amber-50' : isPriority ? 'bg-emerald-50/60' : 'hover:bg-gray-50'}>
+              {onPriorities && <td className="px-3 py-2 text-center"><input type="checkbox" aria-label={`Priorità ${row.categoria}`} checked={isPriority} onChange={() => togglePriority(row.categoria)} /></td>}
+              <td className="px-3 py-2 text-right text-gray-500 tabular-nums">{index + 1}</td>
+              <td className="px-3 py-2 min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: lossColor(row) }} aria-hidden="true" />
+                  <span className={`truncate ${isPriority ? 'font-semibold text-gray-900' : 'text-gray-700'}`} title={row.categoria}>{row.categoria}</span>
+                </div>
+                <div className="mt-1 h-1.5 w-full max-w-xs rounded bg-gray-100" aria-hidden="true"><div className="h-1.5 rounded" style={{ width: `${max > 0 ? qty / max * 100 : 0}%`, backgroundColor: lossColor(row) }} /></div>
+              </td>
+              <td className="px-3 py-2 text-right font-medium tabular-nums">{fmt(qty)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{pct(qty)}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-gray-600">{pct(cumulative)}</td>
+              <td className="px-3 py-2 text-center"><button type="button" aria-pressed={isFocus} onClick={() => onFocus(row.categoria)} className={`rounded border px-2 py-0.5 text-xs ${isFocus ? 'border-primary bg-white text-primary font-semibold' : 'border-gray-300 hover:bg-white'}`}>{isFocus ? 'Attivo' : 'Vedi'}</button></td>
+            </tr>
+          })}
+        </tbody>
+        <tfoot className="border-t border-gray-200 bg-gray-50 font-semibold">
+          <tr>
+            {onPriorities && <td />}
+            <td />
+            <td className="px-3 py-2">Totale</td>
+            <td className="px-3 py-2 text-right tabular-nums">{fmt(sum)}</td>
+            <td className="px-3 py-2 text-right tabular-nums">{pct(sum)}</td>
+            <td />
+            <td />
+          </tr>
+          {selectedRows.length > 0 && <tr className="text-primary">
+            {onPriorities && <td />}
+            <td />
+            <td className="px-3 py-2">Priorità selezionate ({selectedRows.length})</td>
+            <td className="px-3 py-2 text-right tabular-nums">{fmt(selectedSum)}</td>
+            <td className="px-3 py-2 text-right tabular-nums">{pct(selectedSum)}</td>
+            <td />
+            <td />
+          </tr>}
+        </tfoot>
+      </table>
+    </div>
+    {unit === 'kg' && <p className="text-xs text-gray-500">{hasProduction ? `Kg scarto / kg prodotti (${fmt(production)} kg prodotti nel periodo).` : 'Kg prodotti non disponibili: la percentuale non viene calcolata.'}</p>}
   </div>
 }
 
