@@ -315,7 +315,6 @@ export default function SkillMatrixTab({ pillar, color }) {
                       style={{ minWidth: 110, maxWidth: 160, whiteSpace: 'normal', lineHeight: 1.2 }}
                       title={comp.label}
                     >
-                      {comp.codice && <div className="text-gray-400 font-mono text-[9px] mb-0.5">{comp.codice}</div>}
                       <div>{comp.label}</div>
                     </th>
                   ))
@@ -478,7 +477,6 @@ function ConfigCompetenzeModal({ pillar, color, competenze, onClose, onSaved }) 
     try {
       const res = await api.post(`/pillars/${pillar._id}/skill-competenze`, {
         label: '',
-        codice: '',
         categoria_id,
         ordine: items.length,
       })
@@ -559,15 +557,9 @@ function ConfigCompetenzeModal({ pillar, color, competenze, onClose, onSaved }) 
                     catItems.map(item => (
                       <div key={item._id} className="grid grid-cols-12 gap-2 items-center p-1 hover:bg-gray-50 rounded">
                         <input
-                          value={item.codice || ''}
-                          onChange={(e) => updateLocalItem(item._id, { codice: e.target.value })}
-                          className="col-span-2 border rounded px-2 py-1 text-xs font-mono"
-                          placeholder="Codice"
-                        />
-                        <input
                           value={item.label || ''}
                           onChange={(e) => updateLocalItem(item._id, { label: e.target.value })}
-                          className="col-span-5 border rounded px-2 py-1 text-sm"
+                          className="col-span-8 border rounded px-2 py-1 text-sm"
                           placeholder="Nome competenza"
                         />
                         <select
@@ -579,15 +571,6 @@ function ConfigCompetenzeModal({ pillar, color, competenze, onClose, onSaved }) 
                             <option key={c.id} value={c.id}>{c.label}</option>
                           ))}
                         </select>
-                        <input
-                          type="number"
-                          min="1"
-                          max="5"
-                          value={item.livello_target_default || ''}
-                          onChange={(e) => updateLocalItem(item._id, { livello_target_default: e.target.value ? parseInt(e.target.value) : null })}
-                          className="col-span-1 border rounded px-2 py-1 text-xs text-center"
-                          placeholder="T"
-                        />
                         <button
                           onClick={() => removeCompetenza(item._id)}
                           className="col-span-1 text-red-500 hover:bg-red-50 p-1 rounded justify-self-center"
