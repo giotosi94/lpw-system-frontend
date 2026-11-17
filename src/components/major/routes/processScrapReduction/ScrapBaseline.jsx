@@ -426,13 +426,10 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
         {stainError && <p role="alert" className="mt-2 text-sm text-red-700">{stainError}</p>}
         {form.stain_snapshot && <p className="mt-3 text-sm text-gray-600">{form.stain_snapshot.linea.trim()} · {form.stain_snapshot.dal} / {form.stain_snapshot.al} · {fmt(form.stain_snapshot.totale_kg)} kg · Caricato {new Date(form.stain_snapshot.caricato_il).toLocaleString('it-IT')}</p>}
         {form.stain_snapshot && (form.stain_snapshot.dettaglio ? (
-          <fieldset className="mt-4 border-t border-gray-200 pt-3">
-            <legend className="text-sm font-medium">Prodotto</legend>
-            <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 max-h-40 overflow-y-auto">
-              <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={!form.stain_prodotti.length} onChange={() => change({ stain_prodotti: [], priorita_stain: [] })} />Tutti i prodotti</label>
-              {stainProducts(form.stain_snapshot).map(item => <label key={item.nome} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.stain_prodotti.includes(item.nome)} onChange={event => change({ stain_prodotti: event.target.checked ? [...form.stain_prodotti, item.nome] : form.stain_prodotti.filter(value => value !== item.nome), priorita_stain: [] })} />{item.nome} <span className="text-gray-500">({fmt(item.kg)} kg)</span></label>)}
-            </div>
-          </fieldset>
+          <div className="mt-4 space-y-2">
+            <p className="rounded-lg border-l-4 border-primary bg-amber-50 px-4 py-3 text-base font-bold text-primary">Seleziona il prodotto che vuoi attaccare</p>
+            <ProductPicker products={stainProducts(form.stain_snapshot)} value={form.stain_prodotti} onChange={value => change({ stain_prodotti: value, priorita_stain: [] })} />
+          </div>
         ) : <p className="mt-3 text-sm text-gray-500">Per filtrare per prodotto ricarica i dati da STAIN.</p>)}
         <AnalysisPanel analysis={stainAnalysis} unit="kg" priorities={form.priorita_stain} onPriorities={value => change({ priorita_stain: value })} />
       </section>
@@ -592,4 +589,29 @@ function TrendChart({ timeline, unit, withProduction = false, focus = '', onClea
 
 function VerticalCategoryTick({ x, y, payload }) {
   return <g transform={`translate(${x},${y})`}><text transform="rotate(-90)" x={-10} y={0} textAnchor="end" dominantBaseline="central" fontSize={11} fill="#4b5563">{payload?.value}</text></g>
+}
+
+function ProductPicker({ products, value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const box = useRef(null)
+  useEffect(() => {
+    if (!open) return undefined
+    const close = event => { if (box.current && !box.current.contains(event.target)) setOpen(false) }
+    const escape = event => { if (event.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', escape)
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape) }
+  }, [open])
+  const toggle = name => onChange(value.includes(name) ? value.filter(item => item !== name) : [...value, name])
+  const summary = !value.length ? 'Tutti i prodotti' : value.length === 1 ? value[0] : `${value.length} prodotti selezionati`
+  return <div ref={box} className="relative w-full md:max-w-xl">
+    <button type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)} className="w-full flex items-center justify-between gap-2 border border-gray-300 rounded px-3 py-2 text-sm bg-white text-left hover:bg-gray-50">
+      <span className="truncate">{summary}</span>
+      <span className="text-gray-500 text-xs" aria-hidden="true">{open ? '▲' : '▼'}</span>
+    </button>
+    {open && <div role="listbox" aria-multiselectable="true" className="absolute z-30 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg py-1">
+      <label className="flex items-center gap-2 px-3 py-2 text-sm font-medium border-b border-gray-100 hover:bg-gray-50 cursor-pointer"><input type="checkbox" checked={!value.length} onChange={() => onChange([])} />Tutti i prodotti</label>
+      {products.map(item => <label key={item.nome} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer"><input type="checkbox" checked={value.includes(item.nome)} onChange={() => toggle(item.nome)} /><span className="flex-1 min-w-0 truncate">{item.nome}</span><span className="text-gray-500 shrink-0">{fmt(item.kg)} kg</span></label>)}
+    </div>}
+  </div>
 }
