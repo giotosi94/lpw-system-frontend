@@ -425,13 +425,14 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
         <button type="button" className={button} disabled={stainBusy} onClick={loadStain}>{stainBusy ? 'Caricamento...' : 'Carica da STAIN'}</button>
         {stainError && <p role="alert" className="mt-2 text-sm text-red-700">{stainError}</p>}
         {form.stain_snapshot && <p className="mt-3 text-sm text-gray-600">{form.stain_snapshot.linea.trim()} · {form.stain_snapshot.dal} / {form.stain_snapshot.al} · {fmt(form.stain_snapshot.totale_kg)} kg · Caricato {new Date(form.stain_snapshot.caricato_il).toLocaleString('it-IT')}</p>}
-        {form.stain_snapshot && (form.stain_snapshot.dettaglio ? (
-          <div className="mt-4 space-y-2">
-            <p className="rounded-lg border-l-4 border-primary bg-amber-50 px-4 py-3 text-base font-bold text-primary">Seleziona il prodotto che vuoi attaccare</p>
-            <ProductPicker products={stainProducts(form.stain_snapshot)} value={form.stain_prodotti} onChange={value => change({ stain_prodotti: value, priorita_stain: [] })} />
+        {form.stain_snapshot && <div className="mt-4 space-y-2">
+          <p className="rounded-lg border-l-4 border-primary bg-amber-50 px-4 py-3 text-base font-bold text-primary">Seleziona il prodotto e la perdita che vuoi attaccare</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {form.stain_snapshot.dettaglio ? <MultiPicker label="Prodotto" items={stainProducts(form.stain_snapshot).map(item => ({ key: item.nome, label: item.nome, extra: `${fmt(item.kg)} kg` }))} value={form.stain_prodotti} onChange={value => change({ stain_prodotti: value, priorita_stain: [] })} emptyMeansAll allText="Tutti i prodotti" pluralText="prodotti selezionati" /> : <p className="text-sm text-gray-500">Per filtrare per prodotto ricarica i dati da STAIN.</p>}
+            <MultiPicker label="Perdita" items={stainAnalysis.pareto.map(row => ({ key: row.categoria, label: row.categoria, extra: `${fmt(row.quantita)} kg` }))} value={form.priorita_stain} onChange={value => change({ priorita_stain: value })} allText="Tutte le perdite" emptyText="Seleziona le perdite" pluralText="perdite selezionate" />
           </div>
-        ) : <p className="mt-3 text-sm text-gray-500">Per filtrare per prodotto ricarica i dati da STAIN.</p>)}
-        <AnalysisPanel analysis={stainAnalysis} unit="kg" priorities={form.priorita_stain} onPriorities={value => change({ priorita_stain: value })} />
+        </div>}
+        <AnalysisPanel analysis={stainAnalysis} unit="kg" showPriorities={false} priorities={form.priorita_stain} onPriorities={value => change({ priorita_stain: value })} />
       </section>
       <section className="bg-white border-2 border-primary rounded-lg p-4 md:p-5">
         <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">PASSO 3 - RACCOLTA MANUALE</h3>
@@ -498,7 +499,7 @@ function lossColor(row) {
   return '#76513b'
 }
 
-function AnalysisPanel({ analysis, unit, priorities, onPriorities }) {
+function AnalysisPanel({ analysis, unit, priorities, onPriorities, showPriorities = true }) {
   const [focus, setFocus] = useState('')
   const focused = focus && analysis.categoryTimelines?.[focus] ? focus : ''
   const toggleFocus = categoria => setFocus(current => (current === categoria || !analysis.categoryTimelines?.[categoria] ? '' : categoria))
@@ -514,8 +515,8 @@ function AnalysisPanel({ analysis, unit, priorities, onPriorities }) {
         <div className="overflow-x-auto"><div style={{ height: chartHeight, minWidth: chartMinWidth }}><ResponsiveContainer width="100%" height="100%"><ComposedChart data={analysis.pareto} margin={{ top: 10, right: 15, bottom: 15, left: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="categoria" interval={0} height={labelHeight} tick={<VerticalCategoryTick />} /><YAxis yAxisId="quantity" /><Tooltip formatter={(value, name, item) => [item?.payload?.perc_produzione != null ? `${fmt(value)} ${unit} · ${fmt(item.payload.perc_produzione)}% sul prodotto` : `${fmt(value)} ${unit}`, 'Quantità']} /><Legend /><Bar yAxisId="quantity" dataKey="quantita" name={`Quantità (${unit})`} fill="#64748b" cursor="pointer" onClick={entry => toggleFocus(entry?.payload?.categoria ?? entry?.categoria)}>{analysis.pareto.map(row => <Cell key={row.categoria} fill={lossColor(row)} fillOpacity={focused && focused !== row.categoria ? 0.3 : 1} />)}</Bar></ComposedChart></ResponsiveContainer></div></div>
       <p className="text-xs text-gray-500">Clicca una colonna per vederne l'andamento qui sotto.</p>
       <TrendChart timeline={focused ? analysis.categoryTimelines[focused] : analysis.timeline} unit={unit} withProduction={Boolean(analysis.production)} focus={focused} onClearFocus={() => setFocus('')} />
-      <p className="rounded-lg border-l-4 border-primary bg-amber-50 px-4 py-3 text-base font-bold text-primary">Seleziona solamente le priorità che vuoi attaccare</p>
-      <div className="flex flex-wrap gap-x-5 gap-y-2">{analysis.pareto.map(row => <label key={row.categoria} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={priorities.includes(row.categoria)} onChange={event => onPriorities(event.target.checked ? [...priorities, row.categoria] : priorities.filter(value => value !== row.categoria))} />{row.categoria}</label>)}</div>
+      {showPriorities && <p className="rounded-lg border-l-4 border-primary bg-amber-50 px-4 py-3 text-base font-bold text-primary">Seleziona solamente le priorità che vuoi attaccare</p>}
+      {showPriorities && <div className="flex flex-wrap gap-x-5 gap-y-2">{analysis.pareto.map(row => <label key={row.categoria} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={priorities.includes(row.categoria)} onChange={event => onPriorities(event.target.checked ? [...priorities, row.categoria] : priorities.filter(value => value !== row.categoria))} />{row.categoria}</label>)}</div>}
     </> : <p className="text-sm text-gray-500">Nessun dato disponibile per il Pareto.</p>}
     {unit !== '%' && !analysis.pareto.length && <TrendChart timeline={focused ? analysis.categoryTimelines[focused] : analysis.timeline} unit={unit} withProduction={Boolean(analysis.production)} focus={focused} onClearFocus={() => setFocus('')} />}
   </div>
@@ -591,7 +592,7 @@ function VerticalCategoryTick({ x, y, payload }) {
   return <g transform={`translate(${x},${y})`}><text transform="rotate(-90)" x={-10} y={0} textAnchor="end" dominantBaseline="central" fontSize={11} fill="#4b5563">{payload?.value}</text></g>
 }
 
-function ProductPicker({ products, value, onChange }) {
+function MultiPicker({ label, items, value, onChange, emptyMeansAll = false, allText, emptyText = '', pluralText }) {
   const [open, setOpen] = useState(false)
   const box = useRef(null)
   useEffect(() => {
@@ -602,16 +603,19 @@ function ProductPicker({ products, value, onChange }) {
     document.addEventListener('keydown', escape)
     return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape) }
   }, [open])
-  const toggle = name => onChange(value.includes(name) ? value.filter(item => item !== name) : [...value, name])
-  const summary = !value.length ? 'Tutti i prodotti' : value.length === 1 ? value[0] : `${value.length} prodotti selezionati`
-  return <div ref={box} className="relative w-full md:max-w-xl">
-    <button type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)} className="w-full flex items-center justify-between gap-2 border border-gray-300 rounded px-3 py-2 text-sm bg-white text-left hover:bg-gray-50">
-      <span className="truncate">{summary}</span>
+  const keys = items.map(item => item.key)
+  const allSelected = emptyMeansAll ? !value.length : keys.length > 0 && keys.every(key => value.includes(key))
+  const toggle = key => onChange(value.includes(key) ? value.filter(item => item !== key) : [...value, key])
+  const summary = emptyMeansAll && !value.length ? allText : !value.length ? emptyText : value.length === 1 ? value[0] : allSelected ? allText : `${value.length} ${pluralText}`
+  return <div ref={box} className="relative min-w-0">
+    <span className="block text-xs text-gray-600 mb-1">{label}</span>
+    <button type="button" disabled={!items.length} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)} className="w-full flex items-center justify-between gap-2 border border-gray-300 rounded px-3 py-2 text-sm bg-white text-left hover:bg-gray-50 disabled:opacity-50">
+      <span className="truncate" title={summary}>{summary}</span>
       <span className="text-gray-500 text-xs" aria-hidden="true">{open ? '▲' : '▼'}</span>
     </button>
     {open && <div role="listbox" aria-multiselectable="true" className="absolute z-30 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg py-1">
-      <label className="flex items-center gap-2 px-3 py-2 text-sm font-medium border-b border-gray-100 hover:bg-gray-50 cursor-pointer"><input type="checkbox" checked={!value.length} onChange={() => onChange([])} />Tutti i prodotti</label>
-      {products.map(item => <label key={item.nome} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer"><input type="checkbox" checked={value.includes(item.nome)} onChange={() => toggle(item.nome)} /><span className="flex-1 min-w-0 truncate">{item.nome}</span><span className="text-gray-500 shrink-0">{fmt(item.kg)} kg</span></label>)}
+      <label className="flex items-center gap-2 px-3 py-2 text-sm font-medium border-b border-gray-100 hover:bg-gray-50 cursor-pointer"><input type="checkbox" checked={allSelected} onChange={() => onChange(emptyMeansAll || allSelected ? [] : keys)} />{allText}</label>
+      {items.map(item => <label key={item.key} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer"><input type="checkbox" checked={value.includes(item.key)} onChange={() => toggle(item.key)} /><span className="flex-1 min-w-0 truncate" title={item.label}>{item.label}</span>{item.extra && <span className="text-gray-500 shrink-0">{item.extra}</span>}</label>)}
     </div>}
   </div>
 }
