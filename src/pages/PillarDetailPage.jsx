@@ -375,8 +375,6 @@ function AnagraficaTab({ pillar, color, onSaved }) {
             <InfoRow label="Sigla" value={pillar.sigla} mono />
             <InfoRow label="Nome completo" value={pillar.label} />
             <InfoRow label="Anno di riferimento" value={pillar.anno || '—'} />
-            <InfoRow label="Codice colore" value={pillar.color || '—'} mono />
-            <InfoRow label="Stato" value={pillar.attivo ? 'Attivo' : 'Disattivo'} />
             {pillar.descrizione && (
               <div>
                 <div className="text-gray-500 text-xs uppercase mb-1">Descrizione</div>
@@ -2375,7 +2373,6 @@ function MasterPlanTab({ pillar, color, onSaved }) {
         <div className="flex justify-between items-start mb-3">
           <div>
             <h3 className="font-bold text-lg">Pillar Master Plan</h3>
-            <p className="text-xs text-gray-500">Pianificazione multi-anno per trimestri — Pillar <strong>{pillar.sigla}</strong></p>
           </div>
           <div className="flex items-center gap-3 text-xs">
             {saving ? <span className="text-blue-600">Salvataggio...</span> : hasUnsavedChanges ? <span className="text-orange-600 font-medium">Non salvato</span> : lastSaved ? <span className="text-green-600">Salvato {lastSaved.toLocaleTimeString('it-IT')}</span> : <span className="text-gray-400">Pronto</span>}
@@ -2392,7 +2389,6 @@ function MasterPlanTab({ pillar, color, onSaved }) {
           {CELL_STATES.map(s => (
             <div key={s.value} className="flex items-center gap-1"><div className="w-4 h-4 border rounded" style={{ backgroundColor: s.color || 'white' }} /><span>{s.label}</span></div>
           ))}
-          <span className="ml-auto text-gray-500 italic">Click su cella per cambiare stato</span>
         </div>
       </div>
       <div className="bg-white rounded-xl shadow overflow-x-auto">
