@@ -69,9 +69,10 @@ export default function HomePage() {
     return false
   })
 
+  const myReparti = user.reparti?.length ? user.reparti : (user.reparto ? [user.reparto] : [])
   const myAreaActionPlans = actionPlans.filter(ap => {
     if (ap.is_cancelled) return false
-    if (user.reparto && ap.reparto === user.reparto) return true
+    if (ap.reparto && myReparti.includes(ap.reparto)) return true
     if (user.linee?.length > 0 && user.linee.includes(ap.linea)) return true
     if (user.macchine?.length > 0 && user.macchine.includes(ap.macchina)) return true
     return false
@@ -95,7 +96,7 @@ export default function HomePage() {
     if ((k.team_members_nomi || []).includes(user.full_name)) return true
     if (k.leader === user.full_name) return true
     if ((k.team_members || []).includes(user.full_name)) return true
-    if (isOperator && user.reparto && k.reparto === user.reparto) return true
+    if (isOperator && k.reparto && myReparti.includes(k.reparto)) return true
     return false
   })
 
@@ -125,7 +126,6 @@ export default function HomePage() {
   const undatedPlans = targetActionPlans.filter(ap => !Number.isFinite(Date.parse(ap.data_scadenza)))
   const roleLabels = {
     admin: 'Amministratore',
-    manager: 'Manager',
     office: 'Ufficio',
     operator: 'Operatore'
   }
@@ -143,7 +143,7 @@ export default function HomePage() {
   const renderKaizenRow = k => <Link key={k._id} to={`/kaizen/${k._id}`} className="flex items-center gap-3 min-w-0 py-2 hover:bg-gray-50 rounded" title={k.titolo}><span className="shrink-0 whitespace-nowrap text-xs font-mono text-gray-500">{k.numero}</span><span className="min-w-0 truncate text-sm font-medium">{k.titolo}</span></Link>
   const renderPillarRow = p => <Link key={p._id} to={`/pillars/${p._id}`} className="flex items-center gap-3 py-2 hover:bg-gray-50 rounded">{p.icon_image && <img src={p.icon_image} alt="" style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }} onError={event => { event.currentTarget.style.display = 'none' }} />}<div className="min-w-0"><p className="text-sm font-semibold">{p.sigla}</p><p className="text-xs text-gray-600 break-words">{p.label}</p></div></Link>
   const selectFromModal = ap => { setListModal(null); setSelectedAP(ap) }
-  const roles = [user.job_title || roleLabels[user.role], user.reparto, ...(user.linee || []), user.team].filter(Boolean)
+  const roles = [user.job_title || roleLabels[user.role], ...myReparti, ...(user.linee || []), user.team].filter(Boolean)
   return <div className="lpw-home" data-layout="home-professional-v2">
     <style>{`
 .lpw-home{--home-ink:#29251f;--home-muted:#6e706f;--home-line:#e6e4df;--home-accent:#715328;color:var(--home-ink);width:100%;min-width:0;font-size:14px;line-height:1.5}
