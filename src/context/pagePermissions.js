@@ -2,9 +2,21 @@ import { useEffect, useState } from 'react'
 import api from '../services/api'
 import { useAuth } from './AuthContext'
 
+const KAIZEN_TYPE_KEYS = {
+  Quick: 'kaizen_quick',
+  Standard: 'kaizen_standard',
+  Major: 'kaizen_major',
+}
+
+const PARENT_KEYS = {
+  kaizen_quick: 'kaizen',
+  kaizen_standard: 'kaizen',
+  kaizen_major: 'kaizen',
+}
+
 const PAGE_ROUTES = [
   { key: 'kaizen', prefix: '/kaizen' },
-  { key: 'kaizen', prefix: '/major-kaizen' },
+  { key: 'kaizen_major', prefix: '/major-kaizen' },
   { key: 'action_plan', prefix: '/action-plan' },
   { key: 'meetings', prefix: '/dashboard' },
   { key: 'pillars', prefix: '/pillars' },
@@ -56,10 +68,14 @@ export function usePagePermissions() {
     if (!user || user.role === 'admin' || !key) return true
     const rolePages = data?.permissions?.[user.role]
     if (!rolePages) return true
+    const parent = PARENT_KEYS[key]
+    if (parent && rolePages[parent] === false) return false
     return rolePages[key] !== false
   }
 
   const canView = pathname => canViewKey(pageKeyForPath(pathname))
 
-  return { ready: ready || user?.role === 'admin', canView, canViewKey }
+  const canViewKaizenType = livello => canViewKey(KAIZEN_TYPE_KEYS[livello] || 'kaizen')
+
+  return { ready: ready || user?.role === 'admin', canView, canViewKey, canViewKaizenType }
 }
