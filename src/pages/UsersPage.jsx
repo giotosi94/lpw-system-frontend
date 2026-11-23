@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import api from '../services/api'
+import { loadPagePermissions, setPagePermissions } from '../context/pagePermissions'
 import {
   Users, Plus, Edit2, Trash2, Search, X, Save,
   Briefcase, Factory, MapPin, Mail, RefreshCw
@@ -7,10 +8,38 @@ import {
 
 const RUOLI = [
   { value: 'admin', label: 'Amministratore', color: 'bg-red-100 text-red-700' },
-  { value: 'manager', label: 'Manager', color: 'bg-purple-100 text-purple-700' },
   { value: 'office', label: 'Ufficio', color: 'bg-blue-100 text-blue-700' },
   { value: 'operator', label: 'Operatore', color: 'bg-green-100 text-green-700' },
 ]
+
+function repartiOf(u) {
+  if (u?.reparti?.length) return u.reparti
+  return u?.reparto ? [u.reparto] : []
+}
+
+function collectLinee(allReparti, selezionati) {
+  const result = []
+  const seen = new Set()
+  allReparti.filter(r => selezionati.includes(r.nome)).forEach(rep => {
+    (rep.linee || []).filter(l => l.attivo !== false).forEach(l => {
+      if (seen.has(l.nome)) return
+      seen.add(l.nome)
+      result.push({ ...l, reparto_nome: rep.nome })
+    })
+  })
+  return result
+}
+
+function collectMacchine(linee, selezionate) {
+  const result = []
+  selezionate.forEach(nome => {
+    const linea = linee.find(l => l.nome === nome)
+    if (linea?.macchine) {
+      linea.macchine.filter(m => m.attivo !== false).forEach(m => result.push(m.nome))
+    }
+  })
+  return result
+}
 
 export default function UsersPage() {
   const [users, setUsers] = useState([])
@@ -77,7 +106,7 @@ export default function UsersPage() {
         u.username?.toLowerCase().includes(s) ||
         u.email?.toLowerCase().includes(s) ||
         u.upn?.toLowerCase().includes(s) ||
-        u.reparto?.toLowerCase().includes(s) ||
+        repartiOf(u).some(r => r.toLowerCase().includes(s)) ||
         u.job_title?.toLowerCase().includes(s)
       )
     })
@@ -86,7 +115,6 @@ export default function UsersPage() {
   const counts = useMemo(() => ({
     totale: users.length,
     admin: users.filter(u => u.role === 'admin').length,
-    manager: users.filter(u => u.role === 'manager').length,
     office: users.filter(u => u.role === 'office').length,
     operator: users.filter(u => u.role === 'operator').length,
   }), [users])
@@ -110,10 +138,11 @@ export default function UsersPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <PagePermissionsPanel />
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatBlock label="Totale" value={counts.totale} color="gray" />
         <StatBlock label="Admin" value={counts.admin} color="red" />
-        <StatBlock label="Manager" value={counts.manager} color="purple" />
         <StatBlock label="Ufficio" value={counts.office} color="blue" />
         <StatBlock label="Operatori" value={counts.operator} color="green" />
       </div>
@@ -182,7 +211,7 @@ export default function UsersPage() {
             </thead>
             <tbody>
               {filtered.map(u => {
-                const ruoloInfo = RUOLI.find(r => r.value === u.role) || RUOLI[2]
+                const ruoloInfo = RUOLI.find(r => r.value === u.role) || RUOLI[1]
                 const userPillars = pillars.filter(p =>
                   p.members_ids?.includes(u.id) ||
                   p.leader_id === u.id ||
@@ -213,9 +242,9 @@ export default function UsersPage() {
                       </span>
                     </td>
                     <td className="px-3 py-2 text-xs">
-                      {u.reparto && (
+                      {repartiOf(u).length > 0 && (
                         <div className="flex items-center gap-1 text-gray-700">
-                          <Factory size={12} />{u.reparto}
+                          <Factory size={12} />{repartiOf(u).join(', ')}
                         </div>
                       )}
                       {u.linee?.length > 0 && (
@@ -314,30 +343,34 @@ function UserForm({ user, reparti, onClose, onSaved }) {
     full_name: user?.full_name || '',
     role: user?.role || 'operator',
     job_title: user?.job_title || '',
-    telefono: user?.telefono || '',
-    reparto: user?.reparto || '',
+    reparti: repartiOf(user),
     linee: user?.linee || [],
     team: user?.team || '',
     macchine: user?.macchine || [],
   })
   const [saving, setSaving] = useState(false)
 
-  const lineeDisponibili = useMemo(() => {
-    if (!form.reparto) return []
-    const rep = reparti.find(r => r.nome === form.reparto)
-    return rep?.linee?.filter(l => l.attivo !== false) || []
-  }, [form.reparto, reparti])
+  const lineeDisponibili = useMemo(
+    () => collectLinee(reparti, form.reparti),
+    [form.reparti, reparti]
+  )
 
-  const macchineDisponibili = useMemo(() => {
-    const allMacchine = []
-    form.linee.forEach(lineaName => {
-      const linea = lineeDisponibili.find(l => l.nome === lineaName)
-      if (linea?.macchine) {
-        linea.macchine.filter(m => m.attivo !== false).forEach(m => allMacchine.push(m.nome))
-      }
+  const macchineDisponibili = useMemo(
+    () => collectMacchine(lineeDisponibili, form.linee),
+    [form.linee, lineeDisponibili]
+  )
+
+  function toggleReparto(nome) {
+    setForm(f => {
+      const selezionati = f.reparti.includes(nome)
+        ? f.reparti.filter(r => r !== nome)
+        : [...f.reparti, nome]
+      const disponibili = collectLinee(reparti, selezionati)
+      const linee = f.linee.filter(l => disponibili.some(d => d.nome === l))
+      const macchine = f.macchine.filter(m => collectMacchine(disponibili, linee).includes(m))
+      return { ...f, reparti: selezionati, linee, macchine }
     })
-    return allMacchine
-  }, [form.linee, lineeDisponibili])
+  }
 
   function toggleLinea(nome) {
     setForm(f => ({
@@ -417,28 +450,19 @@ function UserForm({ user, reparti, onClose, onSaved }) {
               </Field>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Job Title (ruolo aziendale)">
-                <input
-                  value={form.job_title}
-                  onChange={(e) => setForm({ ...form, job_title: e.target.value })}
-                  className="w-full border rounded-lg px-3 py-2"
-                  placeholder="es: TPM Development Engineer"
-                />
-              </Field>
-              <Field label="Telefono">
-                <input
-                  value={form.telefono}
-                  onChange={(e) => setForm({ ...form, telefono: e.target.value })}
-                  className="w-full border rounded-lg px-3 py-2"
-                />
-              </Field>
-            </div>
+            <Field label="Job Title (ruolo aziendale)">
+              <input
+                value={form.job_title}
+                onChange={(e) => setForm({ ...form, job_title: e.target.value })}
+                className="w-full border rounded-lg px-3 py-2"
+                placeholder="es: TPM Development Engineer"
+              />
+            </Field>
           </Section>
 
           <Section title="Ruolo e Permessi">
             <Field label="Ruolo *">
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {RUOLI.map(r => (
                   <button
                     key={r.value}
@@ -457,24 +481,26 @@ function UserForm({ user, reparti, onClose, onSaved }) {
               <div className="text-xs text-gray-500 mt-2">
                 <strong>Operator:</strong> vede solo AP del suo reparto/linee.{' '}
                 <strong>Office:</strong> vede tutto.{' '}
-                <strong>Manager:</strong> dashboard executive.{' '}
                 <strong>Admin:</strong> gestisce utenti.
               </div>
             </Field>
           </Section>
 
           <Section title="Assegnazione produzione (per operatori)">
-            <Field label="Reparto">
-              <select
-                value={form.reparto}
-                onChange={(e) => setForm({ ...form, reparto: e.target.value, linee: [], macchine: [] })}
-                className="w-full border rounded-lg px-3 py-2"
-              >
-                <option value="">— Nessuno —</option>
-                {reparti.filter(r => r.attivo !== false).map(r => (
-                  <option key={r._id} value={r.nome}>{r.nome}</option>
+            <Field label={`Reparti assegnati (${form.reparti.length})`}>
+              <div className="border rounded-lg p-2 max-h-32 overflow-y-auto">
+                {reparti.filter(r => r.attivo !== false || form.reparti.includes(r.nome)).map(r => (
+                  <label key={r._id} className="flex items-center gap-2 p-1.5 hover:bg-gray-50 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.reparti.includes(r.nome)}
+                      onChange={() => toggleReparto(r.nome)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm">{r.nome}</span>
+                  </label>
                 ))}
-              </select>
+              </div>
             </Field>
 
             {lineeDisponibili.length > 0 && (
@@ -489,6 +515,7 @@ function UserForm({ user, reparti, onClose, onSaved }) {
                         className="w-4 h-4"
                       />
                       <span className="text-sm">{linea.nome}</span>
+                      {form.reparti.length > 1 && <span className="text-xs text-gray-400">{linea.reparto_nome}</span>}
                       {linea.codice && <span className="text-xs text-gray-500 font-mono">[{linea.codice}]</span>}
                     </label>
                   ))}
@@ -538,6 +565,116 @@ function UserForm({ user, reparti, onClose, onSaved }) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  )
+}
+
+function PagePermissionsPanel() {
+  const [pages, setPages] = useState([])
+  const [roles, setRoles] = useState([])
+  const [saved, setSaved] = useState(null)
+  const [draft, setDraft] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  function apply(data) {
+    setPages(data.pages || [])
+    setRoles(data.roles || [])
+    setSaved(data.permissions)
+    setDraft(data.permissions)
+  }
+
+  useEffect(() => {
+    loadPagePermissions()
+      .then(apply)
+      .catch(() => setError('Permessi non caricati'))
+  }, [])
+
+  const dirty = Boolean(draft) && JSON.stringify(draft) !== JSON.stringify(saved)
+
+  function toggle(role, key) {
+    setDraft(d => {
+      const current = d[role]?.[key] !== false
+      return { ...d, [role]: { ...d[role], [key]: !current } }
+    })
+  }
+
+  async function save() {
+    setSaving(true)
+    setError('')
+    try {
+      const res = await api.put('/users/permissions/pages', { permissions: draft })
+      setPagePermissions(res.data)
+      apply(res.data)
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Salvataggio non riuscito')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!draft) {
+    return error ? <div className="bg-white rounded-lg shadow-sm p-3 text-xs text-red-600">{error}</div> : null
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-3">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <h2 className="text-sm font-semibold">Pagine visibili per ruolo</h2>
+        <div className="flex items-center gap-2">
+          {error && <span className="text-xs text-red-600">{error}</span>}
+          <button
+            type="button"
+            onClick={save}
+            disabled={!dirty || saving}
+            className="px-3 py-1 text-xs rounded-lg bg-primary text-white hover:bg-primary-light disabled:opacity-40"
+          >
+            {saving ? 'Salvataggio...' : 'Salva'}
+          </button>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-gray-500 border-b">
+              <th className="text-left font-medium py-1.5 pr-3">Ruolo</th>
+              {pages.map(p => (
+                <th key={p.key} className="font-medium py-1.5 px-2 text-center whitespace-nowrap">{p.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-b">
+              <td className="py-1.5 pr-3 font-medium">Amministratore</td>
+              {pages.map(p => (
+                <td key={p.key} className="py-1.5 px-2 text-center">
+                  <input type="checkbox" checked disabled className="w-4 h-4" />
+                </td>
+              ))}
+            </tr>
+            {roles.map(role => {
+              const info = RUOLI.find(r => r.value === role)
+              const label = info ? info.label : role
+              return (
+                <tr key={role} className="border-b last:border-b-0">
+                  <td className="py-1.5 pr-3 font-medium">{label}</td>
+                  {pages.map(p => (
+                    <td key={p.key} className="py-1.5 px-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={draft[role]?.[p.key] !== false}
+                        onChange={() => toggle(role, p.key)}
+                        className="w-4 h-4"
+                        aria-label={`${label}: ${p.label}`}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   )
