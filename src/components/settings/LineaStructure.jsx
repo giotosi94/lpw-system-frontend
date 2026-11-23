@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Plus, GripVertical, Edit2, ChevronDown, ChevronRight, Copy, X } from 'lucide-react'
+import { Plus, GripVertical, Edit2, Trash2, ChevronDown, ChevronRight, Copy, X } from 'lucide-react'
 import api from '../../services/api'
 
 const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2)}`
@@ -104,6 +104,28 @@ export default function LineaStructure({ reparto, linea, allReparti = [], onChan
     },
   })
   const editButton = (kind, area, machine, node) => <button type="button" disabled={busy} title={`Modifica ${kind.toLowerCase()}`} aria-label={`Modifica ${node.nome}`} className="ml-auto shrink-0 p-1.5 rounded text-amber-700 hover:bg-amber-50 disabled:opacity-40" onClick={event => { event.stopPropagation(); start(kind, area, machine, node) }}><Edit2 size={14} /></button>
+  const childrenOf = (kind, node) => {
+    if (kind === 'Area') return (node.macchine || []).length + (node.componenti_da_assegnare || []).length
+    if (kind === 'Macchina') return (node.componenti || []).length
+    return 0
+  }
+  const remove = async (kind, areaId, machineId, node) => {
+    if (busy || !node) return false
+    const children = childrenOf(kind, node)
+    if (children > 0) {
+      setError(kind === 'Area'
+        ? `Impossibile eliminare "${node.nome}": contiene ${children} elementi. Elimina prima macchine e componenti.`
+        : `Impossibile eliminare "${node.nome}": contiene ${children} componenti. Eliminali prima.`)
+      return false
+    }
+    if (!window.confirm(`Eliminare definitivamente ${kind.toLowerCase()} "${node.nome}"? L'operazione non si può annullare.`)) return false
+    const without = nodes => (nodes || []).filter(item => item.id !== node.id)
+    if (kind === 'Area') return save(without(areas))
+    return save(changeArea(areaId, area => kind === 'Macchina'
+      ? { ...area, macchine: without(area.macchine) }
+      : { ...area, macchine: (area.macchine || []).map(machine => machine.id === machineId ? { ...machine, componenti: without(machine.componenti) } : machine) }))
+  }
+  const deleteButton = (kind, area, machine, node) => <button type="button" disabled={busy} title={`Elimina ${kind.toLowerCase()}`} aria-label={`Elimina ${node.nome}`} className="shrink-0 p-1.5 rounded text-red-600 hover:bg-red-50 disabled:opacity-40" onClick={event => { event.stopPropagation(); remove(kind, area?.id, machine?.id, node) }}><Trash2 size={14} /></button>
   const start = (kind, area, machine, node) => setEditor({ kind, areaId: area?.id, machineId: machine?.id, node: node || null })
   const commit = form => {
     const value = { ...(editor.node || {}), ...form, carl_code: form.carl_code.trim(), id: editor.node?.id || uid(), nome: form.nome.trim() }
@@ -133,7 +155,7 @@ export default function LineaStructure({ reparto, linea, allReparti = [], onChan
           {opened[`area:${area.id}`] ? <ChevronDown size={14} className="shrink-0" /> : <ChevronRight size={14} className="shrink-0" />}
           <strong className="break-words">{area.nome}</strong><span className="text-xs text-gray-500 ml-1">Area · {(area.macchine || []).length} macchine{area.attivo === false ? ' · Disattiva' : ''}</span>
         </button>
-        {editButton('Area', null, null, area)}
+        {editButton('Area', null, null, area)}{deleteButton('Area', area, null, area)}
       </div>
       {opened[`area:${area.id}`] && <div className="space-y-2 p-2">
         {area.carl_code && <p className="text-xs text-gray-500">CARL {area.carl_code}</p>}
@@ -148,12 +170,12 @@ export default function LineaStructure({ reparto, linea, allReparti = [], onChan
               {opened[`machine:${machine.id}`] ? <ChevronDown size={14} className="shrink-0" /> : <ChevronRight size={14} className="shrink-0" />}
               <span className="break-words">{machine.nome}</span><span className="ml-1 text-xs text-gray-500">Macchina · {(machine.componenti || []).length} componenti{machine.attivo === false ? ' · Disattiva' : ''}</span>
             </button>
-            {editButton('Macchina', area, null, machine)}
+            {editButton('Macchina', area, null, machine)}{deleteButton('Macchina', area, null, machine)}
           </div>
           {opened[`machine:${machine.id}`] && <div className="p-2 space-y-2">
             {machine.carl_code && <p className="text-xs text-gray-500">CARL {machine.carl_code}</p>}
             {(machine.componenti || []).map(component => <div key={component.id} {...dropProps(`components:${machine.id}`, component)} className={`flex items-center gap-1 border-b py-1 text-xs ${component.attivo === false ? 'opacity-60' : ''} ${dropTarget === `components:${machine.id}:${component.id}` ? 'bg-blue-100 ring-1 ring-blue-300' : ''}`}>
-              {dragHandle(`components:${machine.id}`, component)}<span className="flex-1 break-words">{component.nome}{component.carl_code && <span className="ml-2 text-gray-500">CARL {component.carl_code}</span>}{component.attivo === false ? ' · Disattivo' : ''}</span>{editButton('Componente', area, machine, component)}
+              {dragHandle(`components:${machine.id}`, component)}<span className="flex-1 break-words">{component.nome}{component.carl_code && <span className="ml-2 text-gray-500">CARL {component.carl_code}</span>}{component.attivo === false ? ' · Disattivo' : ''}</span>{editButton('Componente', area, machine, component)}{deleteButton('Componente', area, machine, component)}
             </div>)}
             <button type="button" disabled={busy} className={button} onClick={() => start('Componente', area, machine)}><Plus size={12} className="inline mr-1" />Aggiungi componente</button>
           </div>}
@@ -163,12 +185,12 @@ export default function LineaStructure({ reparto, linea, allReparti = [], onChan
     </div>)}
     <button type="button" disabled={busy} className="w-full border border-dashed rounded py-2 text-xs text-gray-600" onClick={() => start('Area')}><Plus size={12} className="inline mr-1" />Aggiungi area</button>
     {busy && <p role="status" className="text-xs text-gray-500">Salvataggio...</p>}
-    {editor && <StructureNodeForm key={`${editor.kind}-${editor.node?.id || 'new'}`} editor={editor} busy={busy} error={error} onClose={() => { if (!busy) setEditor(null) }} onSave={commit} />}
+    {editor && <StructureNodeForm key={`${editor.kind}-${editor.node?.id || 'new'}`} editor={editor} busy={busy} error={error} onClose={() => { if (!busy) setEditor(null) }} onSave={commit} onDelete={() => remove(editor.kind, editor.areaId, editor.machineId, editor.node)} />}
     {copyOpen && <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"><div role="dialog" aria-modal="true" aria-label="Copia aree" className="bg-white rounded-xl p-5 max-w-lg w-full max-h-[85vh] overflow-y-auto space-y-3"><div className="flex justify-between"><h3 className="font-semibold">Copia aree da una linea</h3><button type="button" disabled={busy} onClick={() => setCopyOpen(false)} aria-label="Chiudi"><X size={18} /></button></div><p className="text-xs text-gray-500">Aggiunge una copia con nuovi identificativi. Le aree presenti non vengono sostituite; i codici CARL non vengono copiati.</p>{error && <p role="alert" className="text-sm text-red-700">{error}</p>}{allReparti.flatMap(rep => (rep.linee || []).filter(line => line.id !== linea.id && getAreas(line).length).map(line => <button type="button" disabled={busy} key={`${rep._id}-${line.id}`} className="w-full border rounded p-2 text-left text-sm" onClick={() => { if (window.confirm(`Aggiungere le aree di ${line.nome}?`)) save([...areas, ...cloneAreas(line)]) }}>{rep.nome} · {line.nome}</button>))}</div></div>}
   </div>
 }
 
-function StructureNodeForm({ editor, busy, error, onClose, onSave }) {
+function StructureNodeForm({ editor, busy, error, onClose, onSave, onDelete }) {
   const [form, setForm] = useState({ nome: editor.node?.nome || '', codice: editor.node?.codice || '', carl_code: editor.node?.carl_code || '', descrizione: editor.node?.descrizione || '', attivo: editor.node?.attivo !== false })
   return <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"><div role="dialog" aria-modal="true" aria-label={`${editor.kind}`} className="bg-white rounded-xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto space-y-3">
     <h3 className="font-semibold">{editor.node ? 'Modifica' : 'Aggiungi'} {editor.kind.toLowerCase()}</h3>
@@ -177,9 +199,9 @@ function StructureNodeForm({ editor, busy, error, onClose, onSave }) {
       {editor.kind !== 'Componente' && <><label className="block text-sm">Codice<input className={field} value={form.codice} onChange={event => setForm(current => ({ ...current, codice: event.target.value }))} /></label><label className="block text-sm">Codice CARL<input className={field} value={form.carl_code} onChange={event => setForm(current => ({ ...current, carl_code: event.target.value.trim() }))} /></label><label className="block text-sm">Descrizione<textarea className={field} rows={2} value={form.descrizione} onChange={event => setForm(current => ({ ...current, descrizione: event.target.value }))} /></label></>}
       {editor.kind === 'Componente' && <label className="block text-sm">Codice CARL<input className={field} value={form.carl_code} onChange={event => setForm(current => ({ ...current, carl_code: event.target.value }))} placeholder="Codice della posizione in CARL" /><span className="block mt-1 text-xs text-gray-500">Codice CARL specifico del componente. Campo facoltativo.</span></label>}
       <label className="flex gap-2 text-sm"><input type="checkbox" checked={form.attivo} onChange={event => setForm(current => ({ ...current, attivo: event.target.checked }))} />Attivo</label>
-      <p className="text-xs text-gray-500">Per non perdere i riferimenti, disattiva gli elementi non più utilizzati invece di eliminarli.</p>
+      <p className="text-xs text-gray-500">Elimina solo elementi creati per errore. Per quelli non più usati, disattivali.</p>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-      <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className={button}>Annulla</button><button type="submit" disabled={!form.nome.trim()} className="bg-primary text-white rounded px-4 py-2 text-sm disabled:opacity-50">{busy ? 'Salvataggio...' : 'Salva'}</button></div>
+      <div className="flex justify-end gap-2">{editor.node && <button type="button" onClick={onDelete} className="mr-auto border border-red-200 text-red-700 rounded px-3 py-1 text-xs hover:bg-red-50 disabled:opacity-40"><Trash2 size={12} className="inline mr-1" />Elimina</button>}<button type="button" onClick={onClose} className={button}>Annulla</button><button type="submit" disabled={!form.nome.trim()} className="bg-primary text-white rounded px-4 py-2 text-sm disabled:opacity-50">{busy ? 'Salvataggio...' : 'Salva'}</button></div>
     </fieldset></form>
   </div></div>
 }
