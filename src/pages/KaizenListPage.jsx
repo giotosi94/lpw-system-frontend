@@ -5,6 +5,7 @@ import api from '../services/api'
 import { useAllConfigurations } from '../hooks/useConfigurations'
 import { usePillars } from '../hooks/usePillars'
 import { useAuth } from '../context/AuthContext'
+import { usePagePermissions } from '../context/pagePermissions'
 import UserPicker from '../components/UserPicker'
 
 const TIPOLOGIE_KAIZEN = [
@@ -320,6 +321,15 @@ export default function KaizenListPage() {
   const { pillars } = usePillars()
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
+  const { canViewKaizenType } = usePagePermissions()
+  const tipologieConsentite = TIPOLOGIE_KAIZEN.filter(item => canViewKaizenType(item.value))
+
+  useEffect(() => {
+    if (!showModal || tipologieConsentite.length === 0) return
+    if (!tipologieConsentite.some(item => item.value === newKaizen.tipo)) {
+      setNewKaizen(current => ({ ...current, tipo: tipologieConsentite[0].value }))
+    }
+  }, [showModal, newKaizen.tipo, tipologieConsentite.length])
   const [selected, setSelected] = useState(new Set())
 
   // Reparti per form e filtri
@@ -574,6 +584,7 @@ const majorKaizens =
   const createKaizen = async () => {
     if (!newKaizen.titolo.trim()) return alert('Inserisci un titolo')
     if (!newKaizen.tipo) return alert('Seleziona una tipologia Kaizen')
+    if (!canViewKaizenType(newKaizen.tipo)) return alert('Tipologia Kaizen non abilitata per il tuo ruolo')
 
     if (newKaizen.tipo === 'Major') {
   if (!newKaizen.route_id) return alert('Seleziona una tipologia di progetto (Route)')
@@ -711,6 +722,12 @@ const majorKaizens =
   // Filtraggio kaizen
   const filtered = useMemo(() => {
     return kaizens.filter(k => {
+      const tipoConsentito =
+        k.entity_type === 'major_kaizen'
+          ? 'Major'
+          : k.livello ||
+            (k.tipo?.includes('Standard') ? 'Standard' : 'Quick')
+      if (!canViewKaizenType(tipoConsentito)) return false
       // Search
       const matchSearch = !filters.search ||
         k.titolo?.toLowerCase().includes(filters.search.toLowerCase()) ||
@@ -769,7 +786,7 @@ const majorKaizens =
              matchReparto && matchLinea && matchMacchina && matchDashboard &&
              matchCreatore && matchLeader && matchView && matchArchive
     })
-  }, [kaizens, filters, user])
+  }, [kaizens, filters, user, canViewKaizenType])
 
   return (
     <div>
@@ -858,7 +875,7 @@ const majorKaizens =
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-end">
-              <SearchableMultiSelect title="Tipologia" field="tipo" options={TIPOLOGIE_KAIZEN.map(item => ({ value: item.value, label: item.label }))} filters={filters} setFilters={setFilters} />
+              <SearchableMultiSelect title="Tipologia" field="tipo" options={tipologieConsentite.map(item => ({ value: item.value, label: item.label }))} filters={filters} setFilters={setFilters} />
               <SearchableMultiSelect title="Stato" field="stato" options={[{ value: 'Aperto', label: 'Aperto' }, { value: 'In Corso', label: 'In Corso' }, { value: 'Chiuso', label: 'Chiuso' }]} filters={filters} setFilters={setFilters} />
               <SearchableMultiSelect title="Pillar" field="pillar_id" options={pillars.map(item => ({ value: item._id, label: `${item.sigla} - ${item.label}` }))} filters={filters} setFilters={setFilters} />
               <SearchableMultiSelect title="Categoria perdita" field="categoria_perdita" options={(configs.categorie_perdita || []).map(item => ({ value: item.label, label: item.label }))} filters={filters} setFilters={setFilters} />
@@ -1019,8 +1036,8 @@ const majorKaizens =
                 <label className="block text-sm font-medium mb-1">
                   Tipologia Kaizen <span className="text-red-500">*</span>
                 </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {TIPOLOGIE_KAIZEN.map(t => (
+                <div className={`grid gap-2 ${tipologieConsentite.length === 3 ? 'grid-cols-3' : tipologieConsentite.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                  {tipologieConsentite.map(t => (
                     <button
                       key={t.value}
                       type="button"
