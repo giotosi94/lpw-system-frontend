@@ -29,9 +29,10 @@ export default function OplPublishModal({ documento, onClose, onPublished }) {
 
   const userId = user => String(user._id || user.id)
   const userName = user => user.full_name || user.name || user.username || user.email
+  const userReparti = user => (user.reparti?.length ? user.reparti : (user.reparto ? [user.reparto] : [])).join(', ')
   const risultatiPersone = cercaPersona.trim().length < 2 ? [] : users
     .filter(user => !persone.some(item => item.id === userId(user)))
-    .filter(user => `${userName(user)} ${user.email || ''} ${user.reparto || ''}`.toLowerCase().includes(cercaPersona.trim().toLowerCase()))
+    .filter(user => `${userName(user)} ${user.email || ''} ${userReparti(user)}`.toLowerCase().includes(cercaPersona.trim().toLowerCase()))
     .slice(0, 8)
 
   const aggiornaDomanda = (index, patch) => setDomande(current => current.map((domanda, i) => (i === index ? { ...domanda, ...patch } : domanda)))
@@ -279,7 +280,7 @@ export default function OplPublishModal({ documento, onClose, onPublished }) {
                         onClick={() => { setPersone(current => [...current, { id: userId(user), nome: userName(user) }]); setCercaPersona('') }}
                         className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
                       >
-                        {userName(user)} <span className="text-xs text-gray-500">{user.reparto || ''}</span>
+                        {userName(user)} <span className="text-xs text-gray-500">{userReparti(user)}</span>
                       </button>
                     </li>
                   ))}
