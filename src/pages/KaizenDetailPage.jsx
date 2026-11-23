@@ -20,6 +20,7 @@ import { useAllConfigurations } from '../hooks/useConfigurations'
 import { usePillars } from '../hooks/usePillars'
 import useUnsavedChangesGuard from '../hooks/useUnsavedChangesGuard'
 import { useAuth } from '../context/AuthContext'
+import { usePagePermissions } from '../context/pagePermissions'
 import ParetoChart from '../components/pillar/ParetoChart'
 
 const LIVELLI = ['Quick', 'Standard', 'Major']
@@ -88,6 +89,7 @@ export default function KaizenDetailPage() {
   const [searchParams] = useSearchParams()
   const fromDashboard = searchParams.get('from_dashboard')
   const { isAdmin } = useAuth()
+  const { canViewKaizenType } = usePagePermissions()
   const [kaizen, setKaizen] = useState(null)
   const [activeTab, setActiveTab] = useState('quickkaizen')
   const [saving, setSaving] = useState(false)
@@ -367,6 +369,15 @@ export default function KaizenDetailPage() {
   }
 
   if (!kaizen) return <div className="text-center py-8">Caricamento...</div>
+
+  if (!canViewKaizenType(livelloAttuale)) {
+    return (
+      <div className="max-w-md mx-auto mt-16 text-center space-y-3">
+        <h1 className="text-lg font-semibold">{livelloConfig[livelloAttuale]?.label || 'Kaizen'} non disponibile per il tuo ruolo</h1>
+        <Link to="/kaizen" className="text-sm text-primary hover:underline">Torna ai Kaizen</Link>
+      </div>
+    )
+  }
 
   const miglioramentoPct = (kaizen.obiettivi?.start && kaizen.obiettivi?.target)
     ? Math.abs(((parseFloat(kaizen.obiettivi.target) - parseFloat(kaizen.obiettivi.start)) / parseFloat(kaizen.obiettivi.start)) * 100)
