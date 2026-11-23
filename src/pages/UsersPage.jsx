@@ -593,6 +593,8 @@ function PagePermissionsPanel() {
 
   const dirty = Boolean(draft) && JSON.stringify(draft) !== JSON.stringify(saved)
 
+  const isSubKey = key => key.startsWith('kaizen_')
+
   function toggle(role, key) {
     setDraft(d => {
       const current = d[role]?.[key] !== false
@@ -640,7 +642,7 @@ function PagePermissionsPanel() {
             <tr className="text-gray-500 border-b">
               <th className="text-left font-medium py-1.5 pr-3">Ruolo</th>
               {pages.map(p => (
-                <th key={p.key} className="font-medium py-1.5 px-2 text-center whitespace-nowrap">{p.label}</th>
+                <th key={p.key} className={`font-medium py-1.5 px-2 text-center whitespace-nowrap ${isSubKey(p.key) ? 'text-gray-400 font-normal' : ''}`}>{p.label}</th>
               ))}
             </tr>
           </thead>
@@ -665,8 +667,9 @@ function PagePermissionsPanel() {
                         type="checkbox"
                         checked={draft[role]?.[p.key] !== false}
                         onChange={() => toggle(role, p.key)}
-                        className="w-4 h-4"
-                        aria-label={`${label}: ${p.label}`}
+                        disabled={isSubKey(p.key) && draft[role]?.kaizen === false}
+                        className="w-4 h-4 disabled:opacity-40"
+                        aria-label={`${label}: ${isSubKey(p.key) ? `Kaizen ${p.label}` : p.label}`}
                       />
                     </td>
                   ))}
