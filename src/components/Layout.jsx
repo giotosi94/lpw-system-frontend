@@ -1,17 +1,19 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
-import { Home, FileText, ClipboardList, LayoutDashboard, Menu, X, BookOpen, Cog, Columns, Users, LogOut, AlertTriangle, Library } from 'lucide-react'
+import { Home, FileText, ClipboardList, LayoutDashboard, Menu, X, BookOpen, Cog, Columns, Users, LogOut, AlertTriangle } from 'lucide-react'
 import { useState } from 'react'
 import { APP_NAME } from '../config/app'
 import { useAuth } from '../context/AuthContext'
 import NotificationBell from './NotificationBell'
+import { usePagePermissions } from '../context/pagePermissions'
 
 export default function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const { user, logout, isAdmin } = useAuth()
+  const { ready, canView } = usePagePermissions()
 
-  const links = [
+  const allLinks = [
     { to: '/', icon: Home, label: 'Home' },
     { to: '/kaizen', icon: FileText, label: 'Kaizen' },
     { to: '/action-plan', icon: ClipboardList, label: 'Action Plan' },
@@ -19,10 +21,10 @@ export default function Layout() {
     { to: '/pillars', icon: Columns, label: 'Pillars' },
     { to: '/documenti', icon: BookOpen, label: 'Documenti' },
     { to: '/segnalazioni', icon: AlertTriangle, label: 'Segnalazioni' },
-    { to: '/wiki', icon: Library, label: 'Wiki Architettura' },
     ...(isAdmin ? [{ to: '/users', icon: Users, label: 'Utenti' }] : []),
     { to: '/settings', icon: Cog, label: 'Settings' },
   ]
+  const links = allLinks.filter(link => canView(link.to))
 
   function handleLogout() {
     if (confirm('Vuoi davvero uscire?')) {
@@ -42,7 +44,6 @@ export default function Layout() {
 
   const roleColors = {
     admin: 'bg-red-500',
-    manager: 'bg-purple-500',
     office: 'bg-blue-500',
     operator: 'bg-green-500',
   }
@@ -150,7 +151,18 @@ export default function Layout() {
       </aside>
 
       <main className="flex-1 overflow-y-auto p-6">
-        <Outlet />
+        {!ready ? null : canView(location.pathname) ? (
+          <Outlet />
+        ) : (
+          <div className="max-w-md mx-auto mt-16 text-center space-y-3">
+            <h1 className="text-lg font-semibold">Pagina non disponibile per il tuo ruolo</h1>
+            {links[0] && (
+              <Link to={links[0].to} className="text-sm text-primary hover:underline">
+                Vai a {links[0].label}
+              </Link>
+            )}
+          </div>
+        )}
       </main>
     </div>
   )
