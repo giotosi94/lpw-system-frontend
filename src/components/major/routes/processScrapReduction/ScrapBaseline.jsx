@@ -318,8 +318,18 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
   const baselineUnit = form.baseline_fonte === 'stain' ? (form.stain_kpi === 'percentuale' ? '%' : 'kg') : form.unita_manuale
   const baselinePriorities = form.baseline_fonte === 'stain' ? form.priorita_stain : form.priorita_manuali
   const stainProductOptions = productOptions(form, 'stain')
-  const evaluatedObjectives = form.obiettivi.map(row => ({ ...row, ...evaluateObjective(row, form, stainAnalysis, manualAnalysis) }))
-  const updateObjective = (id, patch) => change(current => ({ ...current, obiettivi: current.obiettivi.map(row => row.id === id ? { ...row, ...patch, target_precedente: '' } : row) }))
+  const syncObjectives = current => {
+    const fonte = current.priorita_stain.length || !current.priorita_manuali.length ? 'stain' : 'manuale'
+    const priorities = fonte === 'stain' ? current.priorita_stain : current.priorita_manuali
+    return priorities.map(category => {
+      const previous = current.obiettivi.find(row => row.fonte === fonte && row.perimetro === category)
+      if (previous) return { ...previous, prodotto: '' }
+      return { id: `${fonte}:${category}`, fonte, kpi: fonte === 'stain' && stainAnalysis.production ? 'percentuale' : 'kg', perimetro: category, prodotto: '', riduzione: '50', target_precedente: '' }
+    })
+  }
+  const objectives = syncObjectives(form)
+  const evaluatedObjectives = objectives.map(row => ({ ...row, ...evaluateObjective(row, form, stainAnalysis, manualAnalysis) }))
+  const updateObjective = (id, patch) => change(current => ({ ...current, obiettivi: syncObjectives(current).map(row => row.id === id ? { ...row, ...patch, target_precedente: '' } : row) }))
   const save = async () => {
     if (form.manuale_da && form.manuale_a && form.manuale_da > form.manuale_a) { setStatus('Periodo della raccolta manuale non valido'); return }
     if (form.periodo_da && form.periodo_a && form.periodo_da > form.periodo_a) { setStatus('Il periodo finale precede quello iniziale'); return }
@@ -432,35 +442,33 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
       </section>
       <section>
         <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">PASSO 4 - PRIORITÀ E OBIETTIVO</h3>
-        <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
-          <p className="text-sm text-gray-600">Un obiettivo per ogni perdita, con fonte e riduzione indipendenti. I perimetri sovrapposti non vengono sommati.</p>
-          <button type="button" className="bg-primary text-white rounded-lg px-4 py-2 font-semibold text-sm" onClick={() => change(current => ({ ...current, obiettivi: [...current.obiettivi, { id: uid(), fonte: 'stain', kpi: 'kg', perimetro: 'priorita', prodotto: '', riduzione: '', target_precedente: '' }] }))}>+ Obiettivo</button>
-        </div>
-        <div className="space-y-4">{form.obiettivi.map((row, index) => {
-          const result = evaluatedObjectives[index]
-          const priorities = row.fonte === 'manuale' ? form.priorita_manuali : form.priorita_stain
-          const options = ['priorita', ...priorities]
-          const products = productOptions(form, row.fonte)
-          return <article key={row.id} className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
-            <div className="flex justify-between items-center"><h4 className="font-bold text-primary">Obiettivo {index + 1}</h4>{form.obiettivi.length > 1 && <button type="button" className="text-sm border rounded px-3 py-1.5" onClick={() => { if (window.confirm('Rimuovere questo obiettivo?')) change(current => ({ ...current, obiettivi: current.obiettivi.filter(item => item.id !== row.id) })) }}>Rimuovi</button>}</div>
-            <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
-              <label className="text-sm">Fonte baseline<select className={`${input} mt-1`} value={row.fonte} onChange={event => updateObjective(row.id, { fonte: event.target.value, perimetro: 'priorita', prodotto: '', riduzione: '' })}><option value="stain">STAIN</option><option value="manuale">Raccolta manuale</option></select></label>
-              <label className="text-sm">Prodotto<select className={`${input} mt-1`} value={row.prodotto || ''} onChange={event => updateObjective(row.id, { prodotto: event.target.value, riduzione: '' })}><option value="">Tutti i prodotti della fonte</option>{row.prodotto && !products.includes(row.prodotto) && <option value={row.prodotto}>{row.prodotto} (non piu disponibile)</option>}{products.map(product => <option key={product} value={product}>{product}</option>)}</select></label>
-              <label className="text-sm">KPI{row.fonte === 'stain' ? <select className={`${input} mt-1`} value={row.kpi} onChange={event => updateObjective(row.id, { kpi: event.target.value, riduzione: '' })}><option value="kg">kg di perdita</option><option value="percentuale" disabled={!stainAnalysis.production}>% sui kg prodotti</option></select> : <output className={`${input} mt-1 block bg-gray-50`}>{form.unita_manuale} · raccolta manuale</output>}</label>
-              <label className="text-sm">Perdite da attaccare<select className={`${input} mt-1`} value={row.perimetro} onChange={event => updateObjective(row.id, { perimetro: event.target.value, riduzione: '' })}><option value="">Seleziona le perdite da attaccare</option><option value="priorita" disabled={!priorities.length}>Tutte le priorita selezionate</option>{!options.includes(row.perimetro) && <option value={row.perimetro}>{row.perimetro} (non piu selezionata)</option>}{priorities.map(category => <option key={category} value={category}>{category}</option>)}</select></label>
-            </div>
-            <label className="block text-sm font-bold text-primary">Di quanto vuoi ridurre questa perdita? (%)<input className={`${input} mt-2 max-w-xs text-lg font-bold border-primary`} type="number" min="0" max="100" step="any" value={row.riduzione !== '' && row.riduzione != null ? row.riduzione : result.reduction === null ? '' : Number(result.reduction.toFixed(2))} disabled={result.baseline === null} onChange={event => updateObjective(row.id, { riduzione: event.target.value })} /></label>
-            {result.errors.map(error => <p key={error} role="alert" className="text-sm text-amber-800">{error}</p>)}
-            <div className="grid md:grid-cols-3 gap-3">
-              <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs">Situazione attuale</p><strong>{result.baseline === null ? 'Dati da completare' : `${fmt(result.baseline)} ${result.unit}`}</strong></div>
-              <div className="bg-emerald-50 rounded-lg p-3"><p className="text-xs">Obiettivo da raggiungere</p><strong>{result.target === null ? 'Inserisci la riduzione' : `${fmt(result.target)} ${result.unit}`}</strong></div>
-              <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs">{result.unit === '%' ? 'Differenza in punti percentuali' : `Perdita da evitare (${result.unit})`}</p><strong>{result.avoided === null ? '—' : fmt(result.avoided)}</strong></div>
-            </div>
-            {result.target !== null && <p className="text-sm font-semibold">Da {fmt(result.baseline)} {result.unit} a {fmt(result.target)} {result.unit}: riduzione del {fmt(result.reduction)}%.</p>}
-            {result.kg !== null && <p className="text-xs text-gray-600">{fmt(result.kg)} kg da evitare a parita di produzione del periodo baseline. Obiettivo, non saving gia realizzato.</p>}
-          </article>
-        })}</div>
-        <p className="text-xs text-gray-500 mt-3">Le voci manuali usano la raccolta del Passo 3; la tendina prodotto della raccolta riprende i prodotti STAIN del Passo 2 quando disponibili. Ogni obiettivo incrocia il prodotto scelto con le sole priorita selezionate. Per i KPI percentuali si usa la produzione del prodotto scelto, non quella totale della linea. Salva fase per conservare tutti gli obiettivi. La Fase 5 mantiene il proprio confronto e non somma automaticamente questi target.</p>
+        {!evaluatedObjectives.length ? <p className="text-sm text-gray-500">Seleziona le perdite nel Passo 2.</p> : <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <table className="w-full text-sm min-w-[760px]">
+            <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="px-3 py-2 text-left">Perdita</th>
+                <th className="px-3 py-2 text-left w-44">KPI</th>
+                <th className="px-3 py-2 text-left w-28">Riduzione %</th>
+                <th className="px-3 py-2 text-right">Attuale</th>
+                <th className="px-3 py-2 text-right">Obiettivo</th>
+                <th className="px-3 py-2 text-right">Da evitare (kg)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {evaluatedObjectives.map(result => <tr key={result.id}>
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-2 min-w-0"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: lossColor({ categoria: result.perimetro }) }} aria-hidden="true" /><span className="truncate font-medium" title={result.perimetro}>{result.perimetro}</span></div>
+                  {result.errors.length > 0 && <p className="text-xs text-red-700 mt-0.5">{result.errors[0]}</p>}
+                </td>
+                <td className="px-3 py-1">{result.fonte === 'stain' ? <select aria-label="KPI" className={input} value={result.kpi} onChange={event => updateObjective(result.id, { kpi: event.target.value })}><option value="percentuale" disabled={!stainAnalysis.production}>% sui kg prodotti</option><option value="kg">kg di perdita</option></select> : <span className="text-gray-600">{form.unita_manuale}</span>}</td>
+                <td className="px-3 py-1"><input aria-label="Riduzione %" className={input} type="number" min="0" max="100" step="any" value={result.riduzione ?? ''} onChange={event => updateObjective(result.id, { riduzione: event.target.value })} /></td>
+                <td className="px-3 py-2 text-right tabular-nums">{result.baseline === null ? '—' : `${fmt(result.baseline)} ${result.unit}`}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold text-green-800">{result.target === null ? '—' : `${fmt(result.target)} ${result.unit}`}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{result.kg === null ? '—' : fmt(result.kg)}</td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>}
       </section>
       <div className="flex flex-wrap justify-end items-center gap-3 border-t pt-4"><span role="status" className="text-sm">{status}</span><button type="button" className="bg-primary text-white px-4 py-2 rounded disabled:opacity-50" disabled={saving} onClick={save}>{saving ? 'Salvataggio...' : 'Salva fase'}</button></div>
     </div>
