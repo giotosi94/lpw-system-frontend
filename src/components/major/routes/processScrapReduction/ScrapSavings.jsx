@@ -139,6 +139,22 @@ function buildTrend(before, after, scope) {
     })
 }
 
+async function loadGenericDrivers(version) {
+  const response = await api.get(`/economic-drivers/${version}`)
+  const doc = response.data || {}
+  const result = { version_id: doc.id, year: doc.year, filename: doc.filename }
+  for (const name of ['scarto', 'rework']) {
+    const values = [...new Set((doc.rows || [])
+      .map(row => row[name] == null ? NaN : Number(row[name]))
+      .filter(Number.isFinite)
+      .map(value => Math.round(value * 1e6) / 1e6))].sort((a, b) => a - b)
+    if (!values.length) throw new Error(`Driver ${name} assente nel file ${doc.filename}`)
+    if (values.length > 1) throw new Error(`Driver ${name} non univoco nel file ${doc.filename}: ${values.slice(0, 5).join(' / ')}`)
+    result[name] = values[0]
+  }
+  return result
+}
+
 export default function ScrapSavings({ stepData, allStepsData, onChange, major }) {
   const { user } = useAuth() || {}
   const interventions = useInterventions(major, allStepsData)
@@ -159,6 +175,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   const onChangeRef = useRef(onChange)
   const persistRef = useRef(null)
   const stateRef = useRef(null)
+  const autoDriverRef = useRef('')
   onChangeRef.current = onChange
   baseRef.current = stepData?.dati || {}
 
@@ -215,25 +232,29 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
 
   const driverVersion = form.driverVersion || form.driverSnapshot?.version_id || driverVersions[0]?.id || ''
 
-  const fetchDrivers = async version => {
-    if (!version) { setDriverMessage('Nessuna versione driver pubblicata nei Settings.'); return null }
+  const applyDriverVersion = async version => {
+    if (!version) { setDriverMessage('Nessuna versione driver pubblicata nei Settings.'); return }
+    setBusy(true)
     try {
-      const response = await api.get(`/economic-drivers/${version}/generic`)
-      setDriverMessage('')
-      return response.data
+      const snapshot = await loadGenericDrivers(version)
+      if (!mountedRef.current) return
+      change({ driverVersion: version, driverSnapshot: snapshot, driverScarto: String(snapshot.scarto), driverRework: String(snapshot.rework) })
+      setDriverMessage(`Driver ${snapshot.filename}: scarto ${fmt(snapshot.scarto)} €/kg · rework ${fmt(snapshot.rework)} €/kg`)
     } catch (error) {
-      setDriverMessage(typeof error.response?.data?.detail === 'string' ? error.response.data.detail : 'Driver non disponibili')
-      return null
+      setDriverMessage(typeof error.response?.data?.detail === 'string' ? error.response.data.detail : error.message || 'Driver non disponibili')
+      change({ driverVersion: version })
+    } finally {
+      setBusy(false)
     }
   }
 
-  const applyDriverVersion = async version => {
-    setBusy(true)
-    const snapshot = await fetchDrivers(version)
-    setBusy(false)
-    if (!snapshot) { change({ driverVersion: version }); return }
-    change({ driverVersion: version, driverSnapshot: snapshot, driverScarto: String(snapshot.scarto ?? ''), driverRework: String(snapshot.rework ?? '') })
-  }
+  useEffect(() => {
+    if (!driverVersion || !form.rows.length || busy) return
+    if (form.driverSnapshot?.version_id === driverVersion) return
+    if (autoDriverRef.current === driverVersion) return
+    autoDriverRef.current = driverVersion
+    applyDriverVersion(driverVersion)
+  }, [driverVersion, form.rows.length, form.driverSnapshot?.version_id])
 
   const selectObjective = id => {
     if (form.rows.length && !window.confirm('Cambiare obiettivo? Il risultato attuale verrà azzerato.')) return
@@ -271,13 +292,8 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       const before = baseline.stain_snapshot
       const excluded = incomparableProducts(before, after, scope)
       const rows = compareSnapshots(before, after, scope, [])
-      let driverPatch = {}
-      if (form.driverScarto === '' && form.driverRework === '') {
-        const snapshot = await fetchDrivers(driverVersion)
-        if (snapshot) driverPatch = { driverVersion: snapshot.version_id, driverSnapshot: snapshot, driverScarto: String(snapshot.scarto ?? ''), driverRework: String(snapshot.rework ?? '') }
-      }
       if (rev !== revision.current || !mountedRef.current) { setMessage('Dati modificati durante il calcolo: premi di nuovo Calcola.'); return }
-      change({ after, rows, excluded, objectiveFingerprint: context.fingerprint, ...driverPatch })
+      change({ after, rows, excluded, objectiveFingerprint: context.fingerprint })
       setMessage('')
     } catch (error) {
       setMessage(typeof error.response?.data?.detail === 'string' ? error.response.data.detail : error.message || 'Lettura STAIN non riuscita')
@@ -394,6 +410,7 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
 
   const patchRow = (id, key, value) => change({ rows: form.rows.map(row => row.id === id ? { ...row, [key]: value } : row) })
   const types = [...new Set(form.rows.map(row => row.type))]
+  const shownTypes = types.length ? types : ['scarto', 'rework']
   const saveLabel = saveState === 'saving' ? 'Salvataggio...' : saveState === 'dirty' ? 'Modifiche da salvare...' : saveState === 'error' ? 'Errore di salvataggio' : 'Salvato'
   const labelDate = value => new Date(value).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', timeZone: 'UTC' })
 
@@ -448,21 +465,22 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
       {context && (form.rows.length > 0 || manual) && <section className={section}>
         <StepBar title="Passo 3 - Risultato" />
 
-        <div className="grid md:grid-cols-3 gap-3 items-end">
+        <div className="grid md:grid-cols-4 gap-3 items-end">
           <label className="block text-sm">Versione driver
             <select className={field} disabled={busy} value={driverVersion} onChange={event => applyDriverVersion(event.target.value)}>
               {!driverVersions.length && <option value="">Nessuna versione</option>}
               {driverVersions.map(item => <option key={item.id} value={item.id}>{item.year} · {item.filename}</option>)}
             </select>
           </label>
-          {(types.length ? types : ['scarto', 'rework']).includes('scarto') && <label className="block text-sm">Driver scarto €/kg
+          <button type="button" className={button} disabled={busy || !driverVersion} onClick={() => applyDriverVersion(driverVersion)}>Applica driver</button>
+          {shownTypes.includes('scarto') && <label className="block text-sm">Driver scarto €/kg
             <input type="number" min="0" step="any" className={field} value={form.driverScarto} onChange={event => change({ driverScarto: event.target.value })} />
           </label>}
-          {(types.length ? types : ['scarto', 'rework']).includes('rework') && <label className="block text-sm">Driver rework €/kg
+          {shownTypes.includes('rework') && <label className="block text-sm">Driver rework €/kg
             <input type="number" min="0" step="any" className={field} value={form.driverRework} onChange={event => change({ driverRework: event.target.value })} />
           </label>}
         </div>
-        {driverMessage && <p role="alert" className="text-sm text-amber-800">{driverMessage}</p>}
+        {driverMessage && <p role="status" className="text-sm text-gray-700">{driverMessage}</p>}
 
         {manual && <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm">
           <thead><tr>{['Prodotto', 'Tipo', 'Produzione prima kg', 'Perdita prima kg', 'Produzione dopo kg', 'Perdita dopo kg'].map(label => <th key={label} className="p-2 text-left border-b">{label}</th>)}</tr></thead>
