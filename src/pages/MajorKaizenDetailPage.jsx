@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import MajorHeader from '../components/major/MajorHeader'
-import MajorRouteNavigator from '../components/major/MajorRouteNavigator'
 import MajorProjectData from '../components/major/MajorProjectData'
 import MajorStepContainer from '../components/major/MajorStepContainer'
 import KaizenGantMasterPlan from '../components/kaizen/KaizenGantMasterPlan'
@@ -64,7 +63,7 @@ export default function MajorKaizenDetailPage() {
   const steps = [...(major?.route_snapshot?.steps || [])].sort((a, b) => a.ordine - b.ordine).map(step =>
     step.componente === 'sustainment_plan' && step.titolo === 'Standardizzare e sostenere'
       ? { ...step, titolo: 'Standardizzare ed espandere' }
-      : step
+      : { ...step, titolo: String(step.titolo || '').replace(/^Ripristino delle condizioni/i, 'Ripristino condizioni') }
   )
   const stepsData = major?.steps_data || {}
   const activeStep = steps.find(step => step.step_id === activeKey)
@@ -119,7 +118,26 @@ export default function MajorKaizenDetailPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-0 sm:px-2">
-      <MajorHeader major={major} onOpenData={() => setDataOpen(true)} />
+      <MajorHeader major={major} onOpenData={() => setDataOpen(true)}>
+        <nav aria-label="Fasi del progetto" className="flex flex-wrap gap-2">
+          {steps.map(step => {
+            const active = step.step_id === activeKey
+            const done = stepsData[step.step_id]?.stato === 'completato'
+            return (
+              <button
+                key={step.step_id}
+                type="button"
+                onClick={() => selectStep(step.step_id)}
+                aria-current={active ? 'step' : undefined}
+                className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${active ? 'border-primary bg-primary text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}
+              >
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${active ? 'bg-white/20' : done ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>{done ? '✓' : step.ordine}</span>
+                <span className="whitespace-nowrap">{step.titolo}</span>
+              </button>
+            )
+          })}
+        </nav>
+      </MajorHeader>
 
       <section className="mb-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
         <button
@@ -147,16 +165,12 @@ export default function MajorKaizenDetailPage() {
         )}
       </section>
 
-      <div className="sticky top-0 z-20 -mx-1 mb-4 overflow-x-auto bg-[#f3eee4]/95 px-1 py-1 backdrop-blur">
-        <div className="min-w-max">
-          <MajorRouteNavigator steps={steps} stepsData={stepsData} activeKey={activeKey} onSelect={selectStep} />
-        </div>
+      <div className="rounded-lg border border-gray-200 bg-white p-3 sm:p-5">
+        {activeStep ? (
+          <MajorStepContainer key={activeStep.step_id} step={activeStep} stepData={stepsData[activeStep.step_id]}
+            allStepsData={stepsData} major={major} onSaveStep={saveStep} onApproveGate={approveGate} />
+        ) : <p className="py-6 text-gray-600">Nessuna fase configurata per questa Route.</p>}
       </div>
-
-      {activeStep ? (
-        <MajorStepContainer key={activeStep.step_id} step={activeStep} stepData={stepsData[activeStep.step_id]}
-          allStepsData={stepsData} major={major} onSaveStep={saveStep} onApproveGate={approveGate} />
-      ) : <p className="py-6 text-gray-600">Nessuna fase configurata per questa Route.</p>}
 
       {dataOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" onClick={event => { if (event.target === event.currentTarget) setDataOpen(false) }}>
