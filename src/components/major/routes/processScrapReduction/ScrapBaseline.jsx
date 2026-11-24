@@ -558,7 +558,7 @@ function LossTable({ rows, unit, total, production, focus, onFocus, priorities =
             <td />
             <td />
           </tr>
-          {selectedRows.length > 0 && <tr className="text-primary">
+          {selectedRows.length > 0 && selectedRows.length < rows.length && <tr className="text-primary">
             {onPriorities && <td />}
             <td />
             <td className="px-3 py-2">Priorità selezionate ({selectedRows.length})</td>
