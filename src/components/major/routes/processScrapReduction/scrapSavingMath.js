@@ -60,8 +60,8 @@ export function aggregateSnapshot(snapshot, scope) {
   const allowed = product => !selected.size || selected.has(product)
   snapshot.produzione.forEach(row => {
     if (!allowed(row.prodotto)) return
-    const kg = numeric(row.kg)
-    if (kg === null) throw new Error('Produzione STAIN non valida.')
+    const kg = row.kg === '' || row.kg == null ? NaN : Number(row.kg)
+    if (!Number.isFinite(kg)) throw new Error('Produzione STAIN non valida.')
     production.set(row.prodotto, (production.get(row.prodotto) || 0) + kg)
   })
   snapshot.dettaglio.forEach(row => {
