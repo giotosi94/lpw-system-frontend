@@ -119,6 +119,31 @@ export default function MajorKaizenDetailPage() {
   return (
     <div className="mx-auto w-full max-w-6xl px-0 sm:px-2">
       <MajorHeader major={major} onOpenData={() => setDataOpen(true)}>
+        <section className="mb-3 overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <button
+            type="button"
+            onClick={toggleGantt}
+            aria-expanded={ganttOpen}
+            aria-controls="major-master-plan-panel"
+            className="flex w-full items-center justify-between gap-3 bg-primary px-3 py-2 text-left text-white hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300 sm:px-4"
+          >
+            <span className="flex items-center gap-2">
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 4v16h16M8 7h8M11 12h9M7 17h7" /></svg>
+              <span className="text-sm font-semibold">Master Plan</span>
+            </span>
+            <span className="flex shrink-0 items-center gap-1 text-xs">
+              <span className="hidden sm:inline">{ganttOpen ? 'Nascondi' : 'Apri pianificazione'}</span>
+              <svg aria-hidden="true" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" className={ganttOpen ? 'rotate-180' : ''}><path d="m5 7 5 5 5-5" /></svg>
+            </span>
+          </button>
+          {ganttOpen && (
+            <div id="major-master-plan-panel" className="overflow-x-auto border-t border-gray-200 p-2">
+              <KaizenGantMasterPlan key={major._id} value={ganttValue} onChange={saveGantt}
+                activities={activityData.items} activitiesLoading={activityData.loading} activitiesError={activityData.error}
+                onRefreshActivities={activityData.refresh} onOpenActivityPhase={selectStep} />
+            </div>
+          )}
+        </section>
         <nav aria-label="Fasi del progetto" className="flex flex-wrap gap-2">
           {steps.map(step => {
             const active = step.step_id === activeKey
@@ -139,31 +164,6 @@ export default function MajorKaizenDetailPage() {
         </nav>
       </MajorHeader>
 
-      <section className="mb-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <button
-          type="button"
-          onClick={toggleGantt}
-          aria-expanded={ganttOpen}
-          aria-controls="major-master-plan-panel"
-          className="flex w-full items-center justify-between gap-3 bg-primary px-3 py-2 text-left text-white hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300 sm:px-4"
-        >
-          <span className="flex items-center gap-2">
-            <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 4v16h16M8 7h8M11 12h9M7 17h7" /></svg>
-            <span className="text-sm font-semibold">Master Plan</span>
-          </span>
-          <span className="flex shrink-0 items-center gap-1 text-xs">
-            <span className="hidden sm:inline">{ganttOpen ? 'Nascondi' : 'Apri pianificazione'}</span>
-            <svg aria-hidden="true" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" className={ganttOpen ? 'rotate-180' : ''}><path d="m5 7 5 5 5-5" /></svg>
-          </span>
-        </button>
-        {ganttOpen && (
-          <div id="major-master-plan-panel" className="overflow-x-auto border-t border-gray-200 p-2">
-            <KaizenGantMasterPlan key={major._id} value={ganttValue} onChange={saveGantt}
-              activities={activityData.items} activitiesLoading={activityData.loading} activitiesError={activityData.error}
-              onRefreshActivities={activityData.refresh} onOpenActivityPhase={selectStep} />
-          </div>
-        )}
-      </section>
 
       <div className="rounded-lg border border-gray-200 bg-white p-3 sm:p-5">
         {activeStep ? (
