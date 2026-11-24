@@ -50,6 +50,36 @@ function splitZone(item) {
   return { macchina: macchina.trim(), componente: rest.join(' · ').trim() }
 }
 
+function sameName(a, b) {
+  const norm = value => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/\b0+(\d)/g, '$1')
+  return Boolean(norm(a)) && norm(a) === norm(b)
+}
+
+function collectMachines(linea) {
+  const found = []
+  const seen = new Set()
+  const add = (macchina, area) => {
+    if (!macchina || macchina.attivo === false || !macchina.nome || seen.has(macchina.nome)) return
+    seen.add(macchina.nome)
+    found.push({
+      nome: macchina.nome,
+      area: area || '',
+      carl_code: String(macchina.carl_code || '').trim().toUpperCase(),
+      componenti: list(macchina.componenti).filter(item => item.attivo !== false).map(item => item.nome),
+    })
+  }
+  const walk = (node, area) => {
+    if (!node || typeof node !== 'object') return
+    list(node.macchine).forEach(macchina => add(macchina, area))
+    ;['aree', 'areas', 'children', 'figli'].forEach(key => list(node[key]).forEach(child => {
+      if (child?.attivo === false) return
+      walk(child, child?.nome || area)
+    }))
+  }
+  walk(linea, '')
+  return found
+}
+
 function zoneLabel(item) {
   return [item.macchina, item.componente].filter(Boolean).join(' · ')
 }
@@ -247,32 +277,42 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     api.get('/reparti/')
       .then(response => {
         if (cancelled) return
-        const reparto = (response.data || []).find(item => item.nome === major?.reparto)
-        const linea = list(reparto?.linee).find(item => item.nome === major?.linea)
+        const reparti = list(response.data)
+        const sameReparto = reparti.filter(item => sameName(item.nome, major?.reparto))
+        const findLine = pool => pool.flatMap(item => list(item.linee)).find(item => sameName(item.nome, major?.linea))
+        const linea = findLine(sameReparto) || findLine(reparti)
         setCarlLine(String(linea?.carl_code || '').trim())
-        setMachines(list(linea?.macchine)
-          .filter(item => item.attivo !== false)
-          .sort((a, b) => (a.nome === major?.macchina ? -1 : 0) - (b.nome === major?.macchina ? -1 : 0))
-          .map(macchina => ({
-            nome: macchina.nome,
-            carl_code: String(macchina.carl_code || '').trim().toUpperCase(),
-            componenti: list(macchina.componenti).filter(item => item.attivo !== false).map(item => item.nome),
-          })))
+        setMachines(collectMachines(linea)
+          .sort((a, b) => (sameName(a.nome, major?.macchina) ? -1 : 0) - (sameName(b.nome, major?.macchina) ? -1 : 0)))
       })
       .catch(() => { if (!cancelled) setMachines([]) })
     return () => { cancelled = true }
   }, [major?.reparto, major?.linea, major?.macchina])
 
   const lossOptions = useMemo(() => {
-    const values = new Set()
-    Object.values(allStepsData || {}).forEach(item => {
-      const data = item?.dati || {}
-      ;[...list(data.priorita_stain), ...list(data.priorita_manuali)].forEach(value => value && values.add(value))
-    })
-    return [...values]
+    const baseline = Object.values(allStepsData || {}).map(item => item?.dati).find(data => data?.stain_snapshot || data?.categorie_scarto || data?.priorita_stain)
+    if (!baseline) return []
+    const stain = list(baseline.priorita_stain)
+    const manual = list(baseline.priorita_manuali)
+    return [...new Set((stain.length || !manual.length ? stain : manual).filter(Boolean))]
   }, [allStepsData])
+  const lossKey = lossOptions.join('|')
 
-  const machineNames = machines.map(item => item.nome)
+  useEffect(() => {
+    if (!lossOptions.length) return
+    const current = formRef.current
+    const keep = current.aree.filter(item => lossOptions.includes(item.perdita))
+    const missing = lossOptions.filter(loss => !keep.some(item => item.perdita === loss)).map(loss => ({ ...newArea(), perdita: loss }))
+    const next = [...keep, ...missing].sort((a, b) => lossOptions.indexOf(a.perdita) - lossOptions.indexOf(b.perdita))
+    const same = next.length === current.aree.length && next.every((item, index) => item.id === current.aree[index].id)
+    if (!same) mutate(value => ({ ...value, aree: next }))
+  }, [lossKey, mutate])
+
+  const machineGroups = machines.reduce((groups, item) => {
+    const key = item.area || ''
+    groups[key] = [...(groups[key] || []), item.nome]
+    return groups
+  }, {})
   const componentsOf = name => machines.find(item => item.nome === name)?.componenti || []
   const sameZone = (a, b) => a.macchina === b.macchina && a.componente.trim().toLowerCase() === b.componente.trim().toLowerCase()
   const missingZones = form.aree
@@ -291,7 +331,12 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     macchina: major?.macchina || '',
   }), [major])
 
-  const addArea = () => mutate(current => ({ ...current, aree: [...current.aree, newArea()] }))
+  const addArea = perdita => mutate(current => {
+    const index = current.aree.map(item => item.perdita).lastIndexOf(perdita)
+    const aree = [...current.aree]
+    aree.splice(index + 1, 0, { ...newArea(), perdita })
+    return { ...current, aree }
+  })
   const patchArea = (id, patch) => mutate(current => ({
     ...current,
     aree: current.aree.map(item => (item.id === id ? { ...item, ...patch } : item)),
@@ -457,39 +502,31 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
     <div className="space-y-6">
       <section className={panel}>
         <h3 className={heading}>PASSO 1 - AREE DA CONTROLLARE</h3>
-        <p className="text-sm text-gray-600 mb-3">
-          Indica macchina e componente da verificare per i difetti prioritari e quale standard ci si aspetta.
-        </p>
-        {lossOptions.length === 0 && (
-          <p className="text-sm text-amber-800 mb-3">Nessuna priorità selezionata nella fase 1: spunta le priorità da attaccare sotto il Pareto.</p>
+        {lossOptions.length === 0 ? (
+          <p className="text-sm text-gray-500">Seleziona le perdite nella Fase 1.</p>
+        ) : (
+          <div className="text-sm">
+            <div className="hidden md:grid md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_4.5rem] gap-2 border-b px-1 pb-1 font-medium text-gray-600">
+              <span>Perdita</span><span>Macchina</span><span>Componente</span><span>Standard atteso</span><span />
+            </div>
+            {form.aree.map((row, index) => {
+              const first = index === 0 || form.aree[index - 1].perdita !== row.perdita
+              const count = form.aree.filter(item => item.perdita === row.perdita).length
+              return (
+                <div key={row.id} className={`grid grid-cols-1 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_4.5rem] gap-2 px-1 py-2 items-center ${first && index > 0 ? 'border-t border-gray-200' : ''}`}>
+                  <span className={`min-w-0 truncate font-medium ${first ? '' : 'hidden md:block md:invisible'}`} title={row.perdita}>{row.perdita}</span>
+                  <MachineSelect value={row.macchina} groups={machineGroups} onChange={value => patchArea(row.id, { macchina: value, componente: '' })} />
+                  <ComponentInput value={row.componente} options={componentsOf(row.macchina)} onChange={value => patchArea(row.id, { componente: value })} />
+                  <input aria-label="Standard atteso" placeholder="Standard atteso" className={input} value={row.standard} onChange={event => patchArea(row.id, { standard: event.target.value })} />
+                  <div className="flex justify-end gap-1">
+                    <button type="button" title="Aggiungi macchina per questa perdita" aria-label="Aggiungi macchina" onClick={() => addArea(row.perdita)} className="p-2 text-primary hover:bg-gray-100 rounded"><Plus size={15} /></button>
+                    {count > 1 && <button type="button" aria-label="Elimina riga" onClick={() => removeArea(row.id)} className="p-2 text-red-600 hover:bg-red-50 rounded"><Trash2 size={15} /></button>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         )}
-        <button type="button" onClick={addArea} className={addButton}><Plus size={16} /> Aggiungi area</button>
-        <div className="overflow-x-auto mt-4">
-          <table className="w-full min-w-[900px] text-sm">
-            <thead>
-              <tr className="text-left text-gray-600 border-b">
-                <th className="p-2 font-medium">Perdita di riferimento</th>
-                <th className="p-2 font-medium">Macchina</th>
-                <th className="p-2 font-medium">Componente</th>
-                <th className="p-2 font-medium">Standard atteso</th>
-                <th className="p-2 w-10" />
-              </tr>
-            </thead>
-            <tbody>
-              {form.aree.length === 0 ? (
-                <tr><td colSpan="5" className="p-6 text-center text-gray-400">Nessuna area inserita</td></tr>
-              ) : form.aree.map(row => (
-                <tr key={row.id} className="border-b align-top">
-                  <td className="p-1"><OptionSelect label="Perdita di riferimento" value={row.perdita} options={lossOptions} onChange={value => patchArea(row.id, { perdita: value })} /></td>
-                  <td className="p-1"><OptionSelect label="Macchina" value={row.macchina} options={machineNames} onChange={value => patchArea(row.id, { macchina: value, componente: '' })} /></td>
-                  <td className="p-1"><ComponentInput value={row.componente} options={componentsOf(row.macchina)} onChange={value => patchArea(row.id, { componente: value })} /></td>
-                  <td className="p-1"><input aria-label="Standard atteso" className={input} value={row.standard} onChange={event => patchArea(row.id, { standard: event.target.value })} /></td>
-                  <td className="p-1 text-center"><button type="button" aria-label="Elimina area" onClick={() => removeArea(row.id)} className="p-2 text-red-600 hover:bg-red-50 rounded"><Trash2 size={15} /></button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </section>
 
       <section className={panel}>
@@ -525,7 +562,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
                 </label>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <label className="block text-sm">Macchina
-                  <div className="mt-1"><OptionSelect label="Macchina" value={item.macchina} options={machineNames} onChange={value => patchAnomaly(item.id, { macchina: value, componente: '' })} /></div>
+                  <div className="mt-1"><MachineSelect value={item.macchina} groups={machineGroups} onChange={value => patchAnomaly(item.id, { macchina: value, componente: '' })} /></div>
                 </label>
                 <label className="block text-sm">Componente
                   <div className="mt-1"><ComponentInput value={item.componente} options={componentsOf(item.macchina)} onChange={value => patchAnomaly(item.id, { componente: value })} /></div>
@@ -688,7 +725,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
               {carlError && <p role="alert" className="text-sm text-red-700">{carlError}</p>}
               <label className="block text-sm">Titolo<input required maxLength={300} className={input} value={carlDraft.titolo} onChange={event => updateCarlDraft({ titolo: event.target.value })} /></label>
               <label className="block text-sm">Descrizione<textarea maxLength={3500} rows={4} className={input} value={carlDraft.descrizione} onChange={event => updateCarlDraft({ descrizione: event.target.value })} /></label>
-              <label className="block text-sm">Macchina<OptionSelect label="Macchina CARL" value={carlDraft.macchina} options={machineNames} onChange={value => updateCarlDraft({ macchina: value, componente: '' })} /></label>
+              <label className="block text-sm">Macchina<MachineSelect value={carlDraft.macchina} groups={machineGroups} onChange={value => updateCarlDraft({ macchina: value, componente: '' })} /></label>
               <label className="block text-sm">Componente<ComponentInput value={carlDraft.componente} options={componentsOf(carlDraft.macchina)} onChange={value => updateCarlDraft({ componente: value })} /></label>
               <label className="block text-sm">Priorita<select className={input} value={carlDraft.priorita} onChange={event => updateCarlDraft({ priorita: event.target.value })}>{['bassa', 'media', 'alta', 'urgente'].map(value => <option key={value} value={value}>{value}</option>)}</select></label>
               <div className="flex justify-end gap-2"><button type="button" className={smallButton} disabled={Boolean(sending)} onClick={() => setCarlDraft(null)}>Chiudi</button><button type="submit" className={addButton} disabled={Boolean(sending) || !carlDraft.titolo.trim()}>{sending ? 'Invio...' : 'Conferma e invia a CARL'}</button></div>
@@ -783,6 +820,20 @@ function DocumentPicker({ value, label, documents, priorityIds = [], major, onSe
         </ul>
       )}
     </div>
+  )
+}
+
+function MachineSelect({ value, groups, onChange }) {
+  const entries = Object.entries(groups)
+  const all = entries.flatMap(([, names]) => names)
+  return (
+    <select aria-label="Macchina" className={input} value={value || ''} onChange={event => onChange(event.target.value)}>
+      <option value="">{all.length ? 'Seleziona macchina' : 'Nessuna macchina in anagrafica'}</option>
+      {value && !all.includes(value) && <option value={value}>{value}</option>}
+      {entries.map(([area, names]) => area
+        ? <optgroup key={area} label={area}>{names.map(name => <option key={name} value={name}>{name}</option>)}</optgroup>
+        : names.map(name => <option key={name} value={name}>{name}</option>))}
+    </select>
   )
 }
 
