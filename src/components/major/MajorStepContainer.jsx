@@ -26,27 +26,13 @@ export default function MajorStepContainer({
 
   return (
     <div className="space-y-4">
-      <div className="border-b border-gray-200 pb-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-semibold text-gray-800">
-              {step.ordine}. {step.titolo}
-            </h2>
-            {step.obiettivo && (
-              <p className="mt-2 text-sm text-gray-700 whitespace-pre-line">
-                {step.obiettivo}
-              </p>
-            )}
-            {step.istruzioni && step.istruzioni !== step.obiettivo && (
-              <p className="mt-2 text-sm text-gray-600 whitespace-pre-line">
-                {step.istruzioni}
-              </p>
-            )}
-          </div>
-          <span className={`shrink-0 text-xs ${completed ? 'text-green-700' : 'text-gray-500'}`}>
-            {completed ? 'Completato' : sd.stato === 'in_corso' ? 'In corso' : 'Non iniziato'}
-          </span>
-        </div>
+      <div className="flex items-center justify-between gap-4 border-b border-gray-200 pb-3">
+        <h2 className="text-lg font-semibold text-gray-800">
+          {step.ordine}. {step.titolo}
+        </h2>
+        <span className={`shrink-0 text-xs ${completed ? 'text-green-700' : 'text-gray-500'}`}>
+          {completed ? 'Completato' : sd.stato === 'in_corso' ? 'In corso' : 'Non iniziato'}
+        </span>
       </div>
 
       <StepComponent
