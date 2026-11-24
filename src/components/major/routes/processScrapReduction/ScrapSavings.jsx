@@ -348,21 +348,38 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
   const applyDrivers = async () => {
     if (objectiveBlocked) { setDriverStatus('Aggiorna prima obiettivo e confronto.'); return }
     if (!driverVersion || !form.rows.length) { setDriverStatus('Carica il confronto e seleziona una versione driver.'); return }
-    if (!major?.reparto || !major?.linea) { setDriverStatus('Imposta reparto e linea nel Major.'); return }
+    const lines = [...new Set([major?.linea, form.scope?.line].map(value => String(value || '').trim()).filter(Boolean))]
+    if (!major?.reparto || !lines.length) { setDriverStatus('Imposta reparto e linea nel Major.'); return }
     if (!window.confirm('Applicare i driver selezionati alle righe? I valori precedenti saranno sostituiti.')) return
     const requestRevision = revision.current
+    const where = `reparto: ${major.reparto} · linea: ${lines.join(' / ')}`
     setBusy(true)
     try {
-      const response = await api.get(`/economic-drivers/${driverVersion}/resolve`, { params: { department: major.reparto, line: major.linea } })
+      let response = null
+      let lastError = null
+      for (const line of lines) {
+        try {
+          response = await api.get(`/economic-drivers/${driverVersion}/resolve`, { params: { department: major.reparto, line } })
+          break
+        } catch (error) {
+          lastError = error
+          if (!error.response || error.response.status >= 500) throw error
+        }
+      }
+      if (!response) throw lastError
       if (requestRevision !== revision.current || !mountedRef.current) { setDriverStatus('Dati modificati: applica nuovamente i driver.'); return }
       const snapshot = response.data
-      change({ driverSnapshot: snapshot, rows: form.rows.map(row => {
-        const value = snapshot.resource[row.type]
-        if (value == null || !Number.isFinite(Number(value))) throw new Error('Driver da configurare per il tipo di perdita')
+      const rows = formRef.current.rows.map(row => {
+        const value = snapshot.resource?.[row.type]
+        if (value == null || !Number.isFinite(Number(value))) throw new Error(`Driver ${row.type} non configurato nella risorsa ${snapshot.resource?.code || ''}`)
         return { ...row, driver: value, driverYear: String(snapshot.year), driverRef: `${snapshot.filename} · ${snapshot.resource.code} · ${snapshot.version_id}`, driverSource: 'settings' }
-      }) })
-      setDriverStatus('Driver applicati.')
-    } catch (error) { setDriverStatus(typeof error.response?.data?.detail === 'string' ? error.response.data.detail : error.message || 'Driver da configurare') }
+      })
+      change({ driverSnapshot: snapshot, rows })
+      setDriverStatus(`Driver applicati: ${snapshot.resource?.code || ''}`)
+    } catch (error) {
+      const detail = typeof error?.response?.data?.detail === 'string' ? error.response.data.detail : error?.message || 'Driver da configurare'
+      setDriverStatus(`${detail} (${where})`)
+    }
     finally { setBusy(false) }
   }
 
@@ -461,6 +478,9 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
         avoided: state.result.avoided,
         net: snapshot.costs === '' ? null : state.result.net,
         annualGross: null,
+        savingPct: state.result.savingPct,
+        totals: state.result.totals,
+        products: state.result.products,
         rows: state.result.rows,
       } : null,
       validation: ready ? (reviewed ? 'validato' : 'calcolato_non_validato') : 'bozza_incompleta',
@@ -677,6 +697,40 @@ export default function ScrapSavings({ stepData, allStepsData, onChange, major }
           })}
         </tbody></table></div>}
 
+        {result.products.length > 0 && <div className="space-y-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-gray-50 rounded p-3"><div className="text-xs">Perdita prima</div><strong>{fmt(result.totals.beforeRate * 100)}%</strong></div>
+            <div className="bg-gray-50 rounded p-3"><div className="text-xs">Perdita dopo</div><strong>{fmt(result.totals.afterRate * 100)}%</strong></div>
+            <div className="bg-gray-50 rounded p-3"><div className="text-xs">{result.avoided < 0 ? 'Kg aggiuntivi' : 'Kg evitati'}</div><strong>{fmt(Math.abs(result.avoided))}</strong></div>
+            <div className="bg-gray-50 rounded p-3"><div className="text-xs">Saving % prodotti selezionati</div><strong className={result.savingPct < 0 ? 'text-red-700' : 'text-green-800'}>{result.savingPct == null ? 'Non disponibile' : `${fmt(result.savingPct * 100)}%`}</strong></div>
+          </div>
+          <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-xs"><thead><tr>{['Prodotto', 'Perdita prima %', 'Perdita dopo %', 'Kg attesi', 'Kg dopo', 'Kg evitati', 'Saving %', 'Quota kg', 'Saving €', 'Quota €'].map(label => <th key={label} className="p-2 text-left border-b">{label}</th>)}</tr></thead><tbody>
+            {result.products.map(item => <tr key={item.product} className="border-b">
+              <td className="p-2">{item.product}</td>
+              <td className="p-2">{fmt(item.beforeRate * 100)}%</td>
+              <td className="p-2">{fmt(item.afterRate * 100)}%</td>
+              <td className="p-2">{fmt(item.expected)}</td>
+              <td className="p-2">{fmt(item.afterLoss)}</td>
+              <td className={`p-2 ${item.avoided < 0 ? 'text-red-700' : 'text-green-800'}`}>{fmt(item.avoided)}</td>
+              <td className="p-2">{item.savingPct == null ? 'Non disponibile' : `${fmt(item.savingPct * 100)}%`}</td>
+              <td className="p-2">{item.shareKg == null ? 'Non disponibile' : `${fmt(item.shareKg * 100)}%`}</td>
+              <td className="p-2">{fmt(item.gross)}</td>
+              <td className="p-2">{item.shareEuro == null ? 'Non disponibile' : `${fmt(item.shareEuro * 100)}%`}</td>
+            </tr>)}
+            <tr className="font-semibold">
+              <td className="p-2">Totale</td>
+              <td className="p-2">{fmt(result.totals.beforeRate * 100)}%</td>
+              <td className="p-2">{fmt(result.totals.afterRate * 100)}%</td>
+              <td className="p-2">{fmt(result.totals.expected)}</td>
+              <td className="p-2">{fmt(result.totals.afterLoss)}</td>
+              <td className="p-2">{fmt(result.totals.avoided)}</td>
+              <td className="p-2">{result.savingPct == null ? 'Non disponibile' : `${fmt(result.savingPct * 100)}%`}</td>
+              <td className="p-2">100%</td>
+              <td className="p-2">{fmt(result.gross)}</td>
+              <td className="p-2">{result.gross == null ? 'Non disponibile' : '100%'}</td>
+            </tr>
+          </tbody></table></div>
+        </div>}
         <div className="grid md:grid-cols-2 gap-3">{input('Costi implementazione € (facoltativi)', 'costs', 'number')}{input('Descrizione dei costi', 'costNote')}</div>
 
         {form.rows.length > 0 && (issues.length ? <div className="text-sm text-amber-800">{[...new Set(issues)].map(issue => <p key={issue}>{issue}</p>)}</div> : <div className="grid md:grid-cols-3 gap-3">
