@@ -327,6 +327,7 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
       return { id: `${fonte}:${category}`, fonte, kpi: fonte === 'stain' && stainAnalysis.production ? 'percentuale' : 'kg', perimetro: category, prodotto: '', riduzione: '50', target_precedente: '' }
     })
   }
+  const productLabel = fonte => fonte === 'manuale' ? 'Raccolta manuale' : form.stain_prodotti.length ? form.stain_prodotti.join(', ') : 'Tutti i prodotti'
   const objectives = syncObjectives(form)
   const evaluatedObjectives = objectives.map(row => ({ ...row, ...evaluateObjective(row, form, stainAnalysis, manualAnalysis) }))
   const updateObjective = (id, patch) => change(current => ({ ...current, obiettivi: syncObjectives(current).map(row => row.id === id ? { ...row, ...patch, target_precedente: '' } : row) }))
@@ -443,10 +444,11 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
       <section>
         <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">PASSO 4 - PRIORITÀ E OBIETTIVO</h3>
         {!evaluatedObjectives.length ? <p className="text-sm text-gray-500">Seleziona le perdite nel Passo 2.</p> : <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-          <table className="w-full text-sm min-w-[760px]">
+          <table className="w-full text-sm min-w-[900px]">
             <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-3 py-2 text-left">Perdita</th>
+                <th className="px-3 py-2 text-left">Prodotto</th>
                 <th className="px-3 py-2 text-left w-44">KPI</th>
                 <th className="px-3 py-2 text-left w-28">Riduzione %</th>
                 <th className="px-3 py-2 text-right">Attuale</th>
@@ -460,6 +462,7 @@ export default function ScrapBaseline({ stepData, onChange, major }) {
                   <div className="flex items-center gap-2 min-w-0"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: lossColor({ categoria: result.perimetro }) }} aria-hidden="true" /><span className="truncate font-medium" title={result.perimetro}>{result.perimetro}</span></div>
                   {result.errors.length > 0 && <p className="text-xs text-red-700 mt-0.5">{result.errors[0]}</p>}
                 </td>
+                <td className="px-3 py-2 text-gray-700"><span className="block truncate max-w-xs" title={productLabel(result.fonte)}>{productLabel(result.fonte)}</span></td>
                 <td className="px-3 py-1">{result.fonte === 'stain' ? <select aria-label="KPI" className={input} value={result.kpi} onChange={event => updateObjective(result.id, { kpi: event.target.value })}><option value="percentuale" disabled={!stainAnalysis.production}>% sui kg prodotti</option><option value="kg">kg di perdita</option></select> : <span className="text-gray-600">{form.unita_manuale}</span>}</td>
                 <td className="px-3 py-1"><input aria-label="Riduzione %" className={input} type="number" min="0" max="100" step="any" value={result.riduzione ?? ''} onChange={event => updateObjective(result.id, { riduzione: event.target.value })} /></td>
                 <td className="px-3 py-2 text-right tabular-nums">{result.baseline === null ? '—' : `${fmt(result.baseline)} ${result.unit}`}</td>
