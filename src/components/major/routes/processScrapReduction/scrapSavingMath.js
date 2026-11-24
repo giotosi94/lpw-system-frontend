@@ -175,10 +175,6 @@ export function objectiveContext(data, objective) {
     throw new Error('Seleziona un obiettivo della Fase 1.')
   }
 
-  if (objective.errors?.length) {
-    throw new Error(objective.errors.join(' '))
-  }
-
   const source = objective.fonte
 
   if (!['stain', 'manuale'].includes(source)) {
