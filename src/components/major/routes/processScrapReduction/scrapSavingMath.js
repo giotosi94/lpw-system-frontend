@@ -9,34 +9,72 @@ export function calculateSaving(rows, costs, annualProduction) {
   if (!rows.length) issues.push('Inserisci almeno una riga di confronto.')
   const keys = new Set()
   const result = rows.map((row, index) => {
-    const values = ['beforeProduction', 'beforeLoss', 'afterProduction', 'afterLoss', 'driver'].map(key => numeric(row[key]))
-    const [bp, bl, ap, al, driver] = values
+    const [bp, bl, ap, al] = ['beforeProduction', 'beforeLoss', 'afterProduction', 'afterLoss'].map(key => numeric(row[key]))
+    const driver = numeric(row.driver)
     const key = `${row.product.trim()}|${row.type}`
     if (!row.product.trim() || !['scarto', 'rework'].includes(row.type)) issues.push(`Riga ${index + 1}: prodotto e tipo obbligatori.`)
     if (keys.has(key)) issues.push(`Riga ${index + 1}: prodotto e tipo duplicati.`)
     keys.add(key)
-    if (values.some(value => value === null) || !(bp > 0) || !(ap > 0) || bl > bp || al > ap) {
+    if ([bp, bl, ap, al].some(value => value === null) || !(bp > 0) || !(ap > 0) || bl > bp || al > ap) {
       issues.push(`Riga ${index + 1}: quantità non valide; produzione positiva e perdita non superiore alla produzione.`)
       return { ...row, valid: false }
     }
-    if (!row.driverYear || !/^\d{4}$/.test(String(row.driverYear)) || !row.driverRef?.trim()) issues.push(`Riga ${index + 1}: indica anno e riferimento del driver.`)
+    if (driver === null) issues.push(`Riga ${index + 1}: driver €/kg mancante.`)
+    else if (!row.driverYear || !/^\d{4}$/.test(String(row.driverYear)) || !row.driverRef?.trim()) issues.push(`Riga ${index + 1}: indica anno e riferimento del driver.`)
     const expected = ap * bl / bp
     const avoided = expected - al
-    return { ...row, valid: true, beforeRate: bl / bp, afterRate: al / ap, expected, avoided, gross: avoided * driver }
+    return { ...row, valid: true, beforeRate: bl / bp, afterRate: al / ap, expected, avoided, gross: driver === null ? null : avoided * driver }
   })
   const investment = numeric(costs)
   if (investment === null) issues.push('Indica i costi di implementazione, anche zero.')
-  const gross = result.reduce((sum, row) => sum + (row.gross || 0), 0)
-  const avoided = result.reduce((sum, row) => sum + (row.avoided || 0), 0)
+  const valid = result.filter(row => row.valid)
+  const hasDriver = valid.length > 0 && valid.every(row => row.gross !== null)
+  const gross = hasDriver ? valid.reduce((sum, row) => sum + row.gross, 0) : null
+  const avoided = valid.reduce((sum, row) => sum + row.avoided, 0)
+  const expected = valid.reduce((sum, row) => sum + row.expected, 0)
   const production = new Map()
   rows.forEach(row => {
     const value = numeric(row.afterProduction)
     if (production.has(row.product) && production.get(row.product) !== value) issues.push(`Produzione dopo incoerente per ${row.product}.`)
     production.set(row.product, value)
   })
-  const totalProduction = [...production.values()].reduce((sum, value) => sum + (value || 0), 0)
+  const productMap = new Map()
+  valid.forEach(row => {
+    const item = productMap.get(row.product) || { product: row.product, beforeProduction: numeric(row.beforeProduction), afterProduction: numeric(row.afterProduction), beforeLoss: 0, afterLoss: 0, expected: 0, avoided: 0, gross: 0, hasDriver: true }
+    item.beforeLoss += numeric(row.beforeLoss)
+    item.afterLoss += numeric(row.afterLoss)
+    item.expected += row.expected
+    item.avoided += row.avoided
+    if (row.gross === null) item.hasDriver = false
+    else item.gross += row.gross
+    productMap.set(row.product, item)
+  })
+  const products = [...productMap.values()].map(item => ({
+    ...item,
+    gross: item.hasDriver ? item.gross : null,
+    beforeRate: item.beforeLoss / item.beforeProduction,
+    afterRate: item.afterLoss / item.afterProduction,
+    savingPct: item.expected > 0 ? item.avoided / item.expected : null,
+    shareKg: avoided !== 0 ? item.avoided / avoided : null,
+    shareEuro: item.hasDriver && gross ? item.gross / gross : null,
+  })).sort((a, b) => b.avoided - a.avoided)
+  const sum = key => products.reduce((total, item) => total + item[key], 0)
+  const totalBeforeProduction = sum('beforeProduction')
+  const totalAfterProduction = sum('afterProduction')
+  const totals = products.length ? {
+    beforeProduction: totalBeforeProduction,
+    afterProduction: totalAfterProduction,
+    beforeLoss: sum('beforeLoss'),
+    afterLoss: sum('afterLoss'),
+    beforeRate: sum('beforeLoss') / totalBeforeProduction,
+    afterRate: sum('afterLoss') / totalAfterProduction,
+    expected,
+    avoided,
+    savingPct: expected > 0 ? avoided / expected : null,
+  } : null
+  const totalProduction = [...production.values()].reduce((total, value) => total + (value || 0), 0)
   const annual = numeric(annualProduction)
-  return { rows: result, issues: [...new Set(issues)], gross, avoided, net: gross - (investment || 0), annualGross: annual !== null && totalProduction > 0 ? gross / totalProduction * annual : null }
+  return { rows: result, issues: [...new Set(issues)], gross, avoided, expected, savingPct: totals?.savingPct ?? null, totals, products, net: gross === null ? null : gross - (investment || 0), annualGross: gross !== null && annual !== null && totalProduction > 0 ? gross / totalProduction * annual : null }
 }
 
 export function baselineScope(data) {
