@@ -18,7 +18,6 @@ export default function MajorKaizenDetailPage() {
   const [error, setError] = useState('')
   const [dataOpen, setDataOpen] = useState(false)
   const [ganttOpen, setGanttOpen] = useState(false)
-
   const activityData = useMajorPlanActivities(major, ganttOpen, activeKey)
   const toggleGantt = () => setGanttOpen(current => !current)
 
@@ -39,13 +38,16 @@ export default function MajorKaizenDetailPage() {
     return () => { cancelled = true }
   }, [id])
 
+  useEffect(() => {
+    if (!dataOpen) return
+    const onKey = event => { if (event.key === 'Escape') setDataOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [dataOpen])
+
   const saveGantt = async gantt => {
-    try {
-      const res = await api.put(`/major-kaizen/${id}`, { gant_master_plan: gantt })
-      setMajor(current => ({ ...current, gant_master_plan: res.data.gant_master_plan }))
-    } catch (err) {
-      throw err
-    }
+    const res = await api.put(`/major-kaizen/${id}`, { gant_master_plan: gantt })
+    setMajor(current => ({ ...current, gant_master_plan: res.data.gant_master_plan }))
   }
 
   const saveMajor = async changes => {
@@ -66,6 +68,11 @@ export default function MajorKaizenDetailPage() {
   )
   const stepsData = major?.steps_data || {}
   const activeStep = steps.find(step => step.step_id === activeKey)
+
+  const selectStep = key => {
+    setActiveKey(key)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   const saveStep = async changes => {
     try {
@@ -111,35 +118,49 @@ export default function MajorKaizenDetailPage() {
   }
 
   return (
-    <div>
+    <div className="mx-auto w-full max-w-6xl px-0 sm:px-2">
       <MajorHeader major={major} onOpenData={() => setDataOpen(true)} />
-      <section className="mb-5 rounded-lg border border-gray-200 bg-white">
+
+      <section className="mb-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
         <button
           type="button"
           onClick={toggleGantt}
           aria-expanded={ganttOpen}
           aria-controls="major-master-plan-panel"
-          className="flex min-h-[56px] w-full items-center justify-between gap-3 bg-primary px-4 py-3 text-left text-white transition-colors hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300"
+          className="flex w-full items-center justify-between gap-3 bg-primary px-3 py-2 text-left text-white hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300 sm:px-4"
         >
-          <span className="flex items-center gap-3"><span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 4v16h16M8 7h8M11 12h9M7 17h7" /></svg></span><span className="text-sm font-bold tracking-wide">Master Plan</span></span>
-          <span className="flex shrink-0 items-center gap-2 rounded-lg border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold"><span>{ganttOpen ? 'Nascondi' : 'Apri pianificazione'}</span><svg aria-hidden="true" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" className={ganttOpen ? 'rotate-180' : ''}><path d="m5 7 5 5 5-5" /></svg></span>
+          <span className="flex items-center gap-2">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 4v16h16M8 7h8M11 12h9M7 17h7" /></svg>
+            <span className="text-sm font-semibold">Master Plan</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1 text-xs">
+            <span className="hidden sm:inline">{ganttOpen ? 'Nascondi' : 'Apri pianificazione'}</span>
+            <svg aria-hidden="true" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" className={ganttOpen ? 'rotate-180' : ''}><path d="m5 7 5 5 5-5" /></svg>
+          </span>
         </button>
         {ganttOpen && (
-          <div id="major-master-plan-panel" className="border-t border-gray-200 p-2">
+          <div id="major-master-plan-panel" className="overflow-x-auto border-t border-gray-200 p-2">
             <KaizenGantMasterPlan key={major._id} value={ganttValue} onChange={saveGantt}
               activities={activityData.items} activitiesLoading={activityData.loading} activitiesError={activityData.error}
-              onRefreshActivities={activityData.refresh} onOpenActivityPhase={setActiveKey} />
+              onRefreshActivities={activityData.refresh} onOpenActivityPhase={selectStep} />
           </div>
         )}
       </section>
-      <MajorRouteNavigator steps={steps} stepsData={stepsData} activeKey={activeKey} onSelect={setActiveKey} />
+
+      <div className="sticky top-0 z-20 -mx-1 mb-4 overflow-x-auto bg-[#f3eee4]/95 px-1 py-1 backdrop-blur">
+        <div className="min-w-max">
+          <MajorRouteNavigator steps={steps} stepsData={stepsData} activeKey={activeKey} onSelect={selectStep} />
+        </div>
+      </div>
+
       {activeStep ? (
         <MajorStepContainer key={activeStep.step_id} step={activeStep} stepData={stepsData[activeStep.step_id]}
           allStepsData={stepsData} major={major} onSaveStep={saveStep} onApproveGate={approveGate} />
       ) : <p className="py-6 text-gray-600">Nessuna fase configurata per questa Route.</p>}
+
       {dataOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <section role="dialog" aria-modal="true" aria-labelledby="major-data-title" className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl bg-white p-5">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" onClick={event => { if (event.target === event.currentTarget) setDataOpen(false) }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="major-data-title" className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-t-xl bg-white p-4 sm:rounded-xl sm:p-5">
             <div className="mb-4 flex items-center justify-between border-b pb-3">
               <h2 id="major-data-title" className="text-lg font-semibold">Dati progetto</h2>
               <button type="button" onClick={() => setDataOpen(false)} className="rounded border px-3 py-1 text-sm">Chiudi</button>
