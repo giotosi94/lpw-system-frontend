@@ -58,15 +58,17 @@ export default function Layout() {
           sidebarOpen ? 'w-64' : 'w-16'
         } bg-primary text-white transition-all duration-300 flex flex-col shadow-warm-lg`}
       >
-        <div className="p-4 flex justify-between items-center border-b border-primary-light">
+        <div className="relative flex h-20 shrink-0 items-center justify-center border-b border-primary-light">
           {sidebarOpen && (
-            <img src={lpwLogo} alt={APP_NAME} className="h-10 w-auto shrink-0 object-contain" />
+            <img src={lpwLogo} alt={APP_NAME} className="h-14 w-auto object-contain" />
           )}
 
           <button
             type="button"
             onClick={() => setSidebarOpen(current => !current)}
-            className="text-white hover:bg-primary-light p-1 rounded"
+            className={`rounded p-2 text-white hover:bg-primary-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-white ${sidebarOpen ? 'absolute right-3 top-1/2 -translate-y-1/2' : ''}`}
+            aria-label={sidebarOpen ? 'Riduci menu' : 'Espandi menu'}
+            aria-expanded={sidebarOpen}
             title={sidebarOpen ? 'Riduci menu' : 'Espandi menu'}
           >
             {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
