@@ -177,7 +177,7 @@ export default function SegnalazioniPage() {
           type="button"
           onClick={() => exportSegnalazioniCsv(items)}
           disabled={loading || items.length === 0}
-          className="flex items-center gap-2 text-sm bg-gray-700 text-white px-3 py-2 rounded-lg font-medium hover:bg-gray-800 disabled:opacity-50"
+          className="flex items-center gap-2 text-sm bg-primary text-white px-3 py-2 rounded-lg font-medium hover:bg-primary-light disabled:opacity-50"
           title="Scarica le segnalazioni in un file per Excel"
         >
           <Download size={16} /> Scarica Excel
@@ -190,14 +190,14 @@ export default function SegnalazioniPage() {
           const Icon = tipo.Icon
           return (
             <div key={tipo.id} className="bg-white rounded-xl shadow overflow-hidden">
-              <div className="bg-gray-700 text-white px-5 py-3 flex items-center justify-between">
+              <div className="bg-primary text-white px-5 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-2 font-bold tracking-wide">
                   <Icon size={18} /> {tipo.label}
                 </div>
                 <button
                   type="button"
                   onClick={() => createNew(tipo.id)}
-                  className="bg-white text-gray-800 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1 hover:bg-gray-100"
+                  className="bg-white text-primary px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1 hover:bg-gray-100"
                 >
                   <Plus size={16} /> Nuovo
                 </button>
@@ -221,7 +221,7 @@ export default function SegnalazioniPage() {
                       <button
                         type="button"
                         onClick={() => setDetail(item)}
-                        className="text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"
+                        className="text-primary hover:bg-gray-100 px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"
                       >
                         <Eye size={15} /> Consulta
                       </button>
@@ -470,27 +470,27 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-4xl h-[92vh] flex flex-col overflow-hidden shadow-2xl">
-        <div className="bg-gray-700 text-white px-6 py-4 flex items-center justify-between">
+        <div className="bg-primary text-white px-6 py-4 flex items-center justify-between">
           <div>
-            <div className="text-xs text-gray-300">Segnalazione di {form.tipo}</div>
+            <div className="text-xs text-white/70">Segnalazione di {form.tipo}</div>
             <h2 className="text-lg font-bold">{form.codice ? `Codice ${form.codice}` : 'Nuova segnalazione'}</h2>
           </div>
           <div className="flex items-center gap-2">
             {isBozza && (
               <>
-                <button type="button" onClick={save} disabled={saving} className="bg-white text-gray-800 px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-gray-100 disabled:opacity-50">
+                <button type="button" onClick={save} disabled={saving} className="border border-white/50 text-white px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-white/10 disabled:opacity-50">
                   <Save size={15} /> Salva bozza
                 </button>
-                <button type="button" onClick={termina} disabled={saving} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-blue-700 disabled:opacity-50">
+                <button type="button" onClick={termina} disabled={saving} className="bg-white text-primary font-medium px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-gray-100 disabled:opacity-50">
                   <Send size={15} /> Termina inserimento
                 </button>
               </>
             )}
-            <button type="button" onClick={closeDetail} className="p-1.5 rounded hover:bg-gray-600"><X size={20} /></button>
+            <button type="button" onClick={closeDetail} className="p-1.5 rounded hover:bg-white/10"><X size={20} /></button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 bg-gray-50">
           {isChiuso && (
             <div className="bg-green-50 border-l-4 border-green-500 rounded-r-lg p-3 flex items-center gap-3">
               <Lock size={20} className="text-green-600" />
@@ -506,21 +506,35 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
             </div>
           )}
 
-          <Section title="DATI RIEPILOGATIVI">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <ReadField label="Codice" value={form.codice} />
-              <ReadField label="Segnalazione" value={`Segnalazione di ${form.tipo}`} />
-              <ReadField label="Segnalatore" value={form.segnalatore_nome} />
-              <ReadField label="Data" value={form.created_at ? new Date(form.created_at).toLocaleString('it-IT') : '—'} />
-              <div>
-                <FieldLabel>Stato</FieldLabel>
-                <span className={`inline-block px-3 py-1.5 rounded text-sm font-medium ${STATO_BADGE[form.stato] || 'bg-gray-100'}`}>{form.stato}</span>
-              </div>
-              <ReadField label="Data chiusura" value={form.data_chiusura ? new Date(form.data_chiusura).toLocaleString('it-IT') : '—'} />
+          <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+            <div className="bg-primary text-white px-4 py-2.5 flex items-center justify-between gap-3">
+              <span className="font-bold text-sm">SEGNALAZIONE</span>
+              {!isBozza && isAdmin && !isChiuso && (
+                editMode ? (
+                  <div className="flex gap-2">
+                    <button type="button" onClick={cancelEdit} disabled={saving} className="px-3 py-1 rounded text-sm border border-white/50 hover:bg-white/10">Annulla</button>
+                    <button type="button" onClick={save} disabled={saving} className="px-3 py-1 rounded text-sm bg-white text-primary font-medium flex items-center gap-1 hover:bg-gray-100 disabled:opacity-50">
+                      <Save size={14} /> {saving ? 'Salvataggio...' : 'Salva'}
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={startEdit} className="px-3 py-1 rounded text-sm border border-white/50 flex items-center gap-1 hover:bg-white/10">
+                    <Edit2 size={14} /> Modifica
+                  </button>
+                )
+              )}
             </div>
-          </Section>
-
-          <Section title="DETTAGLIO DELL'EVENTO">
+            <div className="divide-y divide-gray-200">
+              <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                <ReadField label="Segnalatore" value={form.segnalatore_nome} />
+                <ReadField label="Inviata il" value={form.created_at ? new Date(form.created_at).toLocaleString('it-IT') : ''} />
+                <div>
+                  <FieldLabel>Stato</FieldLabel>
+                  <span className={`inline-block px-3 py-1.5 rounded text-sm font-medium ${STATO_BADGE[form.stato] || 'bg-gray-100'}`}>{form.stato}</span>
+                </div>
+                <ReadField label="Data chiusura" value={form.data_chiusura ? new Date(form.data_chiusura).toLocaleString('it-IT') : ''} />
+              </div>
+              <SubBlock title="Dettaglio dell'evento">
             {canEdit ? (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -585,9 +599,8 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
                 </div>
               </>
             )}
-          </Section>
-
-          <Section title="FOTO E ALLEGATI">
+              </SubBlock>
+              <SubBlock title="Foto e allegati">
             {canEdit ? (
               <>
                 <ImageUpload
@@ -619,7 +632,7 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
                       </div>
                     )}
                     {(form.allegati || []).map((doc, i) => (
-                      <a key={i} href={doc.url} target="_blank" rel="noreferrer" className="block text-sm text-blue-600 hover:underline">
+                      <a key={i} href={doc.url} target="_blank" rel="noreferrer" className="block text-sm text-primary hover:underline">
                         {doc.filename || `Documento ${i + 1}`}
                       </a>
                     ))}
@@ -627,29 +640,14 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
                 )}
               </div>
             )}
-          </Section>
-
-          {!isBozza && (form.modificato_da || (isAdmin && !isChiuso)) && (
-            <div className="flex flex-wrap items-center justify-between gap-3 -mt-3">
-              <span className="text-xs text-gray-500">
-                {form.modificato_da && `Modificato da ${form.modificato_da}${form.modificato_il ? ` il ${new Date(form.modificato_il).toLocaleString('it-IT')}` : ''}`}
-              </span>
-              {isAdmin && !isChiuso && (
-                editMode ? (
-                  <div className="flex gap-2">
-                    <button type="button" onClick={cancelEdit} disabled={saving} className="px-3 py-1.5 border rounded-lg text-sm hover:bg-gray-50">Annulla</button>
-                    <button type="button" onClick={save} disabled={saving} className="px-3 py-1.5 bg-primary text-white rounded-lg text-sm flex items-center gap-1 hover:bg-primary-light disabled:opacity-50">
-                      <Save size={14} /> {saving ? 'Salvataggio...' : 'Salva'}
-                    </button>
-                  </div>
-                ) : (
-                  <button type="button" onClick={startEdit} className="px-3 py-1.5 border rounded-lg text-sm flex items-center gap-1 hover:bg-gray-50">
-                    <Edit2 size={14} /> Modifica
-                  </button>
-                )
+              </SubBlock>
+              {!isBozza && form.modificato_da && (
+                <div className="px-4 py-2 text-xs text-gray-500 bg-gray-50">
+                  Modificato da {form.modificato_da}{form.modificato_il ? ` il ${new Date(form.modificato_il).toLocaleString('it-IT')}` : ''}
+                </div>
               )}
             </div>
-          )}
+          </div>
 
           {isAdmin && form._id && !isBozza && (
             <Section title="GESTIONE">
@@ -868,10 +866,19 @@ function ConfigSelect({ value, options, onChange }) {
   )
 }
 
+function SubBlock({ title, children }) {
+  return (
+    <div className="p-4 space-y-4">
+      <div className="text-xs font-semibold uppercase tracking-wide text-primary">{title}</div>
+      {children}
+    </div>
+  )
+}
+
 function Section({ title, children }) {
   return (
-    <div className="border rounded-lg overflow-hidden">
-      <div className="bg-gray-600 text-white px-4 py-2.5 font-bold text-sm">{title}</div>
+    <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+      <div className="bg-primary text-white px-4 py-2.5 font-bold text-sm">{title}</div>
       <div className="p-4 space-y-4">{children}</div>
     </div>
   )
