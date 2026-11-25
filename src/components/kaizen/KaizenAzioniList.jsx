@@ -19,6 +19,8 @@ export default function KaizenAzioniList({
   onPlansLoaded = null,
 }) {
   const isMajor = Boolean(parent)
+  const isQuick = !isMajor && (kaizen?.livello === 'Quick' || kaizen?.tipo?.includes('Quick'))
+  const hasGant = !isQuick
   const phaseLocked = isMajor && Boolean(defaultStepId)
   const [azioni, setAzioni] = useState([])
   const [loading, setLoading] = useState(true)
