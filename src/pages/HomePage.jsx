@@ -124,11 +124,6 @@ export default function HomePage() {
   const overduePlans = targetActionPlans.filter(ap => isActionPlanOverdue(ap, statiConfig))
   const upcomingPlans = targetActionPlans.filter(ap => !isActionPlanOverdue(ap, statiConfig) && Number.isFinite(Date.parse(ap.data_scadenza)))
   const undatedPlans = targetActionPlans.filter(ap => !Number.isFinite(Date.parse(ap.data_scadenza)))
-  const roleLabels = {
-    admin: 'Amministratore',
-    office: 'Ufficio',
-    operator: 'Operatore'
-  }
   const shownOpl = oplDaLeggere
   const ownReports = reports.filter(item => {
     const id = user.id || user._id
@@ -143,13 +138,11 @@ export default function HomePage() {
   const renderKaizenRow = k => <Link key={k._id} to={`/kaizen/${k._id}`} className="flex items-center gap-3 min-w-0 py-2 hover:bg-gray-50 rounded" title={k.titolo}><span className="shrink-0 whitespace-nowrap text-xs font-mono text-gray-500">{k.numero}</span><span className="min-w-0 truncate text-sm font-medium">{k.titolo}</span></Link>
   const renderPillarRow = p => <Link key={p._id} to={`/pillars/${p._id}`} className="flex items-center gap-3 py-2 hover:bg-gray-50 rounded">{p.icon_image && <img src={p.icon_image} alt="" style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }} onError={event => { event.currentTarget.style.display = 'none' }} />}<div className="min-w-0"><p className="text-sm font-semibold">{p.sigla}</p><p className="text-xs text-gray-600 break-words">{p.label}</p></div></Link>
   const selectFromModal = ap => { setListModal(null); setSelectedAP(ap) }
-  const roles = [user.job_title || roleLabels[user.role], ...myReparti, ...(user.linee || []), user.team].filter(Boolean)
   return <div className="lpw-home" data-layout="home-professional-v2">
     <style>{`
 .lpw-home{--home-ink:#29251f;--home-muted:#6e706f;--home-line:#e6e4df;--home-accent:#715328;color:var(--home-ink);width:100%;min-width:0;font-size:14px;line-height:1.5}
 .lpw-home .home-heading{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;padding:4px 0 22px;border-bottom:1px solid #dedbd4;margin-bottom:22px}
 .lpw-home .home-heading h1{font-size:26px;letter-spacing:-.6px;line-height:1.25;color:#30271e;margin:0;font-weight:650}
-.lpw-home .home-heading p{color:var(--home-muted);font-size:12px;margin-top:6px}
 .lpw-home .home-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;align-items:start}
 .lpw-home .home-panel{background:#fff;border:1px solid var(--home-line);border-radius:10px;padding:20px;min-width:0;box-shadow:0 2px 4px #30271e03}
 .lpw-home .home-panel-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:18px}
@@ -191,8 +184,7 @@ export default function HomePage() {
   .lpw-home .home-ap-scroll{box-sizing:border-box;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#b3a58c #f2eee8}.lpw-home .home-ap-columns .home-ap-scroll .ap-home-readonly{overflow:visible}.lpw-home .home-ap-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #e5dcd1}.lpw-home .home-ap-columns .home-ap-head .home-ap-group{margin:0;padding:0;border:0}.lpw-home .home-ap-columns .home-ap-head .home-more{margin:0;padding:0;flex-shrink:0}.lpw-home .home-ap-scroll:focus-visible{outline:2px solid #947748;outline-offset:2px}.lpw-home .home-ap-scroll thead th{position:sticky;top:0;z-index:1;background:#f8f7f4}.lpw-home .home-more{display:inline-block;margin-top:10px;padding:6px 0;background:none;border:0;color:#715328;font-size:12px;font-weight:600;text-decoration:underline;text-underline-offset:3px;cursor:pointer}.lpw-home .home-more:hover{color:#3e2b1a}.lpw-home .home-panel-opl>.home-panel-heading>.home-more,.lpw-home .home-panel-reports>.home-panel-heading>.home-more{margin:0 0 0 auto;padding:0;flex-shrink:0}.lpw-home .home-panel-opl .home-ap-scroll,.lpw-home .home-panel-reports .home-ap-scroll{padding-right:2px}.lpw-home .home-panel-opl .home-opl-row:last-child,.lpw-home .home-panel-reports .home-report-row:last-child{margin-bottom:0}.lpw-home .home-ap-columns .home-more{margin-top:6px}
 `}</style>
     <header className="home-heading">
-      <div className="min-w-0"><h1 className="text-2xl font-bold">Ciao {user.full_name?.split(' ')[0] || user.username}!</h1><p className="text-sm mt-1 break-words">{[...new Set(roles)].join(' · ')}</p></div>
-      <p className="text-xs">{new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+      <h1 className="text-2xl font-bold">Ciao {user.full_name?.split(' ')[0] || user.username}!</h1>
     </header>
     <div className="home-grid">
       <HomeSection section="opl" title="OPL" more={!errors.opl && <MoreLink count={shownOpl.length} limit={LIST_PREVIEW} onClick={() => setListModal('opl')} />} headerContent={<div className="home-tabs" role="group" aria-label="Letture OPL">
