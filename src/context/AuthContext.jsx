@@ -17,14 +17,18 @@ export function AuthProvider({ children }) {
     setLoading(false)
   }, [])
 
-  const login = async (upn, password) => {
-    const res = await api.post('/auth/login', { upn, password })
-    const { access_token, user: userData } = res.data
+  const setSession = data => {
+    const { access_token, user: userData } = data
     localStorage.setItem('token', access_token)
     localStorage.setItem('user', JSON.stringify(userData))
     api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
     setUser(userData)
-    return res.data
+    return data
+  }
+
+  const login = async (upn, password) => {
+    const res = await api.post('/auth/login', { upn, password })
+    return setSession(res.data)
   }
 
   const logout = () => {
@@ -44,6 +48,7 @@ export function AuthProvider({ children }) {
       value={{
         user,
         login,
+        setSession,
         logout,
         loading,
         isAdmin,
