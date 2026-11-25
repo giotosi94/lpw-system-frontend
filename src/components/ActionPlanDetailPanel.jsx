@@ -617,9 +617,6 @@ export default function ActionPlanDetailPanel({
             {detail.stato || '—'}
           </SidebarRow>
 
-          <SidebarRow label="Perdita">
-            <span className="truncate" title={detail.tipo || ''}>{detail.tipo || '—'}</span>
-          </SidebarRow>
           <SidebarRow label="Categoria">
             <span className="truncate">{detail.categoria_perdita || detail.tipo_perdita || '—'}</span>
           </SidebarRow>
