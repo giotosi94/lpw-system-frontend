@@ -119,6 +119,14 @@ const SECTIONS = [
         description: 'Categorie configurabili per le segnalazioni di ambiente (es. Sversamento, Rifiuti, Emissioni, Rumore)',
         usedIn: ['Form Segnalazione Ambiente (campo "Categoria")'],
       },
+      {
+        id: 'segnalazioni_responsabili',
+        label: 'Responsabili',
+        color: 'red',
+        isSegnalazioniResponsabili: true,
+        description: 'Utenti che ricevono e gestiscono le segnalazioni. Se non è indicato nessuno, le segnalazioni vanno agli amministratori.',
+        usedIn: ['Notifiche nuove segnalazioni', 'Gestione e chiusura segnalazioni'],
+      },
     ],
   },
 ]
@@ -223,6 +231,8 @@ export default function SettingsPage() {
             <PillarsManager onChange={loadStats} />
           ) : currentTab.isRepartiTree ? (
             <RepartiTreePlaceholder />
+          ) : currentTab.isSegnalazioniResponsabili ? (
+            <SegnalazioniResponsabili />
           ) : (
             <ConfigManager
               key={currentTab.id}
@@ -241,6 +251,77 @@ export default function SettingsPage() {
 // ──────────────────────────────────────────────────────────
 // REPARTI TREE
 // ──────────────────────────────────────────────────────────
+function SegnalazioniResponsabili() {
+  const [values, setValues] = useState({ Sicurezza: [], Ambiente: [] })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    api.get('/segnalazioni/responsabili/config')
+      .then(res => setValues({ Sicurezza: res.data?.Sicurezza || [], Ambiente: res.data?.Ambiente || [] }))
+      .catch(err => setMessage(err.response?.data?.detail || 'Responsabili non disponibili'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const change = (tipo, selected) => {
+    const list = Array.isArray(selected) ? selected : []
+    setValues(current => (tipo === 'Sicurezza' ? { ...current, Sicurezza: list } : { ...current, Ambiente: list }))
+    setDirty(true)
+    setMessage('')
+  }
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const res = await api.put('/segnalazioni/responsabili/config', {
+        Sicurezza: values.Sicurezza.map(item => item.id),
+        Ambiente: values.Ambiente.map(item => item.id),
+      })
+      setValues({ Sicurezza: res.data?.Sicurezza || [], Ambiente: res.data?.Ambiente || [] })
+      setDirty(false)
+      setMessage('Salvato')
+    } catch (err) {
+      setMessage(err.response?.data?.detail || err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <div className="bg-white rounded-lg shadow-sm p-12 text-center text-gray-400">Caricamento...</div>
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-4 space-y-4">
+      {['Sicurezza', 'Ambiente'].map(tipo => (
+        <div key={tipo}>
+          <label className="block text-sm font-medium mb-1">
+            {tipo}
+            <span className="text-xs text-gray-500 font-normal ml-1">({(tipo === 'Sicurezza' ? values.Sicurezza : values.Ambiente).length})</span>
+          </label>
+          <UserPicker
+            value={tipo === 'Sicurezza' ? values.Sicurezza : values.Ambiente}
+            onChange={selected => change(tipo, selected)}
+            mode="multi"
+            placeholder="Aggiungi utenti..."
+          />
+        </div>
+      ))}
+      <div className="flex justify-end items-center gap-3 pt-3 border-t">
+        {message && <span role="status" className="text-sm text-gray-600">{message}</span>}
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving || !dirty}
+          className="px-5 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-light disabled:opacity-50 flex items-center gap-2"
+        >
+          <Save size={16} /> {saving ? 'Salvataggio...' : 'Salva'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function RepartiTreePlaceholder() {
   const [reparti, setReparti] = useState([])
   const [loading, setLoading] = useState(true)
