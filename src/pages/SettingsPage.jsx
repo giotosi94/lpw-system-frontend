@@ -36,13 +36,6 @@ const SECTIONS = [
     color: 'green',
     tabs: [
       {
-        id: 'tipi_action_plan',
-        label: 'Perdita',
-        color: 'green',
-        description: 'Perdite selezionabili negli Action Plan',
-        usedIn: ['Form Action Plan (campo "Perdita")', 'Filtri Action Plan'],
-      },
-      {
         id: 'stato_ap',
         label: 'Stato',
         color: 'green',
@@ -58,10 +51,11 @@ const SECTIONS = [
     tabs: [
       {
         id: 'categorie_perdita',
-        label: 'Categoria',
+        label: 'Categoria e perdite',
         color: 'red',
-        description: 'Condivisa da Kaizen e Action Plan',
-        usedIn: ['Kaizen (Ishikawa)', 'Action Plan', 'Step 2 Pareto Pillar'],
+        isCategoriePerdite: true,
+        description: 'Categorie con le perdite collegate. Nel Kaizen la Perdita si sceglie dopo la Categoria.',
+        usedIn: ['Kaizen (Categoria e Perdita)', 'Action Plan (Categoria)', 'Filtri Kaizen e Action Plan'],
       },
       {
         id: 'argomenti',
@@ -245,6 +239,8 @@ export default function SettingsPage() {
             <PillarsManager onChange={loadStats} />
           ) : currentTab.isRepartiTree ? (
             <RepartiTreePlaceholder />
+          ) : currentTab.isCategoriePerdite ? (
+            <CategoriePerditeManager onChange={loadStats} />
           ) : currentTab.isSegnalazioniResponsabili ? (
             <SegnalazioniResponsabili />
           ) : (
@@ -810,6 +806,192 @@ function LineaFormModal({ reparto, linea, onClose, onSaved }) {
           </div>
         </form>
       </div>
+    </div>
+  )
+}
+
+function CategoriePerditeManager({ onChange }) {
+  const [categorie, setCategorie] = useState([])
+  const [perdite, setPerdite] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState(new Set())
+  const [form, setForm] = useState(null)
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    try {
+      const [cat, per] = await Promise.all([
+        api.get('/configurazioni/?tipo=categorie_perdita'),
+        api.get('/configurazioni/?tipo=perdita_kaizen'),
+      ])
+      setCategorie(cat.data || [])
+      setPerdite(per.data || [])
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function toggle(id) {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  async function save() {
+    if (!form?.label.trim()) return
+    const payload = {
+      tipo: form.tipo,
+      label: form.label.trim(),
+      attivo: form.attivo,
+      ...(form.tipo === 'perdita_kaizen' ? { parent_id: form.parent_id, parent_tipo: 'categorie_perdita' } : {}),
+    }
+    try {
+      if (form._id) await api.put(`/configurazioni/${form._id}`, payload)
+      else await api.post('/configurazioni/', payload)
+      if (form.parent_id) setExpanded(prev => new Set(prev).add(form.parent_id))
+      setForm(null)
+      await load()
+      onChange?.()
+    } catch (err) {
+      alert('Errore: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
+  async function remove(item, isCategoria) {
+    const figli = isCategoria ? perdite.filter(p => p.parent_id === item._id) : []
+    const msg = figli.length
+      ? `Eliminare la categoria "${item.label}" e le sue ${figli.length} perdite?`
+      : `Eliminare "${item.label}"?`
+    if (!confirm(msg)) return
+    try {
+      for (const figlio of figli) await api.delete(`/configurazioni/${figlio._id}`)
+      await api.delete(`/configurazioni/${item._id}`)
+      await load()
+      onChange?.()
+    } catch (err) {
+      alert('Errore: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
+  async function toggleAttivo(item) {
+    try {
+      await api.patch(`/configurazioni/${item._id}/toggle`)
+      await load()
+      onChange?.()
+    } catch (err) {
+      alert('Errore: ' + err.message)
+    }
+  }
+
+  const rowButtons = (item, isCategoria) => (
+    <div className="flex items-center gap-1 flex-shrink-0">
+      <button type="button" onClick={() => toggleAttivo(item)} title={item.attivo ? 'Disattiva' : 'Attiva'} className="p-1 rounded hover:bg-gray-100">
+        {item.attivo ? <Eye size={14} /> : <EyeOff size={14} />}
+      </button>
+      <button type="button" onClick={() => setForm({ _id: item._id, tipo: isCategoria ? 'categorie_perdita' : 'perdita_kaizen', label: item.label, attivo: item.attivo !== false, parent_id: item.parent_id || null })} title="Modifica" className="p-1 rounded hover:bg-gray-100 text-gray-600">
+        <Edit2 size={14} />
+      </button>
+      <button type="button" onClick={() => remove(item, isCategoria)} title="Elimina" className="p-1 rounded hover:bg-red-50 text-red-600">
+        <Trash2 size={14} />
+      </button>
+    </div>
+  )
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm">
+      <div className="p-4 border-b flex justify-end">
+        <button
+          type="button"
+          onClick={() => setForm({ tipo: 'categorie_perdita', label: '', attivo: true, parent_id: null })}
+          className="bg-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-light text-sm font-medium"
+        >
+          <Plus size={16} /> Aggiungi categoria
+        </button>
+      </div>
+      {loading ? (
+        <div className="p-12 text-center text-gray-400">Caricamento...</div>
+      ) : categorie.length === 0 ? (
+        <div className="p-12 text-center text-gray-500">Nessuna categoria configurata</div>
+      ) : (
+        <div className="p-3 space-y-2">
+          {categorie.map(cat => {
+            const figli = perdite.filter(p => p.parent_id === cat._id)
+            const open = expanded.has(cat._id)
+            return (
+              <div key={cat._id} className={`border rounded-lg ${cat.attivo === false ? 'opacity-60' : ''}`}>
+                <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-t-lg">
+                  <button type="button" onClick={() => toggle(cat._id)} aria-expanded={open} className="p-1 rounded hover:bg-gray-200">
+                    {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+                  <span className="flex-1 min-w-0 truncate font-medium">{cat.label}</span>
+                  <span className="text-xs text-gray-500">{figli.length} perdite</span>
+                  {rowButtons(cat, true)}
+                </div>
+                {open && (
+                  <div className="px-3 py-2 space-y-1">
+                    {figli.length === 0 && <div className="text-xs text-gray-400 py-1 pl-8">Nessuna perdita</div>}
+                    {figli.map(per => (
+                      <div key={per._id} className={`flex items-center gap-2 pl-8 py-1 border-b last:border-0 ${per.attivo === false ? 'opacity-60' : ''}`}>
+                        <span className="flex-1 min-w-0 truncate text-sm">{per.label}</span>
+                        {rowButtons(per, false)}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setForm({ tipo: 'perdita_kaizen', label: '', attivo: true, parent_id: cat._id })}
+                      className="ml-8 mt-1 text-xs text-primary hover:underline flex items-center gap-1"
+                    >
+                      <Plus size={12} /> Aggiungi perdita
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {form && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="bg-primary text-white px-5 py-3 flex justify-between items-center rounded-t-lg">
+              <h2 className="font-semibold">
+                {form._id ? 'Modifica' : 'Nuova'} {form.tipo === 'perdita_kaizen' ? 'perdita' : 'categoria'}
+              </h2>
+              <button type="button" onClick={() => setForm(null)}><X size={20} /></button>
+            </div>
+            <form onSubmit={event => { event.preventDefault(); save() }} className="p-5 space-y-3">
+              {form.tipo === 'perdita_kaizen' && (
+                <label className="block text-sm">
+                  <span className="block font-medium mb-1">Categoria</span>
+                  <select value={form.parent_id || ''} onChange={event => setForm({ ...form, parent_id: event.target.value })} className="w-full border rounded-lg px-3 py-2">
+                    {categorie.map(cat => <option key={cat._id} value={cat._id}>{cat.label}</option>)}
+                  </select>
+                </label>
+              )}
+              <label className="block text-sm">
+                <span className="block font-medium mb-1">Nome</span>
+                <input required autoFocus value={form.label} onChange={event => setForm({ ...form, label: event.target.value })} className="w-full border rounded-lg px-3 py-2" />
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.attivo} onChange={event => setForm({ ...form, attivo: event.target.checked })} />
+                Attivo
+              </label>
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button type="button" onClick={() => setForm(null)} className="px-4 py-2 border rounded-lg">Annulla</button>
+                <button type="submit" disabled={!form.label.trim()} className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-light disabled:opacity-50 flex items-center gap-2">
+                  <Save size={16} /> Salva
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
