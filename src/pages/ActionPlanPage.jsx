@@ -17,7 +17,7 @@ export default function ActionPlanPage() {
   const [viewMode, setViewMode] = useState('list')
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState({
-    search: '', stato: [], tipo: [], priorita: [], parent_type: [],
+    search: '', stato: [], tipo: [], parent_type: [],
     categoria_perdita: [], quinta_m: [],
     responsabile: [], reparto: [], linea: [], macchina: [],
     pillar_id: [], dashboard_id: [],
@@ -31,7 +31,6 @@ export default function ActionPlanPage() {
 
   const { configs } = useAllConfigurations()
   const statiConfig = configs.stato_ap || []
-  const prioritaConfig = configs.priorita_ap || []
   const tipiConfig = configs.tipi_action_plan || []
 
   useEffect(() => {
@@ -95,7 +94,7 @@ export default function ActionPlanPage() {
   function resetFilters() {
     setFilters({
       search: filters.search,
-      stato: [], tipo: [], priorita: [], parent_type: [],
+      stato: [], tipo: [], parent_type: [],
       categoria_perdita: [], quinta_m: [],
       responsabile: [], reparto: [], linea: [], macchina: [],
       pillar_id: [], dashboard_id: [],
@@ -240,6 +239,7 @@ export default function ActionPlanPage() {
               { value: 'segnalazione', label: 'Segnalazione' },
               { value: 'dashboard', label: 'Meeting' },
               { value: 'kaizen', label: 'Kaizen' },
+              { value: 'major_kaizen', label: 'Major' },
               { value: 'pillar', label: 'Pillar' },
             ]}
             filters={filters}
@@ -253,16 +253,9 @@ export default function ActionPlanPage() {
             setFilters={setFilters}
           />
           <SearchableMultiSelect
-            title="Tipo"
+            title="Perdita"
             field="tipo"
             options={tipiConfig.map(item => ({ value: item.label, label: item.label }))}
-            filters={filters}
-            setFilters={setFilters}
-          />
-          <SearchableMultiSelect
-            title="Priorità"
-            field="priorita"
-            options={prioritaConfig.map(item => ({ value: item.label, label: item.label }))}
             filters={filters}
             setFilters={setFilters}
           />
@@ -281,7 +274,7 @@ export default function ActionPlanPage() {
               { value: 'Materiale', label: 'Materiale' },
               { value: 'Misurazione', label: 'Misurazione' },
             ]} filters={filters} setFilters={setFilters} />
-            <SearchableMultiSelect title="Categoria perdita" field="categoria_perdita" options={(configs.categorie_perdita || []).map(item => ({ value: item.label, label: item.label }))} filters={filters} setFilters={setFilters} />
+            <SearchableMultiSelect title="Categoria" field="categoria_perdita" options={(configs.categorie_perdita || []).map(item => ({ value: item.label, label: item.label }))} filters={filters} setFilters={setFilters} />
             <SearchableMultiSelect title="Pillar" field="pillar_id" options={pillars.filter(item => item.attivo !== false).map(item => ({ value: item._id, label: `${item.sigla} - ${item.label}` }))} filters={filters} setFilters={setFilters} />
             <SearchableMultiSelect title="Meeting" field="dashboard_id" options={dashboards.map(item => ({ value: item._id, label: item.nome || item.label || item.titolo || 'Meeting' }))} filters={filters} setFilters={setFilters} />
             <SearchableMultiSelect title="Responsabile" field="responsabile" options={responsabiliUnici.map(item => ({ value: item, label: item }))} filters={filters} setFilters={setFilters} />
