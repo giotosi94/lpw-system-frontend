@@ -23,6 +23,7 @@ const [form, setForm] = useState({
   quinta_m: plan?.quinta_m || '',
   responsabile: plan?.responsabile || '',
   responsabile_id: plan?.responsabile_id || null,
+  partecipanti: Array.isArray(plan?.partecipanti) ? plan.partecipanti : [],
   reparto: plan?.reparto || prefilledParent?.reparto || '',
   linea: plan?.linea || prefilledParent?.linea || '',
   macchina: plan?.macchina || prefilledParent?.macchina || '',
@@ -214,7 +215,7 @@ const statiConfig = configs.stato_ap || []
                 emptyHint="Settings → Categoria"
               />
             </Field>
-            <Field label="5M (Ishikawa)">
+            <Field label="5M">
               <select
                 value={form.quinta_m}
                 onChange={(e) => setForm({ ...form, quinta_m: e.target.value })}
@@ -247,6 +248,20 @@ const statiConfig = configs.stato_ap || []
               }}
               mode="single"
               placeholder="Cerca utente per nome, email..."
+            />
+          </Field>
+
+          <Field label="Partecipanti">
+            <UserPicker
+              value={form.partecipanti}
+              onChange={(selected) => setForm({
+                ...form,
+                partecipanti: (Array.isArray(selected) ? selected : [])
+                  .filter(item => item.id !== form.responsabile_id)
+                  .map(item => ({ id: item.id, name: item.name })),
+              })}
+              mode="multi"
+              placeholder="Aggiungi persone..."
             />
           </Field>
 
