@@ -957,6 +957,17 @@ function RiepilogoModal({ onClose, onOpen }) {
       .finally(() => setLoading(false))
   }, [data])
 
+  const requestClose = () => {
+    if (destDirty && !confirm('Destinatari non salvati. Uscire comunque?')) return
+    onClose()
+  }
+
+  useEffect(() => {
+    const onKey = event => { if (event.key === 'Escape') requestClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
   const saveDestinatari = async () => {
     setSavingDest(true)
     try {
@@ -971,23 +982,23 @@ function RiepilogoModal({ onClose, onOpen }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="bg-primary text-white px-6 py-4 flex items-center justify-between gap-3">
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-gray-50 rounded-xl w-full max-w-4xl flex flex-col shadow-2xl my-auto">
+        <div className="bg-primary text-white px-6 py-4 flex items-center justify-between gap-3 rounded-t-xl">
           <h2 className="text-lg font-bold">Riepilogo giornaliero</h2>
           <div className="flex items-center gap-2">
             <input type="date" value={data} max={todayIso()} onChange={e => e.target.value && setData(e.target.value)} className="rounded px-2 py-1 text-sm text-gray-800" />
-            <button type="button" onClick={onClose} className="p-1.5 rounded hover:bg-white/10"><X size={20} /></button>
+            <button type="button" onClick={requestClose} className="p-1.5 rounded hover:bg-white/10"><X size={20} /></button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 bg-gray-50">
+        <div className="p-4 sm:p-6 space-y-5 rounded-b-xl">
           <Section title={`SEGNALAZIONI APPROVATE (${items.length})`}>
             {loading ? (
               <div className="text-sm text-gray-400">Caricamento...</div>
             ) : items.length === 0 ? (
               <div className="text-sm text-gray-400">Nessuna segnalazione approvata in questa data.</div>
             ) : (
-              <div className="divide-y">
+              <div className="divide-y max-h-[40vh] overflow-y-auto">
                 {items.map(item => (
                   <button
                     type="button"
@@ -1005,7 +1016,9 @@ function RiepilogoModal({ onClose, onOpen }) {
               </div>
             )}
           </Section>
-          <Section title={`DESTINATARI (${destinatari.length})`}>
+          <div className="border border-gray-200 rounded-lg bg-white">
+            <div className="bg-primary text-white px-4 py-2.5 font-bold text-sm rounded-t-lg">DESTINATARI ({destinatari.length})</div>
+            <div className="p-4 space-y-4">
             <UserPicker
               value={destinatari}
               onChange={selected => { setDestinatari(Array.isArray(selected) ? selected : []); setDestDirty(true) }}
@@ -1022,7 +1035,8 @@ function RiepilogoModal({ onClose, onOpen }) {
                 <Save size={15} /> {savingDest ? 'Salvataggio...' : 'Salva destinatari'}
               </button>
             </div>
-          </Section>
+            </div>
+          </div>
         </div>
       </div>
     </div>
