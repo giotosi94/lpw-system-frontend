@@ -85,6 +85,13 @@ export default function SegnalazioniPage() {
   })()
   const role = String(savedUser.role || savedUser.ruolo || '').toLowerCase()
   const isAdmin = ['admin', 'administrator', 'amministratore'].includes(role)
+  const [managedTipi, setManagedTipi] = useState(isAdmin ? ['Sicurezza', 'Ambiente'] : [])
+
+  useEffect(() => {
+    api.get('/segnalazioni/responsabili/me')
+      .then(res => setManagedTipi(res.data?.tipi || []))
+      .catch(() => {})
+  }, [])
 
   const load = async () => {
     setLoading(true)
@@ -219,7 +226,7 @@ export default function SegnalazioniPage() {
       {detail && (
         <SegnalazioneDetail
           segnalazione={detail}
-          isAdmin={isAdmin}
+          isAdmin={isAdmin || managedTipi.includes(detail.tipo)}
           onClose={handleClose}
           onSaved={() => { load() }}
         />
@@ -448,7 +455,6 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
           <Section title="DATI RIEPILOGATIVI">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <ReadField label="Codice" value={form.codice} />
-              <ReadField label="Responsabile segnalazione" value={form.responsabile_nome || '—'} />
               <ReadField label="Segnalazione" value={`Segnalazione di ${form.tipo}`} />
               <ReadField label="Segnalatore" value={form.segnalatore_nome} />
               <ReadField label="Data" value={form.created_at ? new Date(form.created_at).toLocaleString('it-IT') : '—'} />
