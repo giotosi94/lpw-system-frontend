@@ -2,6 +2,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { Home, FileText, ClipboardList, LayoutDashboard, Menu, X, BookOpen, Cog, Columns, Users, LogOut, AlertTriangle } from 'lucide-react'
 import { useState } from 'react'
 import { APP_NAME } from '../config/app'
+import lpwLogo from '../assets/lpw-system-logo.png'
 import { useAuth } from '../context/AuthContext'
 import NotificationBell from './NotificationBell'
 import { usePagePermissions } from '../context/pagePermissions'
@@ -59,9 +60,7 @@ export default function Layout() {
       >
         <div className="p-4 flex justify-between items-center border-b border-primary-light">
           {sidebarOpen && (
-            <h1 className="text-lg font-bold">
-              {APP_NAME}
-            </h1>
+            <img src={lpwLogo} alt={APP_NAME} className="h-10 w-auto shrink-0 object-contain" />
           )}
 
           <button
