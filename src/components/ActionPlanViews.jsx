@@ -1,24 +1,5 @@
 import { Link } from 'react-router-dom'
 import { useState, useMemo } from 'react'
-import { AlertCircle, CheckSquare, Bug, TrendingUp, Shield, Wrench } from 'lucide-react'
-const PRIORITA_BG = {
-  Lowest: 'bg-gray-100 text-gray-700',
-  Low: 'bg-blue-100 text-blue-700',
-  Medium: 'bg-yellow-100 text-yellow-700',
-  High: 'bg-orange-100 text-orange-700',
-  Critical: 'bg-red-100 text-red-700',
-}
-
-const TIPO_ICONS = {
-  Task: CheckSquare, Bug: Bug, Improvement: TrendingUp,
-  Audit: Shield, Manutenzione: Wrench, Sicurezza: AlertCircle,
-}
-
-const TIPO_COLORS = {
-  Task: 'text-blue-600', Bug: 'text-red-600', Improvement: 'text-green-600',
-  Audit: 'text-purple-600', Manutenzione: 'text-orange-600', Sicurezza: 'text-yellow-600',
-}
-
 export function isAPLocked(ap, statiConfig = []) {
   if (!ap) return false
   if (ap.is_cancelled) return true
@@ -382,7 +363,6 @@ function CalendarView({ plans, calendarDays, setCalendarDays, onSelectAP }) {
 }
 
 function CalendarCard({ ap, onClick, compact }) {
-  const TipoIcon = TIPO_ICONS[ap.tipo] || CheckSquare
   return (
     <div
       onClick={onClick}
@@ -390,17 +370,9 @@ function CalendarCard({ ap, onClick, compact }) {
     >
       <div className="flex justify-between items-start mb-1">
         <span className="font-mono text-xs text-primary font-bold">{ap.numero}</span>
-        {ap.priorita && (
-          <span className={`text-xs px-1.5 py-0.5 rounded ${PRIORITA_BG[ap.priorita] || ''}`}>{ap.priorita}</span>
-        )}
       </div>
       <div className="font-medium text-sm mb-2 line-clamp-2">{ap.titolo}</div>
-      {ap.tipo && (
-        <div className={`flex items-center gap-1 text-xs mb-2 ${TIPO_COLORS[ap.tipo] || ''}`}>
-          <TipoIcon size={12} />
-          <span>{ap.tipo}</span>
-        </div>
-      )}
+      {ap.tipo && <div className="text-xs text-gray-600 mb-2 truncate" title={ap.tipo}>{ap.tipo}</div>}
       {ap.parent_type && ap.parent_type !== 'standalone' && (
         <div className="mb-2"><CollegatoBadge ap={ap} /></div>
       )}
