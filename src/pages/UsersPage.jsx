@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import api from '../services/api'
 import { loadPagePermissions, setPagePermissions } from '../context/pagePermissions'
+import { clearDevice, getDeviceId, nfcSupported, setDevice, startNfcScan } from '../services/badgeReader'
 import {
   Users, Plus, Edit2, Trash2, Search, X, Save,
-  Briefcase, Factory, MapPin, Mail, RefreshCw
+  Briefcase, Factory, MapPin, Mail, RefreshCw, CreditCard, Tablet
 } from 'lucide-react'
 
 const RUOLI = [
@@ -51,9 +52,11 @@ export default function UsersPage() {
   const [search, setSearch] = useState('')
   const [filterRuolo, setFilterRuolo] = useState('')
   const [showInactive, setShowInactive] = useState(false)
+  const [badges, setBadges] = useState({})
 
   useEffect(() => {
     load()
+    loadBadges()
   }, [showInactive])
 
   async function load() {
@@ -74,6 +77,15 @@ export default function UsersPage() {
       alert('Errore caricamento utenti')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadBadges() {
+    try {
+      const res = await api.get('/badges/')
+      setBadges(Object.fromEntries((res.data || []).map(b => [b.user_id, b.suffix])))
+    } catch (err) {
+      setBadges({})
     }
   }
 
@@ -139,6 +151,8 @@ export default function UsersPage() {
       </div>
 
       <PagePermissionsPanel />
+
+      <BadgeDevicesPanel />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatBlock label="Totale" value={counts.totale} color="gray" />
@@ -231,6 +245,11 @@ export default function UsersPage() {
                           {u.job_title && (
                             <div className="text-xs text-gray-500 mt-0.5">
                               <Briefcase size={10} className="inline mr-1" />{u.job_title}
+                            </div>
+                          )}
+                          {badges[u.id] && (
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              <CreditCard size={10} className="inline mr-1" />Badge ...{badges[u.id]}
                             </div>
                           )}
                         </div>
@@ -329,6 +348,8 @@ export default function UsersPage() {
           user={editingUser}
           pillars={pillars}
           reparti={reparti}
+          badgeSuffix={editingUser ? badges[editingUser.id] : null}
+          onBadgeChanged={loadBadges}
           onClose={() => { setShowForm(false); setEditingUser(null) }}
           onSaved={() => { setShowForm(false); setEditingUser(null); load() }}
         />
@@ -337,7 +358,7 @@ export default function UsersPage() {
   )
 }
 
-function UserForm({ user, reparti, onClose, onSaved }) {
+function UserForm({ user, reparti, badgeSuffix, onBadgeChanged, onClose, onSaved }) {
   const [form, setForm] = useState({
     upn: user?.upn || user?.email || '',
     full_name: user?.full_name || '',
@@ -551,6 +572,8 @@ function UserForm({ user, reparti, onClose, onSaved }) {
             </Field>
           </Section>
 
+          {user?.id && <BadgeSection userId={user.id} suffix={badgeSuffix} onChanged={onBadgeChanged} />}
+
           <div className="flex justify-end gap-2 pt-4 border-t">
             <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg">
               Annulla
@@ -567,6 +590,241 @@ function UserForm({ user, reparti, onClose, onSaved }) {
         </form>
       </div>
     </div>
+  )
+}
+
+function BadgeDevicesPanel() {
+  const [devices, setDevices] = useState([])
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [open, setOpen] = useState(false)
+  const [localId, setLocalId] = useState(getDeviceId())
+
+  async function loadDevices() {
+    try {
+      const res = await api.get('/badges/devices')
+      setDevices(res.data || [])
+    } catch (err) {
+      setDevices([])
+    }
+  }
+
+  useEffect(() => {
+    loadDevices()
+  }, [])
+
+  async function register() {
+    if (!name.trim()) {
+      setError('Indica un nome per la postazione')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const res = await api.post('/badges/devices', { name: name.trim() })
+      setDevice(res.data.id, res.data.token)
+      setLocalId(res.data.id)
+      setName('')
+      loadDevices()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Registrazione non riuscita')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function revoke(device) {
+    if (!confirm(`Revocare la postazione "${device.name}"?`)) return
+    setError('')
+    try {
+      await api.delete(`/badges/devices/${device.id}`)
+      if (device.id === localId) {
+        clearDevice()
+        setLocalId(null)
+      }
+      loadDevices()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Revoca non riuscita')
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-3">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between text-left"
+      >
+        <h2 className="text-sm font-semibold flex items-center gap-2">
+          <Tablet size={14} /> Postazioni per accesso con badge ({devices.length})
+        </h2>
+        <span className="text-xs text-gray-500">{open ? 'Nascondi' : 'Mostra'}</span>
+      </button>
+      {open && (
+        <div className="mt-3 space-y-3">
+          {devices.length === 0 ? (
+            <p className="text-xs text-gray-500">Nessuna postazione registrata</p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-500 border-b">
+                  <th className="text-left font-medium py-1.5 pr-3">Postazione</th>
+                  <th className="text-left font-medium py-1.5 pr-3">Ultimo accesso</th>
+                  <th className="w-20"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {devices.map(d => (
+                  <tr key={d.id} className="border-b last:border-b-0">
+                    <td className="py-1.5 pr-3 font-medium">
+                      {d.name}
+                      {d.id === localId && <span className="ml-2 px-1.5 py-0.5 rounded bg-green-100 text-green-700">Questo dispositivo</span>}
+                    </td>
+                    <td className="py-1.5 pr-3 text-gray-500">
+                      {d.last_used_at ? new Date(d.last_used_at).toLocaleString('it-IT') : 'mai'}
+                    </td>
+                    <td className="py-1.5 text-right">
+                      <button type="button" onClick={() => revoke(d)} className="text-red-600 hover:underline">Revoca</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {!localId && (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="Nome postazione (es. Tablet Linea 3)"
+                className="flex-1 min-w-[200px] border rounded-lg px-3 py-1.5 text-sm"
+              />
+              <button
+                type="button"
+                onClick={register}
+                disabled={busy}
+                className="px-3 py-1.5 text-xs rounded-lg bg-primary text-white hover:bg-primary-light disabled:opacity-40"
+              >
+                {busy ? 'Registrazione...' : 'Registra questo dispositivo'}
+              </button>
+            </div>
+          )}
+          {error && <p className="text-xs text-red-600">{error}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BadgeSection({ userId, suffix, onChanged }) {
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [scanning, setScanning] = useState(false)
+  const stopRef = useRef(null)
+
+  useEffect(() => () => {
+    if (stopRef.current) stopRef.current()
+  }, [])
+
+  async function assign(force) {
+    const uid = code.trim()
+    if (!uid) {
+      setMessage('Inserisci o leggi un badge')
+      return
+    }
+    setBusy(true)
+    setMessage('')
+    try {
+      await api.put(`/badges/user/${userId}`, { uid, force: Boolean(force) })
+      setCode('')
+      onChanged()
+    } catch (err) {
+      const detail = err.response?.data?.detail
+      const conflict = err.response?.status === 409 && !force
+      if (conflict && confirm(`${detail}. Riassegnarlo a questo utente?`)) {
+        setBusy(false)
+        assign(true)
+        return
+      }
+      if (!conflict) setMessage(typeof detail === 'string' ? detail : 'Assegnazione non riuscita')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove() {
+    if (!confirm('Rimuovere il badge da questo utente?')) return
+    try {
+      await api.delete(`/badges/user/${userId}`)
+      onChanged()
+    } catch (err) {
+      setMessage(err.response?.data?.detail || 'Rimozione non riuscita')
+    }
+  }
+
+  async function scan() {
+    setMessage('')
+    try {
+      stopRef.current = await startNfcScan(uid => {
+        setCode(uid)
+        setScanning(false)
+        if (stopRef.current) stopRef.current()
+      }, setMessage)
+      setScanning(true)
+    } catch (err) {
+      setScanning(false)
+      setMessage('Lettura NFC non disponibile su questo dispositivo')
+    }
+  }
+
+  return (
+    <Section title="Badge">
+      <div className="text-sm text-gray-700">
+        {suffix ? `Badge assegnato (termina con ${suffix})` : 'Nessun badge assegnato'}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={code}
+          onChange={e => setCode(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              assign(false)
+            }
+          }}
+          placeholder="Passa il badge o incolla il codice"
+          className="flex-1 min-w-[200px] border rounded-lg px-3 py-2 text-sm"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {nfcSupported() && (
+          <button
+            type="button"
+            onClick={scan}
+            disabled={scanning}
+            className="px-3 py-2 text-xs border rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          >
+            {scanning ? 'In attesa del badge...' : 'Leggi badge'}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => assign(false)}
+          disabled={busy}
+          className="px-3 py-2 text-xs rounded-lg bg-primary text-white hover:bg-primary-light disabled:opacity-40"
+        >
+          Assegna
+        </button>
+        {suffix && (
+          <button type="button" onClick={remove} className="px-3 py-2 text-xs text-red-600 hover:underline">
+            Rimuovi
+          </button>
+        )}
+      </div>
+      {message && <p className="text-xs text-red-600">{message}</p>}
+    </Section>
   )
 }
 
