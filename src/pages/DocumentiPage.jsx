@@ -3,17 +3,23 @@ import api from '../services/api'
 import { useConfigurations } from '../hooks/useConfigurations'
 import { FileText, Upload, Download, Search, Trash2, Edit2, X, Plus, Send, BarChart3, FileSpreadsheet, ZoomIn, ZoomOut } from 'lucide-react'
 import OplPublishModal from '../components/opl/OplPublishModal'
-import OplNativaModal, { OplNativaPreview } from '../components/opl/OplNativaModal'
+import { OplNativaPreview } from '../components/opl/OplNativaModal'
 import OplReadReportModal from '../components/opl/OplReadReportModal'
 import OplImportModal from '../components/opl/OplImportModal'
 
 const STATI = ['Bozza', 'In Revisione', 'Approvato', 'Obsoleto']
+
 const STATO_BADGE = {
   'Bozza': 'bg-gray-100 text-gray-700',
   'In Revisione': 'bg-yellow-100 text-yellow-700',
   'Approvato': 'bg-green-100 text-green-700',
   'Obsoleto': 'bg-red-100 text-red-700',
 }
+
+const TEMPLATES = [
+  { label: 'Template OPL', href: '/templates/Template_OPL.xlsx' },
+  { label: 'Template SOP', href: '/templates/Template_SOP.pptx' },
+]
 
 function getFileType(filename) {
   if (!filename) return 'unknown'
@@ -40,6 +46,7 @@ async function downloadBlob(path, filename) {
 }
 
 const WIDTHS_KEY = 'lpw_documenti_colonne'
+
 const COLUMNS = [
   { key: 'numero', label: '#' },
   { key: 'tipo', label: 'Tipo' },
@@ -50,6 +57,7 @@ const COLUMNS = [
   { key: 'stato', label: 'Stato' },
   { key: 'azioni', label: 'Azioni' },
 ]
+
 const DEFAULT_WIDTHS = { numero: 90, tipo: 70, titolo: 420, reparto: 160, linea: 120, versione: 90, stato: 120, azioni: 150 }
 
 function readWidths() {
@@ -90,14 +98,12 @@ export default function DocumentiPage() {
   const [editingDoc, setEditingDoc] = useState(null)
   const [previewDoc, setPreviewDoc] = useState(null)
   const [choiceOpen, setChoiceOpen] = useState(false)
-  const [nativaOpen, setNativaOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [sopOpen, setSopOpen] = useState(false)
   const [publishingDoc, setPublishingDoc] = useState(null)
   const [reportDoc, setReportDoc] = useState(null)
   const [nextOplNumber, setNextOplNumber] = useState('')
   const { items: categorie } = useConfigurations('categorie_documento')
-
   const user = readUser()
   const isAdmin = ['admin', 'administrator', 'amministratore'].includes(String(user.role || user.ruolo || '').toLowerCase())
 
@@ -148,11 +154,6 @@ export default function DocumentiPage() {
     window.addEventListener('mouseup', stop)
   }
 
-  const openNew = () => {
-    if (isAdmin) setChoiceOpen(true)
-    else setNativaOpen(true)
-  }
-
   const deleteDoc = async (id) => {
     if (!confirm('Vuoi davvero eliminare questo documento?')) return
     try {
@@ -165,20 +166,32 @@ export default function DocumentiPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-start mb-5">
+      <div className="flex flex-wrap justify-between items-start gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Documenti</h1>
           {isAdmin && nextOplNumber && (
             <p className="text-sm text-gray-500 mt-1">Prossima codifica: <span className="font-semibold text-amber-700">{numeroBreve(nextOplNumber)}</span></p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={openNew}
-          className="bg-amber-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-amber-800 font-medium"
-        >
-          <Plus size={18} /> Nuovo
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {TEMPLATES.map(template => (
+            <a
+              key={template.href}
+              href={template.href}
+              download
+              className="border border-gray-300 bg-white rounded-lg px-3 py-2 text-sm flex items-center gap-1.5 hover:bg-gray-50"
+            >
+              <Download size={15} /> {template.label}
+            </a>
+          ))}
+          <button
+            type="button"
+            onClick={() => setChoiceOpen(true)}
+            className="bg-amber-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-amber-800 font-medium"
+          >
+            <Plus size={18} /> Nuovo
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow p-3 mb-4 flex flex-wrap gap-3">
@@ -311,12 +324,10 @@ export default function DocumentiPage() {
       {choiceOpen && (
         <OplChoiceModal
           onClose={() => setChoiceOpen(false)}
-          onCreate={() => { setChoiceOpen(false); setNativaOpen(true) }}
           onImport={() => { setChoiceOpen(false); setImportOpen(true) }}
           onSop={() => { setChoiceOpen(false); setSopOpen(true) }}
         />
       )}
-      {nativaOpen && <OplNativaModal onClose={() => setNativaOpen(false)} onSaved={load} />}
       {importOpen && <OplImportModal onClose={() => setImportOpen(false)} onImported={load} />}
       {sopOpen && <SopUploadModal onClose={() => setSopOpen(false)} onSaved={load} />}
       {editingDoc && <EditModal doc={editingDoc} onClose={() => setEditingDoc(null)} onSaved={load} />}
@@ -327,20 +338,19 @@ export default function DocumentiPage() {
   )
 }
 
-export function OplChoiceModal({ onClose, onCreate, onImport, onSop }) {
+export function OplChoiceModal({ onClose, onImport, onSop }) {
   const options = [
-    { title: 'Crea OPL', text: 'Compila la OPL nel sistema', onClick: onCreate },
     { title: 'Importa OPL da Excel', text: 'Una o più OPL, salvate come immagine', onClick: onImport },
     { title: 'Importa SOP', text: 'File PowerPoint o PDF', onClick: onSop },
   ]
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-2xl shadow-2xl" onClick={event => event.stopPropagation()}>
+      <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl" onClick={event => event.stopPropagation()}>
         <div className="px-5 py-4 border-b flex justify-between items-center">
           <h2 className="font-bold text-gray-800">Nuovo documento</h2>
           <button type="button" onClick={onClose} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
         </div>
-        <div className="p-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
           {options.map(option => (
             <button
               key={option.title}
@@ -612,22 +622,22 @@ function EditModal({ doc, onClose, onSaved }) {
             )}
           </div>
           <fieldset disabled={!unlocked} className="space-y-4 disabled:opacity-70">
-          <DocumentFields form={form} setForm={setForm} categorie={categorie} />
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-primary" onClick={() => unlocked && fileRef.current?.click()}>
-            <input ref={fileRef} type="file" onChange={(e) => setNewFile(e.target.files?.[0] || null)} className="hidden" />
-            {newFile ? (
-              <div>
-                <FileText className="mx-auto text-green-600 mb-1" size={20} />
-                <p className="text-sm">Nuova versione: <strong>{newFile.name}</strong></p>
-                <p className="text-xs text-gray-500">Verrà creata v{(doc.versione || 1) + 1}</p>
-              </div>
-            ) : (
-              <div className="text-gray-400 text-sm">
-                <Upload className="mx-auto mb-1" size={20} />
-                Carica nuova versione (opzionale)
-              </div>
-            )}
-          </div>
+            <DocumentFields form={form} setForm={setForm} categorie={categorie} />
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-primary" onClick={() => unlocked && fileRef.current?.click()}>
+              <input ref={fileRef} type="file" onChange={(e) => setNewFile(e.target.files?.[0] || null)} className="hidden" />
+              {newFile ? (
+                <div>
+                  <FileText className="mx-auto text-green-600 mb-1" size={20} />
+                  <p className="text-sm">Nuova versione: <strong>{newFile.name}</strong></p>
+                  <p className="text-xs text-gray-500">Verrà creata v{(doc.versione || 1) + 1}</p>
+                </div>
+              ) : (
+                <div className="text-gray-400 text-sm">
+                  <Upload className="mx-auto mb-1" size={20} />
+                  Carica nuova versione (opzionale)
+                </div>
+              )}
+            </div>
           </fieldset>
           {doc.versioni_precedenti?.length > 0 && (
             <div>
@@ -674,7 +684,12 @@ function DocumentFields({ form, setForm, categorie }) {
   }, [])
 
   const linee = (reparti.find(r => r.nome === form.reparto)?.linee || []).filter(l => l.attivo !== false)
-  const macchine = (linee.find(l => l.nome === form.linea)?.macchine || []).filter(m => m.attivo !== false)
+  const lineaSel = linee.find(l => l.nome === form.linea)
+  const macchine = [
+    ...(lineaSel?.macchine || []),
+    ...(lineaSel?.aree || []).filter(a => a.attivo !== false).flatMap(a => a.macchine || []),
+  ].filter(m => m.attivo !== false)
+
   const text = (label, field) => (
     <label className="block">
       <span className="block text-sm font-medium mb-1">{label}</span>
@@ -711,7 +726,7 @@ function DocumentFields({ form, setForm, categorie }) {
         <SelectField
           label="Macchina"
           value={form.macchina}
-          options={macchine.map(m => m.nome)}
+          options={[...new Set(macchine.map(m => m.nome))]}
           disabled={!form.linea}
           onChange={value => set('macchina', value)}
         />
