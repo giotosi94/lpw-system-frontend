@@ -17,8 +17,8 @@ const STATO_BADGE = {
 }
 
 const TEMPLATES = [
-  { label: 'Template OPL', href: '/templates/Template_OPL.xlsx' },
-  { label: 'Template SOP', href: '/templates/Template_SOP.pptx' },
+  { label: 'Template OPL', href: '/modelli/Template_OPL.xlsx' },
+  { label: 'Template SOP', href: '/modelli/Template_SOP.pptx' },
 ]
 
 function getFileType(filename) {
