@@ -19,8 +19,6 @@ export default function KaizenAzioniList({
   onPlansLoaded = null,
 }) {
   const isMajor = Boolean(parent)
-  const isQuick = !isMajor && (kaizen?.livello === 'Quick' || kaizen?.tipo?.includes('Quick'))
-  const hasGant = !isQuick
   const phaseLocked = isMajor && Boolean(defaultStepId)
   const [azioni, setAzioni] = useState([])
   const [loading, setLoading] = useState(true)
@@ -38,6 +36,8 @@ export default function KaizenAzioniList({
     if (!isMajor) return kaizen?.gant_master_plan?.steps || []
     return phases.map(phase => ({ id: phase.step_id, num: phase.ordine, label: phase.titolo }))
   }, [isMajor, kaizen, phases])
+
+  const hasGant = isMajor || steps.length > 0
 
   const contextLabel = phaseLocked ? 'fase' : isMajor ? 'progetto' : 'Kaizen'
 
@@ -156,7 +156,7 @@ export default function KaizenAzioniList({
     <div className="space-y-4">
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-3 space-y-3 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-          {!phaseLocked && <select
+          {!phaseLocked && hasGant && <select
             value={filterStep}
             onChange={(e) => setFilterStep(e.target.value)}
             aria-label={isMajor ? 'Filtra per fase' : 'Filtra per step'}
@@ -180,7 +180,7 @@ export default function KaizenAzioniList({
               <option key={s._id} value={s.label}>{s.label}</option>
             ))}
           </select>
-          {((filterStep && !phaseLocked) || filterStato) && (
+          {((filterStep && !phaseLocked && hasGant) || filterStato) && (
             <button
               type="button"
               onClick={resetFilters}
@@ -212,10 +212,10 @@ export default function KaizenAzioniList({
           onDeleteAP={deleteAP}
           onUnlinkAP={isMajor ? undefined : unlinkAP}
           onChangeStato={changeStato}
-          onChangeStepGant={changeStepAP}
+          onChangeStepGant={hasGant ? changeStepAP : undefined}
           unlinkLabel="Scollega dal Kaizen"
           showCollegato={false}
-          showStepGant={!phaseLocked}
+          showStepGant={hasGant && !phaseLocked}
           showKanban={true}
           showCalendar={true}
           viewMode={viewMode}
