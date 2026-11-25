@@ -58,17 +58,10 @@ const SECTIONS = [
     tabs: [
       {
         id: 'categorie_perdita',
-        label: 'Categoria Perdita',
+        label: 'Categoria',
         color: 'red',
         description: 'Condivisa da Kaizen e Action Plan',
         usedIn: ['Kaizen (Ishikawa)', 'Action Plan', 'Step 2 Pareto Pillar'],
-      },
-      {
-        id: 'cluster_perdita',
-        label: 'Cluster di Perdita',
-        color: 'red',
-        description: 'Raggruppamenti di perdite (es. Colatrice, Temperatrice, ORM). Usati nel Pareto del Pillar.',
-        usedIn: ['Step 2 Pareto Pillar', 'Bridge Chart Step 3', 'Close the Loop Step 5'],
       },
       {
         id: 'argomenti',
