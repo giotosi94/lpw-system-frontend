@@ -39,7 +39,6 @@ const EXPORT_COLUMNS = [
   { key: 'linea', label: 'Linea' },
   { key: 'macchina', label: 'Macchina' },
   { key: 'descrizione', label: 'Descrizione' },
-  { key: 'segnalatore_nome', label: 'Segnalatore' },
   { key: 'data_evento', label: 'Data evento' },
   { key: 'ora_evento', label: 'Ora evento' },
   { key: 'created_at', label: 'Data creazione' },
@@ -250,7 +249,7 @@ export default function SegnalazioniPage() {
       {riepilogoOpen && (
         <RiepilogoModal
           onClose={() => setRiepilogoOpen(false)}
-          onOpen={item => { setRiepilogoOpen(false); setDetail(item) }}
+          onOpen={item => { setRiepilogoOpen(false); api.get(`/segnalazioni/${item._id}`).then(res => setDetail(res.data)).catch(() => setDetail(item)) }}
         />
       )}
 
