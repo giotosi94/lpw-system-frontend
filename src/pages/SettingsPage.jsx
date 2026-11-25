@@ -113,6 +113,20 @@ const SECTIONS = [
         usedIn: ['Form Segnalazione Sicurezza (campo "Categoria")'],
       },
       {
+        id: 'parte_corpo_segnalazione',
+        label: 'Parti del corpo',
+        color: 'red',
+        description: 'Parti del corpo coinvolte (es. Mano, Occhi, Schiena, Piede)',
+        usedIn: ['Gestione segnalazione Sicurezza (solo responsabili)'],
+      },
+      {
+        id: 'tipo_lesione_segnalazione',
+        label: 'Tipo di lesione',
+        color: 'red',
+        description: 'Tipi di lesione (es. Taglio, Contusione, Ustione, Distorsione)',
+        usedIn: ['Gestione segnalazione Sicurezza (solo responsabili)'],
+      },
+      {
         id: 'categoria_segnalazione_ambiente',
         label: 'Categorie Ambiente',
         color: 'green',
