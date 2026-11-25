@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import api from '../services/api'
-import { AlertTriangle, Leaf, Plus, Eye, X, Send, Trash2, Save, CheckCircle2, Lock, Download } from 'lucide-react'
+import { AlertTriangle, Leaf, Plus, Eye, X, Send, Trash2, Save, CheckCircle2, Lock, Download, Edit2 } from 'lucide-react'
 import ActionPlanFormShared from '../components/ActionPlanFormShared'
 import ImageUpload from '../components/ImageUpload'
 import DocumentUpload from '../components/DocumentUpload'
@@ -20,6 +20,11 @@ const STATO_BADGE = {
 
 const STATI_CHIUSI = ['Chiuso', 'Done', 'Completato']
 
+const EVENT_FIELDS = [
+  'data_evento', 'ora_evento', 'reparto', 'linea', 'macchina', 'descrizione',
+  'persona_coinvolta', 'persone_presenti', 'azioni_immediate', 'azioni_suggerite', 'immagini', 'allegati',
+]
+
 const EXPORT_COLUMNS = [
   { key: 'codice', label: 'Codice' },
   { key: 'tipo', label: 'Tipo' },
@@ -27,12 +32,13 @@ const EXPORT_COLUMNS = [
   { key: 'categoria', label: 'Categoria' },
   { key: 'gravita', label: 'Gravita' },
   { key: 'priorita', label: 'Priorita' },
+  { key: 'parte_corpo', label: 'Parte del corpo' },
+  { key: 'tipo_lesione', label: 'Tipo di lesione' },
   { key: 'reparto', label: 'Reparto' },
   { key: 'linea', label: 'Linea' },
   { key: 'macchina', label: 'Macchina' },
   { key: 'descrizione', label: 'Descrizione' },
   { key: 'segnalatore_nome', label: 'Segnalatore' },
-  { key: 'responsabile_nome', label: 'Responsabile' },
   { key: 'data_evento', label: 'Data evento' },
   { key: 'ora_evento', label: 'Ora evento' },
   { key: 'created_at', label: 'Data creazione' },
@@ -72,6 +78,12 @@ const exportSegnalazioniCsv = rows => {
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
+}
+
+const formatDate = value => {
+  if (!value) return ''
+  const d = new Date(`${value}T12:00:00`)
+  return isNaN(d.getTime()) ? value : d.toLocaleDateString('it-IT')
 }
 
 export default function SegnalazioniPage() {
@@ -190,7 +202,6 @@ export default function SegnalazioniPage() {
                   <Plus size={16} /> Nuovo
                 </button>
               </div>
-
               <div className="divide-y">
                 {loading ? (
                   <div className="p-6 text-center text-gray-400 text-sm">Caricamento...</div>
@@ -239,6 +250,8 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
   const [form, setForm] = useState(segnalazione)
   const [reparti, setReparti] = useState([])
   const [saving, setSaving] = useState(false)
+  const [editMode, setEditMode] = useState(false)
+  const [snapshot, setSnapshot] = useState(null)
   const [chiusuraOpen, setChiusuraOpen] = useState(false)
   const [apList, setApList] = useState([])
   const [apOpen, setApOpen] = useState(0)
@@ -295,11 +308,17 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form._id, form.stato])
 
+  const isBozza = form.stato === 'Bozza'
   const isChiuso = form.stato === 'Chiuso'
-  const canEdit = !isChiuso || isAdmin
+  const canEdit = isBozza || (isAdmin && editMode && !isChiuso)
+  const canDelete = Boolean(form._id) && (isBozza || isAdmin)
 
   const lineeAvailable = (reparti.find(r => r.nome === form.reparto)?.linee || [])
-  const macchineAvailable = (lineeAvailable.find(l => l.nome === form.linea)?.macchine || [])
+  const lineaSel = lineeAvailable.find(l => l.nome === form.linea)
+  const macchineAvailable = [
+    ...(lineaSel?.macchine || []),
+    ...(lineaSel?.aree || []).filter(a => a.attivo !== false).flatMap(a => a.macchine || []),
+  ].filter(m => m.attivo !== false)
 
   const set = (field, value) => setForm(f => ({ ...f, [field]: value }))
 
@@ -325,6 +344,10 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
       alert('Inserisci almeno la descrizione dell evento prima di salvare')
       return
     }
+    if (!isBozza && !form.descrizione?.trim()) {
+      alert('La descrizione dell evento e obbligatoria')
+      return
+    }
     setSaving(true)
     try {
       let id = form._id
@@ -334,13 +357,28 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
       }
       const res = await api.put(`/segnalazioni/${id}`, buildPayload())
       setForm(res.data)
+      setEditMode(false)
+      setSnapshot(null)
       onSaved()
-      alert('Salvato')
+      if (isBozza) alert('Salvato')
     } catch (err) {
       alert('Errore: ' + (err.response?.data?.detail || err.message))
     } finally {
       setSaving(false)
     }
+  }
+
+  const startEdit = () => {
+    const copy = {}
+    EVENT_FIELDS.forEach(key => { copy[key] = form[key] })
+    setSnapshot(copy)
+    setEditMode(true)
+  }
+
+  const cancelEdit = () => {
+    if (snapshot) setForm(f => ({ ...f, ...snapshot }))
+    setSnapshot(null)
+    setEditMode(false)
   }
 
   const termina = async () => {
@@ -422,6 +460,13 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
     }
   }
 
+  const closeDetail = () => {
+    if (editMode && !confirm('Uscire senza salvare le modifiche?')) return
+    onClose(form)
+  }
+
+  const inputClass = 'w-full border rounded-lg px-3 py-2 text-sm'
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-4xl h-[92vh] flex flex-col overflow-hidden shadow-2xl">
@@ -431,22 +476,17 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
             <h2 className="text-lg font-bold">{form.codice ? `Codice ${form.codice}` : 'Nuova segnalazione'}</h2>
           </div>
           <div className="flex items-center gap-2">
-            {canEdit && form.stato === 'Bozza' && (
+            {isBozza && (
               <>
-                <button onClick={save} disabled={saving} className="bg-white text-gray-800 px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-gray-100 disabled:opacity-50">
+                <button type="button" onClick={save} disabled={saving} className="bg-white text-gray-800 px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-gray-100 disabled:opacity-50">
                   <Save size={15} /> Salva bozza
                 </button>
-                <button onClick={termina} disabled={saving} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-blue-700 disabled:opacity-50">
+                <button type="button" onClick={termina} disabled={saving} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-blue-700 disabled:opacity-50">
                   <Send size={15} /> Termina inserimento
                 </button>
               </>
             )}
-            {canEdit && form.stato !== 'Bozza' && (
-              <button onClick={save} disabled={saving} className="bg-white text-gray-800 px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-gray-100 disabled:opacity-50">
-                <Save size={15} /> Salva
-              </button>
-            )}
-            <button onClick={() => onClose(form)} className="p-1.5 rounded hover:bg-gray-600"><X size={20} /></button>
+            <button type="button" onClick={closeDetail} className="p-1.5 rounded hover:bg-gray-600"><X size={20} /></button>
           </div>
         </div>
 
@@ -461,7 +501,7 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
                 )}
               </div>
               {isAdmin && (
-                <button onClick={riapri} className="text-sm border border-green-600 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-100">Riapri</button>
+                <button type="button" onClick={riapri} className="text-sm border border-green-600 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-100">Riapri</button>
               )}
             </div>
           )}
@@ -481,51 +521,70 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
           </Section>
 
           <Section title="DETTAGLIO DELL'EVENTO">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Data *">
-                <input type="date" disabled={!canEdit} value={form.data_evento || ''} onChange={e => set('data_evento', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" />
-              </Field>
-              <Field label="Ora *">
-                <input type="time" disabled={!canEdit} value={form.ora_evento || ''} onChange={e => set('ora_evento', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" />
-              </Field>
-              <Field label="Reparto *">
-                <select disabled={!canEdit} value={form.reparto || ''} onChange={e => setForm(f => ({ ...f, reparto: e.target.value, linea: '', macchina: '' }))} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100">
-                  <option value="">Seleziona</option>
-                  {reparti.map(r => <option key={r._id} value={r.nome}>{r.nome}</option>)}
-                </select>
-              </Field>
-              <Field label="Linea">
-                <select disabled={!canEdit || !form.reparto} value={form.linea || ''} onChange={e => setForm(f => ({ ...f, linea: e.target.value, macchina: '' }))} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100">
-                  <option value="">Seleziona</option>
-                  {lineeAvailable.map(l => <option key={l.id} value={l.nome}>{l.nome}</option>)}
-                </select>
-              </Field>
-              <Field label="Macchina">
-                <select disabled={!canEdit || !form.linea} value={form.macchina || ''} onChange={e => set('macchina', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100">
-                  <option value="">Seleziona</option>
-                  {macchineAvailable.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
-                </select>
-              </Field>
-            </div>
-
-            <Field label="Descrizione dell'evento o della condizione o del comportamento *">
-              <textarea disabled={!canEdit} value={form.descrizione || ''} onChange={e => set('descrizione', e.target.value)} rows={3} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" />
-            </Field>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Persona coinvolta">
-                <textarea disabled={!canEdit} value={form.persona_coinvolta || ''} onChange={e => set('persona_coinvolta', e.target.value)} rows={2} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" />
-              </Field>
-              <Field label="Persone presenti">
-                <textarea disabled={!canEdit} value={form.persone_presenti || ''} onChange={e => set('persone_presenti', e.target.value)} rows={2} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" />
-              </Field>
-              <Field label="Azioni immediate intraprese">
-                <textarea disabled={!canEdit} value={form.azioni_immediate || ''} onChange={e => set('azioni_immediate', e.target.value)} rows={2} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" />
-              </Field>
-              <Field label="Azioni suggerite">
-                <textarea disabled={!canEdit} value={form.azioni_suggerite || ''} onChange={e => set('azioni_suggerite', e.target.value)} rows={2} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" />
-              </Field>
-            </div>
+            {canEdit ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Field label="Data *">
+                    <input type="date" value={form.data_evento || ''} onChange={e => set('data_evento', e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Ora *">
+                    <input type="time" value={form.ora_evento || ''} onChange={e => set('ora_evento', e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Reparto *">
+                    <select value={form.reparto || ''} onChange={e => setForm(f => ({ ...f, reparto: e.target.value, linea: '', macchina: '' }))} className={inputClass}>
+                      <option value="">Seleziona</option>
+                      {reparti.map(r => <option key={r._id} value={r.nome}>{r.nome}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Linea">
+                    <select disabled={!form.reparto} value={form.linea || ''} onChange={e => setForm(f => ({ ...f, linea: e.target.value, macchina: '' }))} className={`${inputClass} disabled:bg-gray-100`}>
+                      <option value="">Seleziona</option>
+                      {lineeAvailable.map(l => <option key={l.id || l.nome} value={l.nome}>{l.nome}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Macchina">
+                    <select disabled={!form.linea} value={form.macchina || ''} onChange={e => set('macchina', e.target.value)} className={`${inputClass} disabled:bg-gray-100`}>
+                      <option value="">Seleziona</option>
+                      {form.macchina && !macchineAvailable.some(m => m.nome === form.macchina) && <option value={form.macchina}>{form.macchina}</option>}
+                      {macchineAvailable.map(m => <option key={m.id || m.nome} value={m.nome}>{m.nome}</option>)}
+                    </select>
+                  </Field>
+                </div>
+                <Field label="Descrizione dell'evento o della condizione o del comportamento *">
+                  <textarea value={form.descrizione || ''} onChange={e => set('descrizione', e.target.value)} rows={3} className={inputClass} />
+                </Field>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Field label="Persona coinvolta">
+                    <textarea value={form.persona_coinvolta || ''} onChange={e => set('persona_coinvolta', e.target.value)} rows={2} className={inputClass} />
+                  </Field>
+                  <Field label="Persone presenti">
+                    <textarea value={form.persone_presenti || ''} onChange={e => set('persone_presenti', e.target.value)} rows={2} className={inputClass} />
+                  </Field>
+                  <Field label="Azioni immediate intraprese">
+                    <textarea value={form.azioni_immediate || ''} onChange={e => set('azioni_immediate', e.target.value)} rows={2} className={inputClass} />
+                  </Field>
+                  <Field label="Azioni suggerite">
+                    <textarea value={form.azioni_suggerite || ''} onChange={e => set('azioni_suggerite', e.target.value)} rows={2} className={inputClass} />
+                  </Field>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <ReadField label="Data" value={formatDate(form.data_evento)} />
+                  <ReadField label="Ora" value={form.ora_evento} />
+                  <ReadField label="Reparto" value={form.reparto} />
+                  <ReadField label="Linea" value={[form.linea, form.macchina].filter(Boolean).join(' · ')} />
+                </div>
+                <ReadText label="Descrizione" value={form.descrizione} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <ReadText label="Persona coinvolta" value={form.persona_coinvolta} />
+                  <ReadText label="Persone presenti" value={form.persone_presenti} />
+                  <ReadText label="Azioni immediate intraprese" value={form.azioni_immediate} />
+                  <ReadText label="Azioni suggerite" value={form.azioni_suggerite} />
+                </div>
+              </>
+            )}
           </Section>
 
           <Section title="FOTO E ALLEGATI">
@@ -543,9 +602,6 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
                     onChange={allegati => set('allegati', allegati)}
                   />
                 </div>
-                <p className="text-xs text-gray-400">
-                  Dopo aver caricato foto o documenti, premi Salva per confermarli sulla segnalazione.
-                </p>
               </>
             ) : (
               <div className="space-y-3">
@@ -573,11 +629,33 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
             )}
           </Section>
 
-          {isAdmin && form._id && (
-            <Section title="GESTIONE (ADMIN)">
+          {!isBozza && (form.modificato_da || (isAdmin && !isChiuso)) && (
+            <div className="flex flex-wrap items-center justify-between gap-3 -mt-3">
+              <span className="text-xs text-gray-500">
+                {form.modificato_da && `Modificato da ${form.modificato_da}${form.modificato_il ? ` il ${new Date(form.modificato_il).toLocaleString('it-IT')}` : ''}`}
+              </span>
+              {isAdmin && !isChiuso && (
+                editMode ? (
+                  <div className="flex gap-2">
+                    <button type="button" onClick={cancelEdit} disabled={saving} className="px-3 py-1.5 border rounded-lg text-sm hover:bg-gray-50">Annulla</button>
+                    <button type="button" onClick={save} disabled={saving} className="px-3 py-1.5 bg-primary text-white rounded-lg text-sm flex items-center gap-1 hover:bg-primary-light disabled:opacity-50">
+                      <Save size={14} /> {saving ? 'Salvataggio...' : 'Salva'}
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={startEdit} className="px-3 py-1.5 border rounded-lg text-sm flex items-center gap-1 hover:bg-gray-50">
+                    <Edit2 size={14} /> Modifica
+                  </button>
+                )
+              )}
+            </div>
+          )}
+
+          {isAdmin && form._id && !isBozza && (
+            <Section title="GESTIONE">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Field label="Categoria">
-                  <select value={form.categoria || ''} onChange={e => classifica('categoria', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm">
+                  <select value={form.categoria || ''} onChange={e => classifica('categoria', e.target.value)} className={inputClass}>
                     <option value="">— Seleziona —</option>
                     {categorieOptions.map(c => (
                       <option key={c._id} value={c.label}>{c.icon ? `${c.icon} ` : ''}{c.label}</option>
@@ -588,13 +666,13 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
                   </select>
                 </Field>
                 <Field label="Gravita">
-                  <select value={form.gravita || ''} onChange={e => classifica('gravita', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm">
+                  <select value={form.gravita || ''} onChange={e => classifica('gravita', e.target.value)} className={inputClass}>
                     <option value="">—</option>
                     {['Bassa', 'Media', 'Alta', 'Critica'].map(v => <option key={v}>{v}</option>)}
                   </select>
                 </Field>
                 <Field label="Priorita">
-                  <select value={form.priorita || ''} onChange={e => classifica('priorita', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm">
+                  <select value={form.priorita || ''} onChange={e => classifica('priorita', e.target.value)} className={inputClass}>
                     <option value="">—</option>
                     {['Bassa', 'Media', 'Alta'].map(v => <option key={v}>{v}</option>)}
                   </select>
@@ -611,15 +689,15 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
                 </div>
               )}
               <Field label="Note di gestione">
-                <textarea value={form.note_gestione || ''} onChange={e => classifica('note_gestione', e.target.value)} rows={2} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                <textarea value={form.note_gestione || ''} onChange={e => classifica('note_gestione', e.target.value)} rows={2} className={inputClass} />
               </Field>
             </Section>
           )}
 
-          {isAdmin && form._id && form.stato !== 'Bozza' && (
+          {isAdmin && form._id && !isBozza && (
             <Section title="ACTION PLAN COLLEGATI">
               {apList.length === 0 ? (
-                <div className="text-sm text-gray-400">Nessun Action Plan collegato a questa segnalazione.</div>
+                <div className="text-sm text-gray-400">Nessun Action Plan collegato.</div>
               ) : (
                 <div className="space-y-2">
                   {apList.map(ap => {
@@ -635,7 +713,7 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium truncate">{ap.titolo}</div>
                           <div className="text-xs text-gray-500 mt-0.5 flex gap-3 flex-wrap">
-                            {ap.tipo && <span>Tipo: {ap.tipo}</span>}
+                            {ap.tipo && <span>Perdita: {ap.tipo}</span>}
                             {ap.responsabile && <span>Resp: {ap.responsabile}</span>}
                             {ap.data_scadenza && <span>Scad: {String(ap.data_scadenza).slice(0, 10)}</span>}
                           </div>
@@ -648,25 +726,23 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
                   })}
                 </div>
               )}
-
-              <button
-                type="button"
-                onClick={() => setShowApForm(true)}
-                className="mt-1 px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-light flex items-center gap-2"
-              >
-                <Plus size={16} /> Crea Action Plan
-              </button>
-              <p className="text-xs text-gray-400 mt-2">
-                Le azioni sono gestite come Action Plan (Tipo {form.tipo}, collegati a questa segnalazione). Le trovi anche nella pagina Action Plan.
-              </p>
+              {!isChiuso && (
+                <button
+                  type="button"
+                  onClick={() => setShowApForm(true)}
+                  className="mt-1 px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-light flex items-center gap-2"
+                >
+                  <Plus size={16} /> Crea Action Plan
+                </button>
+              )}
             </Section>
           )}
 
-          {isAdmin && !isChiuso && form._id && form.stato !== 'Bozza' && (
+          {isAdmin && !isChiuso && form._id && !isBozza && (
             <div className="flex flex-wrap items-center justify-between gap-3 bg-gray-50 border rounded-lg p-4">
               <div className="flex items-center gap-3">
                 {form.stato !== 'In gestione' && (
-                  <button onClick={setInGestione} className="px-3 py-1.5 border rounded-lg text-sm hover:bg-white">Metti in gestione</button>
+                  <button type="button" onClick={setInGestione} className="px-3 py-1.5 border rounded-lg text-sm hover:bg-white">Metti in gestione</button>
                 )}
                 <div className="text-sm text-gray-600">
                   {apOpen > 0
@@ -677,19 +753,20 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setChiusuraOpen(true)}
-                disabled={apOpen > 0}
+                disabled={apOpen > 0 || editMode}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
-                title={apOpen > 0 ? 'Chiudi prima tutti gli Action Plan collegati' : ''}
+                title={apOpen > 0 ? 'Chiudi prima tutti gli Action Plan collegati' : editMode ? 'Salva o annulla le modifiche' : ''}
               >
                 <Lock size={15} /> Chiudi segnalazione
               </button>
             </div>
           )}
 
-          {canEdit && form._id && (
+          {canDelete && (
             <div className="flex justify-end">
-              <button onClick={elimina} className="text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+              <button type="button" onClick={elimina} className="text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
                 <Trash2 size={15} /> Elimina segnalazione
               </button>
             </div>
@@ -703,7 +780,6 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
             parent_type: 'segnalazione',
             parent_id: form._id,
             parent_label: form.codice,
-            tipo: form.tipo,
             reparto: form.reparto || '',
             linea: form.linea || '',
             macchina: form.macchina || '',
@@ -766,16 +842,13 @@ function ChiusuraModal({ segnalazioneId, onClose, onClosed }) {
           <h3 className="font-bold">Chiudi segnalazione</h3>
         </div>
         <div className="p-5 space-y-4">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-xs text-yellow-800">
-            La verifica di efficacia conferma che il rischio e stato realmente eliminato, non solo che le azioni sono completate.
-          </div>
           <div>
             <label className="block text-sm font-medium mb-1">Nota di verifica efficacia <span className="text-red-500">*</span></label>
-            <textarea value={nota} onChange={e => setNota(e.target.value)} rows={4} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Descrivi come e stata verificata l'efficacia delle azioni e l'eliminazione del rischio." autoFocus />
+            <textarea value={nota} onChange={e => setNota(e.target.value)} rows={4} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Come è stata verificata l'eliminazione del rischio" autoFocus />
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t">
-            <button onClick={onClose} className="px-4 py-2 border rounded-lg text-sm">Annulla</button>
-            <button onClick={chiudi} disabled={busy || !nota.trim()} className="px-5 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+            <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg text-sm">Annulla</button>
+            <button type="button" onClick={chiudi} disabled={busy || !nota.trim()} className="px-5 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
               {busy ? 'Chiusura...' : 'Conferma chiusura'}
             </button>
           </div>
@@ -819,9 +892,18 @@ function FieldLabel({ children }) {
 
 function ReadField({ label, value }) {
   return (
+    <div className="min-w-0">
+      <FieldLabel>{label}</FieldLabel>
+      <div className="bg-gray-50 border rounded-lg px-3 py-2 text-sm text-gray-700 truncate" title={value || ''}>{value || '—'}</div>
+    </div>
+  )
+}
+
+function ReadText({ label, value }) {
+  return (
     <div>
       <FieldLabel>{label}</FieldLabel>
-      <div className="bg-gray-50 border rounded-lg px-3 py-2 text-sm text-gray-700">{value || '—'}</div>
+      <div className="bg-gray-50 border rounded-lg px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap break-words min-h-[38px]">{value || '—'}</div>
     </div>
   )
 }
