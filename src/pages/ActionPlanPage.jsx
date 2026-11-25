@@ -17,7 +17,7 @@ export default function ActionPlanPage() {
   const [viewMode, setViewMode] = useState('list')
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState({
-    search: '', stato: [], tipo: [], parent_type: [],
+    search: '', stato: [], parent_type: [],
     categoria_perdita: [], quinta_m: [],
     responsabile: [], reparto: [], linea: [], macchina: [],
     pillar_id: [], dashboard_id: [],
@@ -31,7 +31,6 @@ export default function ActionPlanPage() {
 
   const { configs } = useAllConfigurations()
   const statiConfig = configs.stato_ap || []
-  const tipiConfig = configs.tipi_action_plan || []
 
   useEffect(() => {
     loadData()
@@ -94,7 +93,7 @@ export default function ActionPlanPage() {
   function resetFilters() {
     setFilters({
       search: filters.search,
-      stato: [], tipo: [], parent_type: [],
+      stato: [], parent_type: [],
       categoria_perdita: [], quinta_m: [],
       responsabile: [], reparto: [], linea: [], macchina: [],
       pillar_id: [], dashboard_id: [],
@@ -249,13 +248,6 @@ export default function ActionPlanPage() {
             title="Stato"
             field="stato"
             options={statiConfig.map(item => ({ value: item.label, label: item.label }))}
-            filters={filters}
-            setFilters={setFilters}
-          />
-          <SearchableMultiSelect
-            title="Perdita"
-            field="tipo"
-            options={tipiConfig.map(item => ({ value: item.label, label: item.label }))}
             filters={filters}
             setFilters={setFilters}
           />
