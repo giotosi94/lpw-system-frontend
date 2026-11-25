@@ -37,17 +37,10 @@ const SECTIONS = [
     tabs: [
       {
         id: 'tipi_action_plan',
-        label: 'Tipo',
+        label: 'Perdita',
         color: 'green',
-        description: 'Tipologia funzionale dell\'Action Plan',
-        usedIn: ['Form Action Plan (campo "Tipo")', 'Filtri /action-plan'],
-      },
-      {
-        id: 'priorita_ap',
-        label: 'Priorita',
-        color: 'green',
-        description: 'Livelli di priorita per l\'Action Plan',
-        usedIn: ['Form Action Plan (campo "Priorita")', 'Filtri /action-plan', 'Kanban color'],
+        description: 'Perdite selezionabili negli Action Plan',
+        usedIn: ['Form Action Plan (campo "Perdita")', 'Filtri Action Plan'],
       },
       {
         id: 'stato_ap',
