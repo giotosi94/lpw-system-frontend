@@ -155,8 +155,7 @@ const [form, setForm] = useState({
     }
   }
 
-  const tipiConfig = configs.tipi_action_plan || []
-  const statiConfig = configs.stato_ap || []
+const statiConfig = configs.stato_ap || []
   const categoriePerditaConfig = configs.categorie_perdita || []
 
   return (
@@ -205,7 +204,7 @@ const [form, setForm] = useState({
             />
           </Field>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Categoria">
               <DynamicSelect
                 value={form.categoria_perdita}
@@ -213,15 +212,6 @@ const [form, setForm] = useState({
                 options={categoriePerditaConfig}
                 placeholder="Nessuna"
                 emptyHint="Settings → Categoria"
-              />
-            </Field>
-            <Field label="Perdita">
-              <DynamicSelect
-                value={form.tipo}
-                onChange={(v) => setForm({ ...form, tipo: v })}
-                options={form.tipo && !tipiConfig.some(o => o.label === form.tipo) ? [{ _id: 'current', label: form.tipo }, ...tipiConfig] : tipiConfig}
-                placeholder="Nessuna"
-                emptyHint="Settings → Perdita"
               />
             </Field>
             <Field label="5M (Ishikawa)">
