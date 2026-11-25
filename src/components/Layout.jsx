@@ -143,11 +143,6 @@ export default function Layout() {
             {sidebarOpen && <span>Logout</span>}
           </button>
 
-          {sidebarOpen && (
-            <div className="text-xs text-gray-300 text-center">
-              {`${APP_NAME} v1.0`}
-            </div>
-          )}
         </div>
       </aside>
 
