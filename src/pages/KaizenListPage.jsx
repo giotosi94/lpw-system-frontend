@@ -21,8 +21,9 @@ const INITIAL_KAIZEN = {
   reparto: '',
   linea: '',
   macchina: '',
-  tipo_perdita: '',
-  pillar_id: '',
+    tipo_perdita: '',
+    perdita: '',
+pillar_id: '',
   dashboard_id: '',
   dashboard_nome: '',
   team_leader_id: null,
@@ -183,6 +184,23 @@ function SearchableMultiSelect({ title, field, options, filters, setFilters, dis
   )
 }
 
+
+function usePerditeKaizen() {
+  const [perdite, setPerdite] = useState([])
+  useEffect(() => {
+    api.get('/configurazioni/?tipo=perdita_kaizen&attivo=true')
+      .then(res => setPerdite(res.data || []))
+      .catch(() => setPerdite([]))
+  }, [])
+  return perdite
+}
+
+function perditeDiCategoria(perdite, categorie, categoriaLabel) {
+  const categoria = categorie.find(item => item.label === categoriaLabel)
+  if (!categoria) return []
+  return perdite.filter(item => item.parent_id === categoria._id)
+}
+
 const CHECK_COLUMN_WIDTH = 44
 const COLUMN_MAX_WIDTH = 1000
 const COLUMN_STORAGE_KEY = 'lpw_kaizen_column_widths_v2'
@@ -318,7 +336,8 @@ export default function KaizenListPage() {
   const [routeError, setRouteError] = useState('')
 
   const { configs } = useAllConfigurations()
-  const { pillars } = usePillars()
+  const perditeKaizen = usePerditeKaizen()
+const { pillars } = usePillars()
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
   const { canViewKaizenType } = usePagePermissions()
@@ -1138,18 +1157,34 @@ const majorKaizens =
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">Categoria Perdita</label>
-                <select
-                  value={newKaizen.tipo_perdita}
-                  onChange={(e) => setNewKaizen({ ...newKaizen, tipo_perdita: e.target.value })}
-                  className="w-full border rounded-lg px-3 py-2"
-                >
-                  <option value="">Nessuna</option>
-                  {(configs.categorie_perdita || []).map(p => (
-                    <option key={p._id} value={p.label}>{p.label}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Categoria</label>
+                  <select
+                    value={newKaizen.tipo_perdita}
+                    onChange={(e) => setNewKaizen({ ...newKaizen, tipo_perdita: e.target.value, perdita: '' })}
+                    className="w-full border rounded-lg px-3 py-2"
+                  >
+                    <option value="">Nessuna</option>
+                    {(configs.categorie_perdita || []).map(p => (
+                      <option key={p._id} value={p.label}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Perdita</label>
+                  <select
+                    value={newKaizen.perdita}
+                    onChange={(e) => setNewKaizen({ ...newKaizen, perdita: e.target.value })}
+                    disabled={!newKaizen.tipo_perdita}
+                    className="w-full border rounded-lg px-3 py-2 disabled:bg-gray-100"
+                  >
+                    <option value="">{newKaizen.tipo_perdita ? 'Nessuna' : 'Prima la categoria'}</option>
+                    {perditeDiCategoria(perditeKaizen, configs.categorie_perdita || [], newKaizen.tipo_perdita).map(p => (
+                      <option key={p._id} value={p.label}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div>
