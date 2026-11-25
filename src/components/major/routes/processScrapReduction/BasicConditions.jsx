@@ -608,7 +608,7 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
 
       <section className={panel}>
         <h3 className={heading}>PASSO 3 - INTERVENTI</h3>
-        <div className={`grid grid-cols-1 ${carlOn ? 'lg:grid-cols-2' : ''} gap-4`}>
+        <div className="space-y-4">
           {carlOn && (
             <div className="min-w-0 space-y-2">
               <div className="flex items-center justify-between border-b border-gray-200 pb-1">
