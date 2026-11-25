@@ -7,10 +7,6 @@ import {
   Square,
   Send,
   AlertCircle,
-  Bug,
-  TrendingUp,
-  Shield,
-  Wrench,
   Paperclip,
   Camera,
   FileText,
@@ -23,32 +19,6 @@ import { useAllConfigurations } from '../hooks/useConfigurations'
 import { useAuth } from '../context/AuthContext'
 import { usePillars } from '../hooks/usePillars'
 import MentionTextarea from './MentionTextarea'
-
-const PRIORITA_BG = {
-  Lowest: 'bg-gray-100 text-gray-700',
-  Low: 'bg-blue-100 text-blue-700',
-  Medium: 'bg-yellow-100 text-yellow-700',
-  High: 'bg-orange-100 text-orange-700',
-  Critical: 'bg-red-100 text-red-700',
-}
-
-const TIPO_ICONS = {
-  Task: CheckSquare,
-  Bug,
-  Improvement: TrendingUp,
-  Audit: Shield,
-  Manutenzione: Wrench,
-  Sicurezza: AlertCircle,
-}
-
-const TIPO_COLORS = {
-  Task: 'text-blue-600',
-  Bug: 'text-red-600',
-  Improvement: 'text-green-600',
-  Audit: 'text-purple-600',
-  Manutenzione: 'text-orange-600',
-  Sicurezza: 'text-yellow-600',
-}
 
 async function compressImage(file, maxSize = 1280, quality = 0.8) {
   return new Promise((resolve, reject) => {
@@ -548,7 +518,6 @@ export default function ActionPlanDetailPanel({
     }
   }
 
-  const TipoIcon = TIPO_ICONS[detail.tipo] || CheckSquare
   const checklistCompletati = detail.checklist?.filter(item => item.completato).length || 0
   const checklistTotali = detail.checklist?.length || 0
   const checklistPercent = checklistTotali
@@ -648,18 +617,12 @@ export default function ActionPlanDetailPanel({
             {detail.stato || '—'}
           </SidebarRow>
 
-          <SidebarRow label="Priorità">
-            {detail.priorita || '—'}
+          <SidebarRow label="Perdita">
+            <span className="truncate" title={detail.tipo || ''}>{detail.tipo || '—'}</span>
           </SidebarRow>
-
-          {detail.tipo && (
-            <SidebarRow label="Tipo">
-              <span className={`text-xs flex items-center gap-1 ${TIPO_COLORS[detail.tipo] || ''}`}>
-                <TipoIcon size={12} />
-                {detail.tipo}
-              </span>
-            </SidebarRow>
-          )}
+          <SidebarRow label="Categoria">
+            <span className="truncate">{detail.categoria_perdita || detail.tipo_perdita || '—'}</span>
+          </SidebarRow>
 
           <SidebarRow label="Responsabile">
             {detail.responsabile ? (
@@ -681,11 +644,6 @@ export default function ActionPlanDetailPanel({
             </span>
           </SidebarRow>
 
-          <SidebarRow label="Categoria Perdita">
-            <span className="text-xs">
-              {detail.categoria_perdita || detail.tipo_perdita || '—'}
-            </span>
-          </SidebarRow>
 
           {detail.parent_type && detail.parent_type !== 'standalone' && (
             <SidebarRow label="Collegato a">
@@ -694,6 +652,8 @@ export default function ActionPlanDetailPanel({
                   {detail.parent_type === 'pillar' && 'Pillar'}
                   {detail.parent_type === 'kaizen' && 'Kaizen'}
                   {detail.parent_type === 'dashboard' && 'Dashboard'}
+                  {['major_kaizen', 'major-kaizen'].includes(detail.parent_type) && 'Major'}
+                  {detail.parent_type === 'segnalazione' && 'Segnalazione'}
                   {detail.parent_label && ` · ${detail.parent_label}`}
                 </span>
               </div>
