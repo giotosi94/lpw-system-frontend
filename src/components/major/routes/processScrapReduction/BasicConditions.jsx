@@ -531,129 +531,95 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
 
       <section className={panel}>
         <h3 className={heading}>PASSO 2 - ISPEZIONE E RIPRISTINO</h3>
-        <p className="text-sm text-gray-600 mb-3">
-                      Registra le anomalie trovate con pulizia e ispezione.
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={addAnomaly} className={addButton}><Plus size={16} /> Aggiungi anomalia</button>
-          {missingZones.length > 0 && (
-            <button type="button" onClick={addAnomaliesFromAreas} className="rounded-lg border-2 border-primary px-4 py-2 text-sm font-semibold text-primary hover:bg-gray-50">
-              Crea anomalie dalle aree del passo 1 ({missingZones.length})
-            </button>
-          )}
-        </div>
-        <div className="mt-4 space-y-4">
-          {form.anomalie.length === 0 && <p className="p-6 text-center text-sm text-gray-400">Nessuna anomalia registrata</p>}
-          {form.anomalie.map((item, index) => (
-            <article key={item.id} className="border border-gray-300 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="text-sm font-bold text-gray-700">Anomalia {index + 1}</h4>
-                <button type="button" aria-label="Elimina anomalia" onClick={() => removeAnomaly(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded"><Trash2 size={15} /></button>
-              </div>
-                              <label className="block text-sm mb-3">Area di riferimento
-                  <select className={input} value={item.area_id || ''} onChange={event => {
+        <div className="space-y-2">
+          {form.anomalie.length === 0 && <p className="py-3 text-center text-sm text-gray-400">Nessuna anomalia registrata</p>}
+          {form.anomalie.map((item, index) => {
+            const planLinked = Boolean(item.action_plan_id) || linkedPlans.some(plan => plan.route_source?.anomaly_id === item.id)
+            return (
+              <article key={item.id} className="rounded-lg border border-gray-200 p-2 sm:p-3 space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-[1.75rem_minmax(0,1.4fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_2rem] gap-2 items-center">
+                  <span className="hidden md:flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-700">{index + 1}</span>
+                  <select aria-label="Area di riferimento" className={input} value={item.area_id || ''} onChange={event => {
                     const area = form.aree.find(row => row.id === event.target.value)
                     patchAnomaly(item.id, area ? { area_id: area.id, perdita: area.perdita, macchina: area.macchina, componente: area.componente } : { area_id: '', perdita: '' })
                   }}>
-                    <option value="">Seleziona area</option>
+                    <option value="">Area di riferimento</option>
                     {item.area_id && !form.aree.some(area => area.id === item.area_id) && <option value={item.area_id}>Area non disponibile</option>}
-                    {form.aree.map(area => <option key={area.id} value={area.id}>{[area.perdita, area.macchina, area.componente].filter(Boolean).join(' / ') || 'Area da completare'}</option>)}
+                    {form.aree.map(area => <option key={area.id} value={area.id}>{[area.perdita, area.macchina].filter(Boolean).join(' / ') || 'Area da completare'}</option>)}
                   </select>
-                </label>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <label className="block text-sm">Macchina
-                  <div className="mt-1"><MachineSelect value={item.macchina} groups={machineGroups} onChange={value => patchAnomaly(item.id, { macchina: value, componente: '' })} /></div>
-                </label>
-                <label className="block text-sm">Componente
-                  <div className="mt-1"><ComponentInput value={item.componente} options={componentsOf(item.macchina)} onChange={value => patchAnomaly(item.id, { componente: value })} /></div>
-                </label>
-                <label className="block text-sm">Anomalia rilevata
-                  <textarea rows={2} className={`${input} mt-1`} value={item.descrizione} onChange={event => patchAnomaly(item.id, { descrizione: event.target.value })} />
-                </label>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-                <ImageUpload images={item.foto_prima} onChange={value => patchAnomaly(item.id, { foto_prima: value })} label="Foto prima" maxImages={4} showHelp={false} />
-                <ImageUpload images={item.foto_dopo} onChange={value => patchAnomaly(item.id, { foto_dopo: value })} label="Foto dopo" maxImages={4} showHelp={false} />
-              </div>
-                <div className="mt-4 flex flex-wrap items-center gap-4 text-sm">
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={item.manutenzione} disabled={Boolean(item.carl)} onChange={event => patchAnomaly(item.id, { manutenzione: event.target.checked })} />
-                    CARL
-                    {item.carl && <span className="text-xs text-gray-500">{item.carl.codice}</span>}
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={item.action_plan || linkedPlans.some(plan => plan.route_source?.anomaly_id === item.id)} disabled={Boolean(item.action_plan_id) || linkedPlans.some(plan => plan.route_source?.anomaly_id === item.id)} onChange={event => patchAnomaly(item.id, { action_plan: event.target.checked })} />
-                    Action Plan LPW
-                  </label>
-                  {(item.action_plan || linkedPlans.some(plan => plan.route_source?.anomaly_id === item.id)) && <button type="button" className={smallButton} disabled={Boolean(openingAP) || !item.descrizione.trim()} onClick={() => openAnomalyAP(item)}>{openingAP === item.id ? 'Caricamento...' : item.action_plan_id || linkedPlans.some(plan => plan.route_source?.anomaly_id === item.id) ? 'Modifica Action Plan' : 'Prepara Action Plan'}</button>}
+                  <MachineSelect value={item.macchina} groups={machineGroups} onChange={value => patchAnomaly(item.id, { macchina: value, componente: '' })} />
+                  <ComponentInput value={item.componente} options={componentsOf(item.macchina)} onChange={value => patchAnomaly(item.id, { componente: value })} />
+                  <button type="button" aria-label="Elimina anomalia" onClick={() => removeAnomaly(item.id)} className="justify-self-end p-1.5 text-red-600 hover:bg-red-50 rounded"><Trash2 size={15} /></button>
                 </div>
-              <label className="block text-sm mt-4">Verifica del ripristino: come hai controllato (foto, misura, prova funzionale)
-                <textarea rows={2} className={`${input} mt-1`} value={item.verifica} onChange={event => patchAnomaly(item.id, { verifica: event.target.value })} />
-              </label>
-              <div className="mt-4">
-                <span className="block text-sm mb-1">Standard di riferimento (OPL / SOP)</span>
-                <div className="space-y-2">
-                  {item.documenti.map(entry => (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <input aria-label="Anomalia rilevata" placeholder="Anomalia rilevata" className={input} value={item.descrizione} onChange={event => patchAnomaly(item.id, { descrizione: event.target.value })} />
+                  <input aria-label="Verifica del ripristino" placeholder="Verifica del ripristino (foto, misura, prova)" className={input} value={item.verifica} onChange={event => patchAnomaly(item.id, { verifica: event.target.value })} />
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                  <ImageUpload images={item.foto_prima} onChange={value => patchAnomaly(item.id, { foto_prima: value })} label="Foto prima" maxImages={4} showHelp={false} />
+                  <ImageUpload images={item.foto_dopo} onChange={value => patchAnomaly(item.id, { foto_dopo: value })} label="Foto dopo" maxImages={4} showHelp={false} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-[auto_minmax(0,1fr)] gap-2 items-start">
+                  <div className="flex flex-wrap items-center gap-3 text-sm pt-1.5">
+                    <label className="flex items-center gap-1.5">
+                      <input type="checkbox" checked={item.manutenzione} disabled={Boolean(item.carl)} onChange={event => patchAnomaly(item.id, { manutenzione: event.target.checked })} />
+                      CARL{item.carl && <span className="text-xs text-gray-500">{item.carl.codice}</span>}
+                    </label>
+                    <label className="flex items-center gap-1.5">
+                      <input type="checkbox" checked={item.action_plan || planLinked} disabled={planLinked} onChange={event => patchAnomaly(item.id, { action_plan: event.target.checked })} />
+                      Action Plan
+                    </label>
+                    {(item.action_plan || planLinked) && <button type="button" className={smallButton} disabled={Boolean(openingAP) || !item.descrizione.trim()} onClick={() => openAnomalyAP(item)}>{openingAP === item.id ? 'Caricamento...' : planLinked ? 'Modifica AP' : 'Prepara AP'}</button>}
+                  </div>
+                  <div className="space-y-1.5 min-w-0">
+                    {item.documenti.map(entry => (
+                      <DocumentPicker
+                        key={entry.id}
+                        value={entry.id}
+                        label={labelFor(entry)}
+                        documents={documents}
+                        major={major}
+                        onSelect={doc => (doc ? addDocument(item.id, doc) : removeDocument(item.id, entry.id))}
+                        onCreate={() => startCreate(item.id, item.descrizione)}
+                        onOpen={() => openDocument(entry.id)}
+                      />
+                    ))}
                     <DocumentPicker
-                      key={entry.id}
-                      value={entry.id}
-                      label={labelFor(entry)}
-                      documents={documents}
+                      value=""
+                      label=""
+                      documents={documents.filter(doc => !item.documenti.some(entry => entry.id === doc._id))}
+                      priorityIds={linkedDocIds}
                       major={major}
-                      onSelect={doc => (doc ? addDocument(item.id, doc) : removeDocument(item.id, entry.id))}
+                      onSelect={doc => addDocument(item.id, doc)}
                       onCreate={() => startCreate(item.id, item.descrizione)}
-                      onOpen={() => openDocument(entry.id)}
+                      onOpen={() => {}}
                     />
-                  ))}
-                  <DocumentPicker
-                    value=""
-                    label=""
-                    documents={documents.filter(doc => !item.documenti.some(entry => entry.id === doc._id))}
-                    priorityIds={linkedDocIds}
-                    major={major}
-                    onSelect={doc => addDocument(item.id, doc)}
-                    onCreate={() => startCreate(item.id, item.descrizione)}
-                    onOpen={() => {}}
-                  />
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            )
+          })}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={addAnomaly} className={smallButton}><span className="inline-flex items-center gap-1"><Plus size={14} /> Anomalia</span></button>
+          {missingZones.length > 0 && <button type="button" onClick={addAnomaliesFromAreas} className={smallButton}>Crea dalle aree ({missingZones.length})</button>}
         </div>
       </section>
 
-      <section className="space-y-3">
-        <h3 className={heading}>PASSO 3 - ACTION PLAN</h3>
-        <KaizenAzioniList
-          parent={planningParent}
-          refreshKey={plansVersion}
-          onPlansLoaded={acceptPlans}
-          routeOptions={form.anomalie.filter(item => item.descrizione.trim())}
-          defaultStepId={step?.step_id || ''}
-        />
-      </section>
-
-      {carlOn && (
-        <section className={panel}>
-          <h3 className={heading}>PASSO 4 - INTERVENTI DI MANUTENZIONE</h3>
-          <p className="text-sm text-gray-600 mb-3">
-            Le anomalie segnate come intervento manutenzione si inviano a CARL. Lo stato si aggiorna da CARL.
-          </p>
-          {carlError && <p role="alert" className="mb-3 text-sm text-red-700">{carlError}</p>}
-          {maintenance.length === 0 ? (
-            <p className="p-4 text-center text-sm text-gray-400">Nessuna anomalia segnata come intervento manutenzione.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-sm">
-                <thead>
-                  <tr className="text-left text-gray-600 border-b">
-                    <th className="p-2 font-medium">Anomalia</th>
-                    <th className="p-2 font-medium">Macchina / componente</th>
-                    <th className="p-2 font-medium">Cartellino CARL</th>
-                    <th className="p-2 font-medium">Stato</th>
-                  </tr>
-                </thead>
-                <tbody>
+      <section className={panel}>
+        <h3 className={heading}>PASSO 3 - INTERVENTI</h3>
+        <div className={`grid grid-cols-1 ${carlOn ? 'lg:grid-cols-2' : ''} gap-4`}>
+          {carlOn && (
+            <div className="min-w-0 space-y-2">
+              <div className="flex items-center justify-between border-b border-gray-200 pb-1">
+                <h4 className="text-sm font-semibold text-gray-800">CARL</h4>
+                {carlIds.length > 0 && <button type="button" onClick={refreshCarl} className={smallButton}>Aggiorna stati</button>}
+              </div>
+              {carlError && <p role="alert" className="text-sm text-red-700">{carlError}</p>}
+              {maintenance.length === 0 ? (
+                <p className="py-3 text-center text-sm text-gray-400">Nessuna anomalia con CARL</p>
+              ) : (
+                <div className="divide-y divide-gray-100">
                   {maintenance.map(({ item, index }) => (
                     <MaintenanceRow
                       key={item.id}
@@ -666,17 +632,22 @@ export default function BasicConditions({ stepData, onChange, major, allStepsDat
                       onOpen={() => setCarlDetail(item.carl)}
                     />
                   ))}
-                </tbody>
-              </table>
+                </div>
+              )}
             </div>
           )}
-          {carlIds.length > 0 && (
-            <div className="mt-3 flex justify-end">
-              <button type="button" onClick={refreshCarl} className={smallButton}>Aggiorna stati</button>
-            </div>
-          )}
-        </section>
-      )}
+          <div className="min-w-0 space-y-2">
+            <div className="border-b border-gray-200 pb-1"><h4 className="text-sm font-semibold text-gray-800">Action Plan LPW</h4></div>
+            <KaizenAzioniList
+              parent={planningParent}
+              refreshKey={plansVersion}
+              onPlansLoaded={acceptPlans}
+              routeOptions={form.anomalie.filter(item => item.descrizione.trim())}
+              defaultStepId={step?.step_id || ''}
+            />
+          </div>
+        </div>
+      </section>
 
       <div role="status" aria-live="polite" className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4 text-sm">
         <span className={status === 'error' ? 'text-red-700' : 'text-gray-600'}>{STATUS_LABELS[status]}</span>
@@ -869,37 +840,31 @@ function ComponentInput({ value, options, onChange }) {
 function MaintenanceRow({ item, index, current, sending, disabled, onSend, onOpen }) {
   const [priorita, setPriorita] = useState('media')
   return (
-    <tr className="border-b align-middle">
-      <td className="p-2">
-        <span className="text-xs text-gray-500">Anomalia {index + 1}</span>
-        <span className="block font-medium text-gray-800">{item.descrizione || '—'}</span>
-      </td>
-      <td className="p-2 text-xs">{[item.macchina, item.componente].filter(Boolean).join(' · ') || '—'}</td>
-      <td className="p-2">
-        {current ? (
+    <div className="flex flex-wrap items-center gap-2 py-2 text-sm">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-700">{index + 1}</span>
+      <div className="min-w-0 flex-1">
+        <span className="block truncate font-medium text-gray-800" title={item.descrizione}>{item.descrizione || '—'}</span>
+        <span className="block truncate text-xs text-gray-500">{[item.macchina, item.componente].filter(Boolean).join(' · ') || '—'}</span>
+      </div>
+      {current ? (
+        <div className="flex items-center gap-2">
           <button type="button" onClick={onOpen} className="font-mono text-xs font-semibold text-primary hover:underline">{current.codice}</button>
-        ) : (
-          <div className="flex items-center gap-2">
-            <select aria-label="Priorità" value={priorita} onChange={event => setPriorita(event.target.value)} className="border border-gray-300 rounded px-2 py-1.5 text-xs bg-white">
-              <option value="bassa">Bassa</option>
-              <option value="media">Media</option>
-              <option value="alta">Alta</option>
-              <option value="urgente">Urgente</option>
-            </select>
-            <button type="button" disabled={disabled || !(item.descrizione || '').trim()} onClick={() => onSend(priorita)} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50">
-              {sending ? 'Invio...' : 'Prepara CARL'}
-            </button>
-          </div>
-        )}
-      </td>
-      <td className="p-2">
-        {current ? (
           <span className={`rounded px-1.5 py-0.5 text-xs ${CARL_BADGE[current.stato] || 'bg-gray-100 text-gray-700'}`}>{current.stato_label}</span>
-        ) : (
-          <span className="text-xs text-amber-700">Da inviare</span>
-        )}
-      </td>
-    </tr>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <select aria-label="Priorità" value={priorita} onChange={event => setPriorita(event.target.value)} className="border border-gray-300 rounded px-1.5 py-1 text-xs bg-white">
+            <option value="bassa">Bassa</option>
+            <option value="media">Media</option>
+            <option value="alta">Alta</option>
+            <option value="urgente">Urgente</option>
+          </select>
+          <button type="button" disabled={disabled || !(item.descrizione || '').trim()} onClick={() => onSend(priorita)} className="rounded bg-primary px-2.5 py-1 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50">
+            {sending ? 'Invio...' : 'Invia'}
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
