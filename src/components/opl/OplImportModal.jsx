@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Trash2, Upload, X } from 'lucide-react'
 import api from '../../services/api'
+import { useConfigurations } from '../../hooks/useConfigurations'
 
 const formatMb = bytes => `${((bytes || 0) / 1024 / 1024).toFixed(2)} MB`
+
+const norm = value => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ')
 
 export default function OplImportModal({ onClose, onImported }) {
   const [files, setFiles] = useState([])
@@ -14,6 +17,7 @@ export default function OplImportModal({ onClose, onImported }) {
   const [preview, setPreview] = useState({ url: '', loading: false, error: '' })
   const fileRef = useRef(null)
   const previewCache = useRef(new Map())
+  const { items: categorie } = useConfigurations('categorie_documento')
 
   const selected = items[selectedIndex]
   const selectedFile = selected ? files.find(file => file.name === selected.filename) : null
@@ -65,6 +69,18 @@ export default function OplImportModal({ onClose, onImported }) {
     return () => { cancelled = true }
   }, [selected?.filename, selected?.sheet, selected?.error, selectedFile])
 
+  const guessCategoria = item => {
+    const hints = [item.categoria, item.tipo_opl, item.tipo, item.sheet].map(norm).filter(Boolean)
+    const match = categorie.find(c => hints.some(hint => hint === norm(c.label) || hint.includes(norm(c.label))))
+    return match?.label || ''
+  }
+
+  useEffect(() => {
+    if (!categorie.length || !items.length) return
+    if (!items.some(item => !item.categoria && guessCategoria(item))) return
+    setItems(current => current.map(item => item.categoria ? item : { ...item, categoria: guessCategoria(item) }))
+  }, [categorie.length, items.length])
+
   const addFiles = fileList => {
     const excelFiles = Array.from(fileList || []).filter(file => /\.(xlsx|xlsm)$/i.test(file.name))
     if (!excelFiles.length) return
@@ -115,10 +131,37 @@ export default function OplImportModal({ onClose, onImported }) {
     setItems(current => current.map((item, index) => index === selectedIndex ? { ...item, [field]: value } : item))
   }
 
+  const setCategoria = value => {
+    setItems(current => current.map((item, index) => {
+      if (index === selectedIndex) return { ...item, categoria: value }
+      if (!item.categoria && !item.imported && !item.error) return { ...item, categoria: value }
+      return item
+    }))
+  }
+
+  const saveCategorie = async (created, importable) => {
+    for (const entry of created) {
+      const categoria = importable.find(item => item.numero === entry.numero)?.categoria
+      if (!categoria) continue
+      let id = entry._id || entry.id
+      if (!id) {
+        const found = await api.get('/documenti', { params: { search: entry.numero } }).catch(() => null)
+        id = (found?.data || []).find(doc => doc.numero === entry.numero)?._id
+      }
+      if (id) await api.put(`/documenti/${id}`, { categoria }).catch(() => null)
+    }
+  }
+
   const importSelected = async () => {
     const importable = items.filter(item => !item.error && !item.duplicate && !item.imported && item.numero)
     if (!importable.length) {
       alert('Nessuna OPL importabile. Controlla numeri mancanti o duplicati.')
+      return
+    }
+    const missing = importable.findIndex(item => !item.categoria)
+    if (missing >= 0) {
+      setSelectedIndex(items.indexOf(importable[missing]))
+      alert('Seleziona la categoria per tutte le OPL da importare.')
       return
     }
     const importableNames = new Set(importable.map(item => item.filename))
@@ -137,6 +180,7 @@ export default function OplImportModal({ onClose, onImported }) {
       reparto: item.reparto,
       linea: item.linea,
       data_documento: item.data_documento,
+      categoria: item.categoria,
     }))
     setImporting(true)
     try {
@@ -149,6 +193,7 @@ export default function OplImportModal({ onClose, onImported }) {
       })
       const created = response.data.created || []
       const skipped = response.data.skipped || []
+      await saveCategorie(created, importable)
       const numbers = new Set(created.map(entry => entry.numero))
       setItems(current => current.map(item => numbers.has(item.numero) ? { ...item, imported: true } : item))
       const lines = [`Importate ${created.length} OPL su ${importable.length}.`]
@@ -166,10 +211,7 @@ export default function OplImportModal({ onClose, onImported }) {
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-6xl h-[92vh] flex flex-col overflow-hidden shadow-2xl">
         <div className="bg-amber-700 text-white px-6 py-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold">Importa OPL da Excel</h2>
-            <p className="text-xs text-amber-100 mt-1">Viene salvata l'immagine del fronte scheda; l'Excel originale resta archiviato</p>
-          </div>
+          <h2 className="text-lg font-bold">Importa OPL da Excel</h2>
           <button type="button" onClick={onClose} className="p-1.5 rounded hover:bg-amber-600">
             <X size={20} />
           </button>
@@ -191,6 +233,7 @@ export default function OplImportModal({ onClose, onImported }) {
               <p className="font-semibold">Trascina qui le OPL Excel oppure clicca per selezionarle</p>
               <p className="text-sm text-gray-500 mt-1">Fino a 10 file .xlsx o .xlsm per volta</p>
             </div>
+
             {files.length > 0 && (
               <div className="w-full max-w-2xl mt-5 border rounded-lg overflow-hidden">
                 {files.map((file, index) => (
@@ -205,6 +248,7 @@ export default function OplImportModal({ onClose, onImported }) {
                 ))}
               </div>
             )}
+
             <button
               type="button"
               onClick={analyze}
@@ -215,9 +259,9 @@ export default function OplImportModal({ onClose, onImported }) {
             </button>
           </div>
         ) : (
-          <div className="flex-1 min-h-0 grid grid-cols-[260px_1fr]">
-            <aside className="border-r bg-gray-50 overflow-y-auto">
-              <div className="p-4 border-b text-sm font-medium">
+          <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[240px_1fr]">
+            <aside className="border-b md:border-b-0 md:border-r bg-gray-50 overflow-y-auto max-h-40 md:max-h-none">
+              <div className="p-3 border-b text-sm font-medium">
                 {successCount} di {items.length} analizzati
               </div>
               {items.map((item, index) => (
@@ -225,10 +269,10 @@ export default function OplImportModal({ onClose, onImported }) {
                   type="button"
                   key={`${item.filename}-${index}`}
                   onClick={() => setSelectedIndex(index)}
-                  className={`w-full text-left p-4 border-b ${selectedIndex === index ? 'bg-amber-50 border-l-4 border-l-amber-600' : 'hover:bg-white'}`}
+                  className={`w-full text-left p-3 border-b ${selectedIndex === index ? 'bg-amber-50 border-l-4 border-l-amber-600' : 'hover:bg-white'}`}
                 >
                   <div className="flex gap-2 items-start">
-                    {item.error || item.duplicate || (item.warnings?.length && !item.imported)
+                    {item.error || item.duplicate || (!item.categoria && !item.imported) || (item.warnings?.length && !item.imported)
                       ? <AlertTriangle size={17} className="text-amber-600 mt-0.5 shrink-0" />
                       : <CheckCircle2 size={17} className="text-green-600 mt-0.5 shrink-0" />}
                     <div className="min-w-0">
@@ -241,17 +285,16 @@ export default function OplImportModal({ onClose, onImported }) {
               ))}
             </aside>
 
-            <main className="min-h-0 overflow-y-auto p-6">
+            <main className="min-h-0 overflow-y-auto p-4 md:p-6">
               {selected?.error ? (
                 <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-5">{selected.error}</div>
               ) : selected ? (
                 <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-6">
-                  <div className="border rounded-lg bg-gray-100 min-h-[420px] flex items-center justify-center overflow-hidden">
+                  <div className="border rounded-lg bg-gray-100 min-h-[320px] flex items-center justify-center overflow-hidden">
                     {preview.loading && <span className="text-sm text-gray-500">Generazione anteprima...</span>}
                     {preview.error && <span className="text-sm text-red-600 p-6 text-center">{preview.error}</span>}
                     {preview.url && <img src={preview.url} alt={selected.titolo || selected.filename} className="w-full h-auto block" />}
                   </div>
-
                   <div className="space-y-3">
                     {selected.sheets?.length > 1 && (
                       <label className="block">
@@ -267,18 +310,32 @@ export default function OplImportModal({ onClose, onImported }) {
                     )}
                     <Field label="Numero OPL di sistema" value={selected.numero} onChange={value => updateSelected('numero', value)} />
                     <Field label="Titolo" value={selected.titolo} onChange={value => updateSelected('titolo', value)} />
-                    <Field label="Reparto" value={selected.reparto} onChange={value => updateSelected('reparto', value)} />
-                    <Field label="Linea" value={selected.linea} onChange={value => updateSelected('linea', value)} />
+                    <label className="block">
+                      <span className="block text-xs font-medium text-gray-600 mb-1">Categoria *</span>
+                      <select
+                        value={selected.categoria || ''}
+                        disabled={selected.imported}
+                        onChange={event => setCategoria(event.target.value)}
+                        className={`w-full border rounded-lg px-3 py-2 text-sm ${!selected.categoria && !selected.imported ? 'border-amber-500' : ''}`}
+                      >
+                        <option value="">Seleziona</option>
+                        {selected.categoria && !categorie.some(c => c.label === selected.categoria) && <option value={selected.categoria}>{selected.categoria}</option>}
+                        {categorie.map(c => <option key={c._id || c.label} value={c.label}>{c.label}</option>)}
+                      </select>
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Reparto" value={selected.reparto} onChange={value => updateSelected('reparto', value)} />
+                      <Field label="Linea" value={selected.linea} onChange={value => updateSelected('linea', value)} />
+                    </div>
                     <Field label="Data" type="date" value={selected.data_documento} onChange={value => updateSelected('data_documento', value)} />
                     <p className="text-xs text-gray-500">Codice storico: {selected.numero_originale || 'non rilevato'}</p>
-
                     {selected.duplicate && (
                       <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
                         La codifica <strong>{selected.numero}</strong> è già presente e non verrà importata.
                       </div>
                     )}
                     {selected.warnings?.length > 0 && (
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+                      <div className="text-xs text-amber-700 space-y-0.5">
                         {selected.warnings.map(warning => <div key={warning}>{warning}</div>)}
                       </div>
                     )}
