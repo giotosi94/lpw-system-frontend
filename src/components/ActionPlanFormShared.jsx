@@ -17,8 +17,7 @@ export default function ActionPlanFormShared({ plan, onClose, onSaved, prefilled
 const [form, setForm] = useState({
   route_source: plan?.route_source || prefilledParent?.route_source || null,
   titolo: plan?.titolo || prefilledParent?.titolo || '',
-  tipo: plan?.tipo || prefilledParent?.tipo || '',
-  priorita: plan?.priorita || '',
+  tipo: plan?.tipo || prefilledParent?.perdita || '',
   stato: plan?.stato || '',
   categoria_perdita: plan?.categoria_perdita || plan?.tipo_perdita || '',
   quinta_m: plan?.quinta_m || '',
@@ -53,32 +52,36 @@ const [form, setForm] = useState({
   const macchineDisponibili = useMemo(() => {
     if (!form.linea) return []
     const linea = lineeDisponibili.find(l => l.nome === form.linea)
-    return linea?.macchine?.filter(m => m.attivo !== false) || []
+    const found = []
+    const seen = new Set()
+    const walk = node => {
+      ;(node?.macchine || []).forEach(m => {
+        if (m.attivo === false || !m.nome || seen.has(m.nome)) return
+        seen.add(m.nome)
+        found.push(m)
+      })
+      ;(node?.aree || []).forEach(area => { if (area.attivo !== false) walk(area) })
+    }
+    walk(linea)
+    return found
   }, [form.linea, lineeDisponibili])
 
   useEffect(() => {
   if (plan) return
 
   const stati = configs.stato_ap || []
-  const priorita = configs.priorita_ap || []
 
   const statoAperto =
     stati.find(s => s.label?.toLowerCase() === 'aperto')?.label ||
     stati.find(s => s.label?.toLowerCase().includes('apert'))?.label ||
     'Aperto'
 
-  const prioritaMedia =
-    priorita.find(p => p.label?.toLowerCase().includes('medium'))?.label ||
-    priorita.find(p => p.label?.toLowerCase().includes('media'))?.label ||
-    priorita[0]?.label ||
-    ''
 
   setForm(f => ({
     ...f,
     stato: statoAperto,
-    priorita: f.priorita || prioritaMedia,
   }))
-}, [configs.stato_ap, configs.priorita_ap, plan])
+}, [configs.stato_ap, plan])
 
   function handleRepartoChange(nuovoReparto) {
     setForm(f => ({ ...f, reparto: nuovoReparto, linea: '', macchina: '' }))
@@ -153,7 +156,6 @@ const [form, setForm] = useState({
   }
 
   const tipiConfig = configs.tipi_action_plan || []
-  const prioritaConfig = configs.priorita_ap || []
   const statiConfig = configs.stato_ap || []
   const categoriePerditaConfig = configs.categorie_perdita || []
 
@@ -203,38 +205,23 @@ const [form, setForm] = useState({
             />
           </Field>
 
-          <div className="grid gap-3 grid-cols-2">
-            <Field label="Tipo">
-              <DynamicSelect
-                value={form.tipo}
-                onChange={(v) => setForm({ ...form, tipo: v })}
-                options={tipiConfig}
-                placeholder="Seleziona"
-                emptyHint="Settings → Tipo"
-              />
-            </Field>
-
-            <Field label="Priorità">
-              <DynamicSelect
-                value={form.priorita}
-                onChange={(v) => setForm({ ...form, priorita: v })}
-                options={prioritaConfig}
-                placeholder="Seleziona"
-                emptyHint="Settings → Priorità"
-              />
-            </Field>
-
-          </div>
-
-          {/* Categoria Perdita + 5M */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field label="Categoria">
               <DynamicSelect
                 value={form.categoria_perdita}
                 onChange={(v) => setForm({ ...form, categoria_perdita: v })}
                 options={categoriePerditaConfig}
                 placeholder="Nessuna"
-                emptyHint="Settings → Categoria Perdita"
+                emptyHint="Settings → Categoria"
+              />
+            </Field>
+            <Field label="Perdita">
+              <DynamicSelect
+                value={form.tipo}
+                onChange={(v) => setForm({ ...form, tipo: v })}
+                options={form.tipo && !tipiConfig.some(o => o.label === form.tipo) ? [{ _id: 'current', label: form.tipo }, ...tipiConfig] : tipiConfig}
+                placeholder="Nessuna"
+                emptyHint="Settings → Perdita"
               />
             </Field>
             <Field label="5M (Ishikawa)">
@@ -274,7 +261,7 @@ const [form, setForm] = useState({
           </Field>
 
           {/* Reparto → Linea → Macchina */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field label="Reparto">
               <select
                 value={form.reparto}
