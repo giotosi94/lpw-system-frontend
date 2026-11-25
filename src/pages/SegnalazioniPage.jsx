@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import api from '../services/api'
-import { AlertTriangle, Leaf, Plus, Eye, X, Send, Trash2, Save, CheckCircle2, Lock, Download, Edit2 } from 'lucide-react'
+import { AlertTriangle, Leaf, Plus, Eye, X, Send, Trash2, Save, CheckCircle2, Lock, Download, Edit2, ListChecks } from 'lucide-react'
 import ActionPlanFormShared from '../components/ActionPlanFormShared'
 import ImageUpload from '../components/ImageUpload'
 import DocumentUpload from '../components/DocumentUpload'
+import UserPicker from '../components/UserPicker'
 
 const TIPI = [
   { id: 'Sicurezza', label: 'SICUREZZA', Icon: AlertTriangle },
@@ -90,6 +91,7 @@ export default function SegnalazioniPage() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [detail, setDetail] = useState(null)
+  const [riepilogoOpen, setRiepilogoOpen] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
 
   const savedUser = (() => {
@@ -173,6 +175,16 @@ export default function SegnalazioniPage() {
           <h1 className="text-2xl font-bold text-gray-800">Segnalazioni</h1>
           <p className="text-sm text-gray-500">Segnalazioni di sicurezza e ambiente</p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        {managedTipi.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setRiepilogoOpen(true)}
+            className="flex items-center gap-2 text-sm border border-primary text-primary bg-white px-3 py-2 rounded-lg font-medium hover:bg-gray-50"
+          >
+            <ListChecks size={16} /> Riepilogo giornaliero
+          </button>
+        )}
         <button
           type="button"
           onClick={() => exportSegnalazioniCsv(items)}
@@ -182,6 +194,7 @@ export default function SegnalazioniPage() {
         >
           <Download size={16} /> Scarica Excel
         </button>
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -234,6 +247,13 @@ export default function SegnalazioniPage() {
         })}
       </div>
 
+      {riepilogoOpen && (
+        <RiepilogoModal
+          onClose={() => setRiepilogoOpen(false)}
+          onOpen={item => { setRiepilogoOpen(false); setDetail(item) }}
+        />
+      )}
+
       {detail && (
         <SegnalazioneDetail
           segnalazione={detail}
@@ -260,6 +280,8 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
   const [categorieOptions, setCategorieOptions] = useState([])
   const [partiCorpoOptions, setPartiCorpoOptions] = useState([])
   const [lesioniOptions, setLesioniOptions] = useState([])
+  const [gestioneDirty, setGestioneDirty] = useState(false)
+  const [feedback, setFeedback] = useState('')
 
   useEffect(() => {
     api.get('/reparti/').then(res => setReparti(res.data || [])).catch(() => {})
@@ -406,32 +428,67 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
     }
   }
 
-  const classifica = async (field, value) => {
-    const next = { ...form, [field]: value }
-    setForm(next)
-    if (!form._id) return
-    try {
-      await api.patch(`/segnalazioni/${form._id}/classificazione`, {
-        categoria: next.categoria,
-        gravita: next.gravita,
-        priorita: next.priorita,
-        note_gestione: next.note_gestione,
-        parte_corpo: next.parte_corpo,
-        tipo_lesione: next.tipo_lesione,
-      })
-      onSaved()
-    } catch (err) {
-      console.error(err)
-    }
+  const classifica = (field, value) => {
+    setForm(f => ({ ...f, [field]: value }))
+    setGestioneDirty(true)
   }
 
-  const setInGestione = async () => {
+  const gestionePayload = () => ({
+    categoria: form.categoria || '',
+    gravita: form.gravita || '',
+    priorita: form.priorita || '',
+    note_gestione: form.note_gestione || '',
+    parte_corpo: form.parte_corpo || '',
+    tipo_lesione: form.tipo_lesione || '',
+  })
+
+  const saveGestione = async () => {
+    if (saving) return
+    setSaving(true)
     try {
-      const res = await api.patch(`/segnalazioni/${form._id}/in-gestione`)
-      setForm(res.data)
+      const res = await api.patch(`/segnalazioni/${form._id}/classificazione`, gestionePayload())
+      setForm(f => ({ ...f, ...res.data }))
+      setGestioneDirty(false)
       onSaved()
     } catch (err) {
       alert('Errore: ' + (err.response?.data?.detail || err.message))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const approva = async () => {
+    if (saving) return
+    if (!form.categoria || !form.gravita) {
+      alert('Indica categoria e gravità prima di approvare')
+      return
+    }
+    if (!confirm('Approvare la segnalazione? Verrà inserita nel riepilogo giornaliero.')) return
+    setSaving(true)
+    try {
+      const res = await api.patch(`/segnalazioni/${form._id}/approva`, gestionePayload())
+      setForm(f => ({ ...f, ...res.data }))
+      setGestioneDirty(false)
+      onSaved()
+    } catch (err) {
+      alert('Errore: ' + (err.response?.data?.detail || err.message))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const sendFeedback = async () => {
+    if (saving || !feedback.trim()) return
+    setSaving(true)
+    try {
+      const res = await api.post(`/segnalazioni/${form._id}/feedback`, { testo: feedback })
+      setForm(f => ({ ...f, feedback: res.data.feedback || [] }))
+      setFeedback('')
+      onSaved()
+    } catch (err) {
+      alert('Errore: ' + (err.response?.data?.detail || err.message))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -461,7 +518,7 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
   }
 
   const closeDetail = () => {
-    if (editMode && !confirm('Uscire senza salvare le modifiche?')) return
+    if ((editMode || gestioneDirty) && !confirm('Uscire senza salvare le modifiche?')) return
     onClose(form)
   }
 
@@ -689,8 +746,48 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
               <Field label="Note di gestione">
                 <textarea value={form.note_gestione || ''} onChange={e => classifica('note_gestione', e.target.value)} rows={2} className={inputClass} />
               </Field>
+              {form.approvata && (
+                <div className="text-xs text-green-700 flex items-center gap-1">
+                  <CheckCircle2 size={14} /> Approvata da {form.approvata_da}{form.approvata_il ? ` il ${new Date(form.approvata_il).toLocaleString('it-IT')}` : ''}
+                </div>
+              )}
             </Section>
           )}
+
+          {!isBozza && form._id && ((isAdmin && form.approvata) || (form.feedback || []).length > 0) && (
+            <Section title="FEEDBACK AL SEGNALATORE">
+              {(form.feedback || []).length > 0 && (
+                <div className="space-y-2">
+                  {(form.feedback || []).map((item, i) => (
+                    <div key={i} className="border-l-2 border-primary pl-3">
+                      <div className="text-sm text-gray-800 whitespace-pre-wrap">{item.testo}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">{item.autore}{item.data ? ` · ${new Date(item.data).toLocaleString('it-IT')}` : ''}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {isAdmin && form.approvata && (
+                <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+                  <textarea
+                    value={feedback}
+                    onChange={e => setFeedback(e.target.value)}
+                    rows={2}
+                    placeholder={`Messaggio per ${form.segnalatore_nome || 'il segnalatore'}`}
+                    className={`${inputClass} flex-1`}
+                  />
+                  <button
+                    type="button"
+                    onClick={sendFeedback}
+                    disabled={saving || !feedback.trim()}
+                    className="px-4 py-2 bg-primary text-white rounded-lg text-sm flex items-center justify-center gap-2 hover:bg-primary-light disabled:opacity-50"
+                  >
+                    <Send size={15} /> Invia
+                  </button>
+                </div>
+              )}
+            </Section>
+          )}
+
 
           {isAdmin && form._id && !isBozza && (
             <Section title="ACTION PLAN COLLEGATI">
@@ -739,9 +836,6 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
           {isAdmin && !isChiuso && form._id && !isBozza && (
             <div className="flex flex-wrap items-center justify-between gap-3 bg-gray-50 border rounded-lg p-4">
               <div className="flex items-center gap-3">
-                {form.stato !== 'In gestione' && (
-                  <button type="button" onClick={setInGestione} className="px-3 py-1.5 border rounded-lg text-sm hover:bg-white">Metti in gestione</button>
-                )}
                 <div className="text-sm text-gray-600">
                   {apOpen > 0
                     ? `${apOpen} Action Plan ancora apert${apOpen === 1 ? 'o' : 'i'}`
@@ -762,11 +856,35 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
             </div>
           )}
 
-          {canDelete && (
-            <div className="flex justify-end">
-              <button type="button" onClick={elimina} className="text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-                <Trash2 size={15} /> Elimina segnalazione
-              </button>
+          {(canDelete || (isAdmin && form._id && !isBozza && !isChiuso)) && (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {canDelete ? (
+                <button type="button" onClick={elimina} className="text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg text-sm flex items-center gap-2">
+                  <Trash2 size={15} /> Elimina
+                </button>
+              ) : <span />}
+              {isAdmin && form._id && !isBozza && !isChiuso && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={saveGestione}
+                    disabled={saving || !gestioneDirty || editMode}
+                    className="px-4 py-2 border border-primary text-primary bg-white rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <Save size={15} /> Salva
+                  </button>
+                  {!form.approvata && (
+                    <button
+                      type="button"
+                      onClick={approva}
+                      disabled={saving || editMode}
+                      className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-primary-light disabled:opacity-50"
+                    >
+                      <CheckCircle2 size={15} /> Approva segnalazione
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -808,6 +926,105 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
           onClosed={updated => { setForm(updated); onSaved(); setChiusuraOpen(false) }}
         />
       )}
+    </div>
+  )
+}
+
+function todayIso() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function RiepilogoModal({ onClose, onOpen }) {
+  const [data, setData] = useState(todayIso())
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [destinatari, setDestinatari] = useState([])
+  const [destDirty, setDestDirty] = useState(false)
+  const [savingDest, setSavingDest] = useState(false)
+
+  useEffect(() => {
+    api.get('/segnalazioni/riepilogo/destinatari')
+      .then(res => setDestinatari(res.data?.utenti || []))
+      .catch(() => setDestinatari([]))
+  }, [])
+
+  useEffect(() => {
+    setLoading(true)
+    api.get('/segnalazioni/riepilogo/giorno', { params: { data } })
+      .then(res => setItems(res.data?.items || []))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false))
+  }, [data])
+
+  const saveDestinatari = async () => {
+    setSavingDest(true)
+    try {
+      const res = await api.put('/segnalazioni/riepilogo/destinatari', { utenti: destinatari.map(item => item.id) })
+      setDestinatari(res.data?.utenti || [])
+      setDestDirty(false)
+    } catch (err) {
+      alert('Errore: ' + (err.response?.data?.detail || err.message))
+    } finally {
+      setSavingDest(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="bg-primary text-white px-6 py-4 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-bold">Riepilogo giornaliero</h2>
+          <div className="flex items-center gap-2">
+            <input type="date" value={data} max={todayIso()} onChange={e => e.target.value && setData(e.target.value)} className="rounded px-2 py-1 text-sm text-gray-800" />
+            <button type="button" onClick={onClose} className="p-1.5 rounded hover:bg-white/10"><X size={20} /></button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 bg-gray-50">
+          <Section title={`SEGNALAZIONI APPROVATE (${items.length})`}>
+            {loading ? (
+              <div className="text-sm text-gray-400">Caricamento...</div>
+            ) : items.length === 0 ? (
+              <div className="text-sm text-gray-400">Nessuna segnalazione approvata in questa data.</div>
+            ) : (
+              <div className="divide-y">
+                {items.map(item => (
+                  <button
+                    type="button"
+                    key={item._id}
+                    onClick={() => onOpen(item)}
+                    className="w-full text-left py-2.5 flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1 hover:bg-gray-50"
+                  >
+                    <span className="font-mono text-sm font-bold text-primary w-16 shrink-0">{item.codice}</span>
+                    <span className="text-xs text-gray-600 w-20 shrink-0">{item.tipo}</span>
+                    <span className="flex-1 min-w-0 text-sm text-gray-800 truncate" title={item.descrizione}>{item.descrizione}</span>
+                    <span className="text-xs text-gray-500 truncate max-w-[10rem]">{[item.categoria, item.gravita].filter(Boolean).join(' · ')}</span>
+                    <span className="text-xs text-gray-500 truncate max-w-[10rem]">{[item.reparto, item.linea].filter(Boolean).join(' · ')}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </Section>
+          <Section title={`DESTINATARI (${destinatari.length})`}>
+            <UserPicker
+              value={destinatari}
+              onChange={selected => { setDestinatari(Array.isArray(selected) ? selected : []); setDestDirty(true) }}
+              mode="multi"
+              placeholder="Aggiungi destinatari..."
+            />
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={saveDestinatari}
+                disabled={savingDest || !destDirty}
+                className="px-4 py-2 bg-primary text-white rounded-lg text-sm flex items-center gap-2 hover:bg-primary-light disabled:opacity-50"
+              >
+                <Save size={15} /> {savingDest ? 'Salvataggio...' : 'Salva destinatari'}
+              </button>
+            </div>
+          </Section>
+        </div>
+      </div>
     </div>
   )
 }
