@@ -23,6 +23,23 @@ import { useAuth } from '../context/AuthContext'
 import { usePagePermissions } from '../context/pagePermissions'
 import ParetoChart from '../components/pillar/ParetoChart'
 
+
+function usePerditeKaizen() {
+  const [perdite, setPerdite] = useState([])
+  useEffect(() => {
+    api.get('/configurazioni/?tipo=perdita_kaizen&attivo=true')
+      .then(res => setPerdite(res.data || []))
+      .catch(() => setPerdite([]))
+  }, [])
+  return perdite
+}
+
+function perditeDiCategoria(perdite, categorie, categoriaLabel) {
+  const categoria = categorie.find(item => item.label === categoriaLabel)
+  if (!categoria) return []
+  return perdite.filter(item => item.parent_id === categoria._id)
+}
+
 const LIVELLI = ['Quick', 'Standard', 'Major']
 
 const livelloConfig = {
@@ -103,8 +120,9 @@ export default function KaizenDetailPage() {
   const [parentKaizen, setParentKaizen] = useState(null)
 
   const { configs } = useAllConfigurations()
+  const perditeKaizen = usePerditeKaizen()
   const { pillars, loading: loadingPillars } = usePillars()
-  const [reparti, setReparti] = useState([])
+const [reparti, setReparti] = useState([])
   useEffect(() => {
     api.get('/reparti/').then(res => setReparti(res.data || [])).catch(() => setReparti([]))
   }, [])
@@ -591,27 +609,37 @@ export default function KaizenDetailPage() {
                 </select>
               </div>
             </div>
-                        <div className="mt-4">
-              <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
-                Categoria Perdita
-              </label>
-
-              <select
-                value={kaizen.tipo_perdita || ''}
-                onChange={(e) => setKaizen(prev => ({
-                  ...prev,
-                  tipo_perdita: e.target.value,
-                }))}
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-              >
-                <option value="">Nessuna</option>
-
-                {(configs.categorie_perdita || []).map(p => (
-                  <option key={p._id} value={p.label}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
+            <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Categoria</label>
+                <select
+                  value={kaizen.tipo_perdita || ''}
+                  onChange={(e) => setKaizen(prev => ({ ...prev, tipo_perdita: e.target.value, perdita: '' }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">Nessuna</option>
+                  {(configs.categorie_perdita || []).map(p => (
+                    <option key={p._id} value={p.label}>{p.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Perdita</label>
+                <select
+                  value={kaizen.perdita || ''}
+                  onChange={(e) => setKaizen(prev => ({ ...prev, perdita: e.target.value }))}
+                  disabled={!kaizen.tipo_perdita}
+                  className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
+                >
+                  <option value="">{kaizen.tipo_perdita ? 'Nessuna' : 'Prima la categoria'}</option>
+                  {kaizen.perdita && !perditeDiCategoria(perditeKaizen, configs.categorie_perdita || [], kaizen.tipo_perdita).some(p => p.label === kaizen.perdita) && (
+                    <option value={kaizen.perdita}>{kaizen.perdita}</option>
+                  )}
+                  {perditeDiCategoria(perditeKaizen, configs.categorie_perdita || [], kaizen.tipo_perdita).map(p => (
+                    <option key={p._id} value={p.label}>{p.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="mt-6 pt-5 border-t">
@@ -722,8 +750,9 @@ export default function KaizenDetailPage() {
             kaizen={kaizen}
             reparti={reparti}
             pillars={pillars}
-            categorie={configs.categorie_perdita || []}
-            locked={isLocked}
+              categorie={configs.categorie_perdita || []}
+              perdite={perditeKaizen}
+locked={isLocked}
             onSave={saveProjectData}
           />
         </div>
@@ -1166,7 +1195,7 @@ export default function KaizenDetailPage() {
   )
 }
 
-function KaizenProjectData({ kaizen, reparti, pillars, categorie, locked, onSave }) {
+function KaizenProjectData({ kaizen, reparti, pillars, categorie, perdite = [], locked, onSave }) {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [dashboards, setDashboards] = useState([])
@@ -1178,7 +1207,8 @@ function KaizenProjectData({ kaizen, reparti, pillars, categorie, locked, onSave
     pillar_id: kaizen.pillar_id || '',
     dashboard_id: kaizen.dashboard_id || '',
     tipo_perdita: kaizen.tipo_perdita || '',
-    team_leader: kaizen.team_leader_id ? { id: kaizen.team_leader_id, name: kaizen.team_leader_nome || '' } : null,
+    perdita: kaizen.perdita || '',
+team_leader: kaizen.team_leader_id ? { id: kaizen.team_leader_id, name: kaizen.team_leader_nome || '' } : null,
     team_members: (kaizen.team_members_ids || []).map((memberId, index) => ({ id: memberId, name: kaizen.team_members_nomi?.[index] || '' })),
   })
   const [form, setForm] = useState(build)
@@ -1222,7 +1252,8 @@ function KaizenProjectData({ kaizen, reparti, pillars, categorie, locked, onSave
       dashboard_id: dashboard?._id || (form.dashboard_id ? kaizen.dashboard_id : null),
       dashboard_nome: dashboard ? dashboardLabel(dashboard) : (form.dashboard_id ? kaizen.dashboard_nome : ''),
       tipo_perdita: form.tipo_perdita,
-      team_leader_id: form.team_leader?.id || null,
+      perdita: form.perdita,
+team_leader_id: form.team_leader?.id || null,
       team_leader_nome: form.team_leader?.name || '',
       team_members_ids: form.team_members.map(item => item.id),
       team_members_nomi: form.team_members.map(item => item.name),
@@ -1262,7 +1293,8 @@ function KaizenProjectData({ kaizen, reparti, pillars, categorie, locked, onSave
           <PDDisplay label="Stato" value={kaizen.stato} />
           <PDDisplay label="Creatore" value={kaizen.creatore_nome} />
           <PDDisplay label="Data apertura" value={formatDate(kaizen.data_apertura || kaizen.created_at)} />
-          <PDSelect label="Categoria perdita" editing={editing} value={form.tipo_perdita} options={withCurrent(categorie.map(item => ({ value: item.label, label: item.label })), form.tipo_perdita)} onChange={value => setForm({ ...form, tipo_perdita: value })} />
+<PDSelect label="Categoria" editing={editing} value={form.tipo_perdita} options={withCurrent(categorie.map(item => ({ value: item.label, label: item.label })), form.tipo_perdita)} onChange={value => setForm({ ...form, tipo_perdita: value, perdita: '' })} />
+          <PDSelect label="Perdita" editing={editing} value={form.perdita} disabled={!form.tipo_perdita} options={withCurrent(perditeDiCategoria(perdite, categorie, form.tipo_perdita).map(item => ({ value: item.label, label: item.label })), form.perdita)} onChange={value => setForm({ ...form, perdita: value })} />
         </div>
       </PDSection>
 
@@ -1874,7 +1906,7 @@ function FigliTab({ kaizenId, kaizenNumero, kaizenLivello, kaizenReparto, kaizen
           {figli.map(child => {
             const rootCause = getRootCause(child)
             const apStats = getApStats(child._id)
-            const perdita = child.tipo_perdita || child.categoria || null
+            const perdita = [child.tipo_perdita || child.categoria, child.perdita].filter(Boolean).join(' · ') || null
             const risultato = child.risultati?.attuale
 
             return (
