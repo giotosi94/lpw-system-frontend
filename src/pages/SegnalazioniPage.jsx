@@ -245,6 +245,8 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
   const [showApForm, setShowApForm] = useState(false)
   const [editingAp, setEditingAp] = useState(null)
   const [categorieOptions, setCategorieOptions] = useState([])
+  const [partiCorpoOptions, setPartiCorpoOptions] = useState([])
+  const [lesioniOptions, setLesioniOptions] = useState([])
 
   useEffect(() => {
     api.get('/reparti/').then(res => setReparti(res.data || [])).catch(() => {})
@@ -258,6 +260,16 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
       .then(res => setCategorieOptions(res.data || []))
       .catch(() => setCategorieOptions([]))
   }, [form.tipo])
+
+  useEffect(() => {
+    if (!isAdmin || form.tipo !== 'Sicurezza') return
+    api.get('/configurazioni/?tipo=parte_corpo_segnalazione&attivo=true')
+      .then(res => setPartiCorpoOptions(res.data || []))
+      .catch(() => setPartiCorpoOptions([]))
+    api.get('/configurazioni/?tipo=tipo_lesione_segnalazione&attivo=true')
+      .then(res => setLesioniOptions(res.data || []))
+      .catch(() => setLesioniOptions([]))
+  }, [isAdmin, form.tipo])
 
   const loadActionPlans = async () => {
     try {
@@ -366,6 +378,8 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
         gravita: next.gravita,
         priorita: next.priorita,
         note_gestione: next.note_gestione,
+        parte_corpo: next.parte_corpo,
+        tipo_lesione: next.tipo_lesione,
       })
       onSaved()
     } catch (err) {
@@ -586,6 +600,16 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
                   </select>
                 </Field>
               </div>
+              {form.tipo === 'Sicurezza' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Field label="Parte del corpo">
+                    <ConfigSelect value={form.parte_corpo} options={partiCorpoOptions} onChange={value => classifica('parte_corpo', value)} />
+                  </Field>
+                  <Field label="Tipo di lesione">
+                    <ConfigSelect value={form.tipo_lesione} options={lesioniOptions} onChange={value => classifica('tipo_lesione', value)} />
+                  </Field>
+                </div>
+              )}
               <Field label="Note di gestione">
                 <textarea value={form.note_gestione || ''} onChange={e => classifica('note_gestione', e.target.value)} rows={2} className="w-full border rounded-lg px-3 py-2 text-sm" />
               </Field>
@@ -758,6 +782,16 @@ function ChiusuraModal({ segnalazioneId, onClose, onClosed }) {
         </div>
       </div>
     </div>
+  )
+}
+
+function ConfigSelect({ value, options, onChange }) {
+  return (
+    <select value={value || ''} onChange={e => onChange(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm">
+      <option value="">— Seleziona —</option>
+      {options.map(o => <option key={o._id} value={o.label}>{o.label}</option>)}
+      {value && !options.some(o => o.label === value) && <option value={value}>{value}</option>}
+    </select>
   )
 }
 
