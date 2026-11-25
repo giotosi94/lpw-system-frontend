@@ -633,6 +633,19 @@ export default function ActionPlanDetailPanel({
           </SidebarRow>
 
 
+          {(detail.partecipanti || []).length > 0 && (
+            <SidebarRow label="Partecipanti">
+              <div className="flex flex-col gap-0.5 min-w-0">
+                {detail.partecipanti.map(p => (
+                  <div key={p.id || p.name} className="flex items-center gap-1 min-w-0">
+                    <Avatar name={p.name} size={16} />
+                    <span className="text-xs truncate">{p.name}</span>
+                  </div>
+                ))}
+              </div>
+            </SidebarRow>
+          )}
+
           <SidebarRow label="Scadenza">
             <span className={`text-xs ${detail.stato_visuale === 'In Ritardo' ? 'text-red-600 font-bold' : ''}`}>
               {detail.data_scadenza
