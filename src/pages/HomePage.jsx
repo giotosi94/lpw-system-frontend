@@ -140,7 +140,7 @@ export default function HomePage() {
   const selectFromModal = ap => { setListModal(null); setSelectedAP(ap) }
   return <div className="lpw-home" data-layout="home-professional-v2">
     <style>{`
-.lpw-home{--home-ink:#29251f;--home-muted:#6e706f;--home-line:#e6e4df;--home-accent:#715328;color:var(--home-ink);width:100%;min-width:0;font-size:14px;line-height:1.5}
+.lpw-home{--home-ink:#29251f;--home-muted:#57524b;--home-line:#ebe7e0;--home-accent:#715328;color:var(--home-ink);width:100%;min-width:0;font-size:14px;line-height:1.5}
 .lpw-home .home-heading{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;padding:4px 0 22px;border-bottom:1px solid #dedbd4;margin-bottom:22px}
 .lpw-home .home-heading h1{font-size:26px;letter-spacing:-.6px;line-height:1.25;color:#30271e;margin:0;font-weight:650}
 .lpw-home .home-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;align-items:start}
@@ -182,6 +182,27 @@ export default function HomePage() {
 .lpw-home .home-opl-row{background:#fffbeb;border-left:3px solid #eab308;padding:9px 10px;margin:5px 0}.lpw-home .home-opl-row:hover{background:#fef3c7}.lpw-home .home-opl-type{display:inline-block;flex-shrink:0;white-space:nowrap;border:1px solid #e5c76b;background:#fef3c7;color:#854d0e;border-radius:5px;padding:2px 6px;font-size:10px;font-weight:600}.lpw-home .home-panel-opl .home-opl-pending-tab{background:#fef3c7;color:#854d0e;border-radius:5px;padding:5px 8px;border-bottom-color:#ca8a04}
 .lpw-home .home-opl-type{max-width:140px;overflow:hidden;text-overflow:ellipsis}@media(max-width:520px){.lpw-home .home-opl-type{max-width:80px}}
   .lpw-home .home-ap-scroll{box-sizing:border-box;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#b3a58c #f2eee8}.lpw-home .home-ap-columns .home-ap-scroll .ap-home-readonly{overflow:visible}.lpw-home .home-ap-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #e5dcd1}.lpw-home .home-ap-columns .home-ap-head .home-ap-group{margin:0;padding:0;border:0}.lpw-home .home-ap-columns .home-ap-head .home-more{margin:0;padding:0;flex-shrink:0}.lpw-home .home-ap-scroll:focus-visible{outline:2px solid #947748;outline-offset:2px}.lpw-home .home-ap-scroll thead th{position:sticky;top:0;z-index:1;background:#f8f7f4}.lpw-home .home-more{display:inline-block;margin-top:10px;padding:6px 0;background:none;border:0;color:#715328;font-size:12px;font-weight:600;text-decoration:underline;text-underline-offset:3px;cursor:pointer}.lpw-home .home-more:hover{color:#3e2b1a}.lpw-home .home-panel-opl>.home-panel-heading>.home-more,.lpw-home .home-panel-reports>.home-panel-heading>.home-more{margin:0 0 0 auto;padding:0;flex-shrink:0}.lpw-home .home-panel-opl .home-ap-scroll,.lpw-home .home-panel-reports .home-ap-scroll{padding-right:2px}.lpw-home .home-panel-opl .home-opl-row:last-child,.lpw-home .home-panel-reports .home-report-row:last-child{margin-bottom:0}.lpw-home .home-ap-columns .home-more{margin-top:6px}
+
+  .lpw-home{--home-secondary:#57524b;--home-faint:#ebe7e0}
+  .lpw-home .home-panel{border-color:#e3ddd2;box-shadow:0 1px 2px rgba(63,43,25,.04)}
+  .lpw-home .home-panel-heading{border-bottom-color:var(--home-faint)}
+  .lpw-home .home-panel-title{color:#321a0d;font-weight:650}
+  .lpw-home .home-ap-head{border-bottom-color:var(--home-faint)}
+  .lpw-home .home-ap-group{border-bottom-color:var(--home-faint)}
+  .lpw-home .text-gray-500,.lpw-home .text-gray-600,.lpw-reading-history .text-gray-500{color:var(--home-secondary)}
+  .lpw-home .text-gray-400{color:#7b756c}
+  .lpw-home .divide-y>:not([hidden])~:not([hidden]){border-color:var(--home-faint)}
+  .lpw-home .home-tab{color:var(--home-secondary)}
+  .lpw-home .home-tab-active{color:#321a0d}
+  .lpw-home .home-opl-code,.lpw-home .home-opl-due{color:var(--home-secondary)}
+  .lpw-home .ap-home-readonly,.lpw-home .home-ap-scroll .ap-home-readonly{border-color:var(--home-faint)}
+  .lpw-home .ap-home-readonly thead th,.lpw-home .home-ap-scroll .ap-home-readonly thead th{background:#fff;color:var(--home-secondary);font-weight:600;font-size:12px;text-transform:none;letter-spacing:0;border-bottom:1px solid var(--home-faint)}
+  .lpw-home .ap-home-readonly thead th:first-child{font-size:0}
+  .lpw-home .ap-home-readonly thead th:first-child::after{content:"#";font-size:13px;font-weight:600;color:var(--home-secondary)}
+  .lpw-home .ap-home-readonly tbody td{border-color:var(--home-faint)}
+  .lpw-home .home-ap-columns .ap-home-readonly td{font-size:13px}
+  .lpw-home .ap-home-readonly td:last-child span{background:#f4f2ee;color:#4a453e;border-radius:4px}
+  .lpw-home .ap-home-readonly td:before{color:var(--home-secondary)}
 `}</style>
     <header className="home-heading">
       <h1 className="text-2xl font-bold">Ciao {user.full_name?.split(' ')[0] || user.username}!</h1>
