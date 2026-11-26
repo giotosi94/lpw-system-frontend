@@ -429,21 +429,22 @@ const [reparti, setReparti] = useState([])
   }
 
   return (
-    <div>
-      <div className="bg-primary text-white rounded-xl p-6 mb-6">
+    <div className="mx-auto w-full min-w-0 max-w-6xl px-0 sm:px-2">
+      <header className="mb-4 rounded-lg border border-gray-200 bg-white p-3 sm:p-4">
         <button
           onClick={() => navigate(fromDashboard ? `/dashboard/${fromDashboard}` : '/kaizen')}
-          className="flex items-center gap-2 text-white text-opacity-90 hover:text-opacity-100 mb-4 text-sm"
+          type="button"
+          className="mb-2 flex items-center gap-2 text-sm text-gray-600 hover:text-primary"
         >
           <ArrowLeft size={18} />
           {fromDashboard ? 'Torna al Meeting' : 'Torna ai Kaizen'}
         </button>
         <div className="flex flex-wrap justify-between items-start gap-3">
-          <div className="min-w-0 flex items-baseline gap-3">
-            <span className="font-mono text-sm opacity-80 flex-shrink-0">{kaizen.numero}</span>
-            <h1 className="text-2xl font-bold break-words">{kaizen.titolo || 'Kaizen'}</h1>
+          <div className="min-w-0">
+            <p className="text-xs text-gray-500">{[kaizen.numero, livelloAttuale, kaizen.stato].filter(Boolean).join(' · ')}</p>
+            <h1 className="mt-1 break-words text-xl font-semibold text-gray-900">{kaizen.titolo || 'Kaizen'}</h1>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 text-sm">
             {isLocked ? (
               <button
                 onClick={riapriKaizen}
@@ -460,7 +461,7 @@ const [reparti, setReparti] = useState([])
                   className={`px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50 ${
                     hasUnsavedChanges
                       ? 'bg-gold text-white hover:bg-gold-dark'
-                      : 'bg-white text-primary hover:bg-gray-100'
+                      : 'border border-gray-300 bg-white text-primary hover:bg-gray-50'
                   }`}
                 >
                   <Save size={18} />
@@ -480,7 +481,20 @@ const [reparti, setReparti] = useState([])
             )}
           </div>
         </div>
-      </div>
+        <nav aria-label="Sezioni del Kaizen" className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              aria-current={activeTab === tab.id ? 'page' : undefined}
+              className={`max-w-full rounded-lg border px-3 py-1.5 text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${activeTab === tab.id ? 'border-primary bg-primary text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </header>
 
       {/* Banner Kaizen chiuso */}
       {isLocked && (
@@ -563,17 +577,8 @@ const [reparti, setReparti] = useState([])
         </div>
       )}
 
-      <div className="flex gap-1 mb-6 border-b overflow-x-auto">
-        {tabs.map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 font-medium text-sm whitespace-nowrap ${activeTab === tab.id ? 'border-b-2 border-primary text-primary' : 'text-gray-500'}`}>
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
       {/* Wrapper che disabilita tutti i campi quando isLocked */}
-      <fieldset disabled={isLocked} className={isLocked ? 'opacity-90 pointer-events-none' : ''}>
+      <fieldset disabled={isLocked} className={`min-w-0 rounded-lg border border-gray-200 bg-white p-3 sm:p-5 ${isLocked ? 'opacity-90 pointer-events-none' : ''}`}>
 
       {activeTab === 'setup' && (
         <div className="space-y-6">
