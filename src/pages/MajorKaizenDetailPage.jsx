@@ -125,7 +125,7 @@ export default function MajorKaizenDetailPage() {
             onClick={toggleGantt}
             aria-expanded={ganttOpen}
             aria-controls="major-master-plan-panel"
-            className="flex w-full items-center justify-between gap-3 bg-primary px-3 py-2 text-left text-white hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300 sm:px-4"
+            className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-left text-white hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/60 sm:px-4"
           >
             <span className="flex items-center gap-2">
               <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 4v16h16M8 7h8M11 12h9M7 17h7" /></svg>
@@ -137,7 +137,7 @@ export default function MajorKaizenDetailPage() {
             </span>
           </button>
           {ganttOpen && (
-            <div id="major-master-plan-panel" className="overflow-x-auto border-t border-gray-200 p-2">
+            <div id="major-master-plan-panel" className="mt-2 overflow-x-auto rounded-lg bg-white p-2 text-gray-900">
               <KaizenGantMasterPlan key={major._id} value={ganttValue} onChange={saveGantt}
                 activities={activityData.items} activitiesLoading={activityData.loading} activitiesError={activityData.error}
                 onRefreshActivities={activityData.refresh} onOpenActivityPhase={selectStep} />
@@ -154,9 +154,9 @@ export default function MajorKaizenDetailPage() {
                 type="button"
                 onClick={() => selectStep(step.step_id)}
                 aria-current={active ? 'step' : undefined}
-                className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${active ? 'border-primary bg-primary text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}
+                className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${active ? 'border-gold bg-gold text-white' : 'border-white/25 bg-white/10 text-white hover:bg-white/20'}`}
               >
-                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${active ? 'bg-white/20' : done ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>{done ? '✓' : step.ordine}</span>
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${active ? 'bg-white/20' : done ? 'bg-white text-green-700' : 'bg-white/15 text-white'}`}>{done ? '✓' : step.ordine}</span>
                 <span className="whitespace-nowrap">{step.titolo}</span>
               </button>
             )
