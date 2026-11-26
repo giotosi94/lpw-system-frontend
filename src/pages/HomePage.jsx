@@ -203,6 +203,8 @@ export default function HomePage() {
   .lpw-home .home-ap-columns .ap-home-readonly td{font-size:13px}
   .lpw-home .ap-home-readonly td:last-child span{background:#f4f2ee;color:#4a453e;border-radius:4px}
   .lpw-home .ap-home-readonly td:before{color:var(--home-secondary)}
+  .lpw-home .ap-home-readonly tbody td:first-child,.lpw-home .ap-home-readonly tbody td:first-child *{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;font-weight:400;color:#615c54}
+  .lpw-home .ap-home-readonly thead th:first-child::after{color:#615c54}
 `}</style>
     <header className="home-heading">
       <h1 className="text-2xl font-bold">Ciao {user.full_name?.split(' ')[0] || user.username}!</h1>
