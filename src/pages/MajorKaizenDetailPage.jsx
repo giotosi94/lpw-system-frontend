@@ -63,7 +63,12 @@ export default function MajorKaizenDetailPage() {
   const steps = [...(major?.route_snapshot?.steps || [])].sort((a, b) => a.ordine - b.ordine).map(step =>
     step.componente === 'sustainment_plan' && step.titolo === 'Standardizzare e sostenere'
       ? { ...step, titolo: 'Standardizzare ed espandere' }
-      : { ...step, titolo: String(step.titolo || '').replace(/^Ripristino delle condizioni/i, 'Ripristino condizioni') }
+      : {
+          ...step,
+          titolo: String(step.titolo || '')
+            .replace(/^Ripristino delle condizioni/i, 'Ripristino condizioni')
+            .replace(/^Risultati e saving economico$/i, 'Risultati e saving'),
+        }
   )
   const stepsData = major?.steps_data || {}
   const activeStep = steps.find(step => step.step_id === activeKey)
@@ -125,6 +130,7 @@ export default function MajorKaizenDetailPage() {
             onClick={toggleGantt}
             aria-expanded={ganttOpen}
             aria-controls="major-master-plan-panel"
+            aria-label={ganttOpen ? 'Nascondi il Master Plan' : 'Apri il Master Plan'}
             className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-left text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:px-4"
           >
             <span className="flex items-center gap-2">
@@ -132,7 +138,6 @@ export default function MajorKaizenDetailPage() {
               <span className="text-sm font-semibold">Master Plan</span>
             </span>
             <span className="flex shrink-0 items-center gap-1 text-xs">
-              <span className="hidden sm:inline">{ganttOpen ? 'Nascondi' : 'Apri pianificazione'}</span>
               <svg aria-hidden="true" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" className={ganttOpen ? 'rotate-180' : ''}><path d="m5 7 5 5 5-5" /></svg>
             </span>
           </button>
@@ -144,7 +149,7 @@ export default function MajorKaizenDetailPage() {
             </div>
           )}
         </section>
-        <nav aria-label="Fasi del progetto" className="flex flex-wrap gap-2">
+        <nav aria-label="Fasi del progetto" className="flex flex-wrap gap-1.5">
           {steps.map(step => {
             const active = step.step_id === activeKey
             const done = stepsData[step.step_id]?.stato === 'completato'
@@ -154,7 +159,7 @@ export default function MajorKaizenDetailPage() {
                 type="button"
                 onClick={() => selectStep(step.step_id)}
                 aria-current={active ? 'step' : undefined}
-                className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${active ? 'border-gold bg-gold text-white' : 'border-white/25 bg-white/10 text-white hover:bg-white/20'}`}
+                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${active ? 'border-gold bg-gold text-white' : 'border-white/25 bg-white/10 text-white hover:bg-white/20'}`}
               >
                 <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${active ? 'bg-white/20' : done ? 'bg-white text-green-700' : 'bg-white/15 text-white'}`}>{done ? '✓' : step.ordine}</span>
                 <span className="whitespace-nowrap">{step.titolo}</span>
