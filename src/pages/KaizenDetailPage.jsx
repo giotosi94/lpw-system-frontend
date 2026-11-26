@@ -430,19 +430,20 @@ const [reparti, setReparti] = useState([])
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-6xl px-0 sm:px-2">
-      <header className="mb-4 rounded-lg border border-gray-200 bg-white p-3 sm:p-4">
+      <header className="mb-4 overflow-hidden rounded-lg bg-primary text-white shadow-sm">
+        <div className="p-3 sm:p-4">
         <button
           onClick={() => navigate(fromDashboard ? `/dashboard/${fromDashboard}` : '/kaizen')}
           type="button"
-          className="mb-2 flex items-center gap-2 text-sm text-gray-600 hover:text-primary"
+          className="mb-2 flex items-center gap-2 text-sm text-white/80 hover:text-white"
         >
           <ArrowLeft size={18} />
           {fromDashboard ? 'Torna al Meeting' : 'Torna ai Kaizen'}
         </button>
         <div className="flex flex-wrap justify-between items-start gap-3">
           <div className="min-w-0">
-            <p className="text-xs text-gray-500">{[kaizen.numero, livelloAttuale, kaizen.stato].filter(Boolean).join(' · ')}</p>
-            <h1 className="mt-1 break-words text-xl font-semibold text-gray-900">{kaizen.titolo || 'Kaizen'}</h1>
+            <p className="text-xs text-white/70">{[kaizen.numero, livelloAttuale, kaizen.stato].filter(Boolean).join(' · ')}</p>
+            <h1 className="mt-1 break-words text-xl font-semibold text-white">{kaizen.titolo || 'Kaizen'}</h1>
           </div>
           <div className="flex flex-wrap gap-2 text-sm">
             {isLocked ? (
@@ -461,7 +462,7 @@ const [reparti, setReparti] = useState([])
                   className={`px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50 ${
                     hasUnsavedChanges
                       ? 'bg-gold text-white hover:bg-gold-dark'
-                      : 'border border-gray-300 bg-white text-primary hover:bg-gray-50'
+                      : 'border border-white/30 bg-white text-primary hover:bg-gray-100'
                   }`}
                 >
                   <Save size={18} />
@@ -481,14 +482,15 @@ const [reparti, setReparti] = useState([])
             )}
           </div>
         </div>
-        <nav aria-label="Sezioni del Kaizen" className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+        </div>
+        <nav aria-label="Sezioni del Kaizen" className="flex flex-wrap gap-2 border-t border-white/15 bg-primary px-3 py-3 sm:px-4">
           {tabs.map(tab => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
               aria-current={activeTab === tab.id ? 'page' : undefined}
-              className={`max-w-full rounded-lg border px-3 py-1.5 text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${activeTab === tab.id ? 'border-primary bg-primary text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}
+              className={`max-w-full rounded-lg border px-3 py-1.5 text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${activeTab === tab.id ? 'border-gold bg-gold text-white' : 'border-white/25 bg-white/10 text-white hover:bg-white/20'}`}
             >
               {tab.label}
             </button>
