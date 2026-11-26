@@ -192,7 +192,7 @@ function NodoView({ nodo, depth, isCausa, expandedNodes, onUpdate, onAddChild, o
   
   return (
     <div className="border rounded-lg overflow-hidden bg-gray-50">
-      <div className="p-2 flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-1.5 p-2">
         <button
           onClick={() => onToggleExpand(nodo.id)}
           className="text-gray-400 hover:text-gray-700 flex-shrink-0"
@@ -210,19 +210,21 @@ function NodoView({ nodo, depth, isCausa, expandedNodes, onUpdate, onAddChild, o
           value={nodo.label || ''}
           onChange={(e) => onUpdate(nodo.id, { label: e.target.value })}
           placeholder={isCausa ? 'Causa' : 'Perché?'}
-          className={`flex-1 text-sm border-0 bg-transparent focus:outline-none focus:bg-white focus:border focus:rounded px-2 py-1 ${
+          className={`min-w-0 flex-1 text-sm border-0 bg-transparent focus:outline-none focus:bg-white focus:border focus:rounded px-2 py-1 ${
             nodo.is_root_cause ? 'font-bold text-gray-900' : ''
           }`}
         />
         
-        <VotingPallini
-          value={nodo.voti || 0}
-          onChange={(v) => onUpdate(nodo.id, { voti: v })}
-        />
+        {isCausa && (
+          <VotingPallini
+            value={nodo.voti || 0}
+            onChange={(v) => onUpdate(nodo.id, { voti: v })}
+          />
+        )}
 
         <button
           onClick={() => onToggleRootCause(nodo.id)}
-                   className={`p-1 rounded ${
+                   className={`shrink-0 p-1 rounded ${
             nodo.is_root_cause
               ? nodo.root_cause_stato === 'confermata'
                 ? 'bg-green-600 text-white'
@@ -238,7 +240,7 @@ function NodoView({ nodo, depth, isCausa, expandedNodes, onUpdate, onAddChild, o
         
         <button
           onClick={() => onAddChild(nodo.id)}
-          className="p-1 rounded bg-primary text-white hover:bg-primary-light"
+          className="shrink-0 p-1 rounded bg-primary text-white hover:bg-primary-light"
           title="Aggiungi un Perché figlio"
         >
           <Plus size={12} />
@@ -246,14 +248,14 @@ function NodoView({ nodo, depth, isCausa, expandedNodes, onUpdate, onAddChild, o
         
         <button
           onClick={() => onRemove(nodo.id)}
-          className="p-1 text-red-500 hover:bg-red-50 rounded"
+          className="shrink-0 p-1 text-red-500 hover:bg-red-50 rounded"
         >
           <X size={14} />
         </button>
       </div>
       
       {(expanded || hasChildren) && hasChildren && (
-        <div className="px-2 pb-2 pl-6 space-y-1">
+        <div className="space-y-1 pb-2 pl-3 pr-2">
           {nodo.children.map(child => (
             <NodoView
               key={child.id}
