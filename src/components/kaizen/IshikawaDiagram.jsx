@@ -105,31 +105,31 @@ export default function IshikawaDiagram({ effetto = '', rami = {}, onChange }) {
         </div>
       </div>
       
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="space-y-3">
-          {RAMI.map(ramo => (
-            <RamoCard
-              key={ramo.id}
-              ramo={ramo}
-              cause={localRami[ramo.id] || []}
-              expandedNodes={expandedNodes}
-              onAddCausa={() => addCausa(ramo.id)}
-              onUpdate={(nodeId, updates) => updateNode(ramo.id, nodeId, updates)}
-              onAddChild={(parentId) => addChild(ramo.id, parentId)}
-              onRemove={(nodeId) => removeNode(ramo.id, nodeId)}
-              onToggleRootCause={(nodeId) => toggleRootCause(ramo.id, nodeId)}
-              onToggleExpand={toggleExpand}
-            />
-          ))}
-        </div>
-        
-        <div className="bg-white rounded-xl shadow p-4 sticky top-4 self-start">
-          <div className="text-xs font-bold uppercase text-gray-600 mb-2">
-            Diagramma a spina di pesce
+      <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {RAMI.map(ramo => (
+              <RamoCard
+                key={ramo.id}
+                ramo={ramo}
+                cause={localRami[ramo.id] || []}
+                expandedNodes={expandedNodes}
+                onAddCausa={() => addCausa(ramo.id)}
+                onUpdate={(nodeId, updates) => updateNode(ramo.id, nodeId, updates)}
+                onAddChild={(parentId) => addChild(ramo.id, parentId)}
+                onRemove={(nodeId) => removeNode(ramo.id, nodeId)}
+                onToggleRootCause={(nodeId) => toggleRootCause(ramo.id, nodeId)}
+                onToggleExpand={toggleExpand}
+              />
+            ))}
           </div>
-          <FishboneSVG effetto={localEffetto} rami={RAMI} causeMap={localRami} />
+
+          <div className="bg-white rounded-xl shadow p-4">
+            <div className="text-xs font-bold uppercase text-gray-600 mb-2">
+              Diagramma a spina di pesce
+            </div>
+            <FishboneSVG effetto={localEffetto} rami={RAMI} causeMap={localRami} />
+          </div>
         </div>
-      </div>
     </div>
   )
 }
@@ -292,86 +292,99 @@ function VotingPallini({ value, onChange }) {
     </div>
   )
 }
+function wrapText(text, maxChars, maxLines) {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean)
+  if (!words.length) return []
+  const lines = []
+  let current = ''
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word
+    if (candidate.length <= maxChars) {
+      current = candidate
+      continue
+    }
+    if (current) lines.push(current)
+    current = word.length > maxChars ? `${word.slice(0, maxChars - 1)}…` : word
+    if (lines.length === maxLines) break
+  }
+  if (lines.length < maxLines && current) lines.push(current)
+  if (lines.length > maxLines) lines.length = maxLines
+  const used = lines.join(' ').length
+  if (used < words.join(' ').length && lines.length) {
+    const last = lines[lines.length - 1]
+    lines[lines.length - 1] = last.length >= maxChars ? `${last.slice(0, maxChars - 1)}…` : `${last}…`
+  }
+  return lines
+}
 
-// Fishbone SVG (invariato dalla versione precedente, mostra solo le cause primarie)
 function FishboneSVG({ effetto, rami, causeMap }) {
-  const width = 600
-  const height = 500
+  const width = 1000
+  const height = 560
   const centerY = height / 2
-  const spineStart = 50
-  const spineEnd = width - 100
-  const ramiSopra = rami.slice(0, 3)
-  const ramiSotto = rami.slice(3, 6)
-  
+  const spineStart = 40
+  const spineEnd = 760
+  const effectX = 790
+  const effectW = 190
+  const effectH = 130
+  const ramoXs = [250, 470, 690]
+  const ramoDx = 130
+  const topY = 70
+  const bottomY = height - 70
+  const maxCause = 4
+  const effettoLines = wrapText(effetto || 'Effetto', 18, 5)
+
+  const renderRamo = (ramo, i, sopra) => {
+    const ramoX = ramoXs[i]
+    const ramoXEnd = ramoX - ramoDx
+    const ramoYEnd = sopra ? topY : bottomY
+    const cause = causeMap[ramo.id] || []
+    const extra = cause.length - maxCause
+    return (
+      <g key={ramo.id}>
+        <line x1={ramoX} y1={centerY} x2={ramoXEnd} y2={ramoYEnd} stroke={NEUTRAL_COLOR} strokeWidth="2.5" />
+        <rect x={ramoXEnd - 80} y={sopra ? ramoYEnd - 34 : ramoYEnd + 4} width="160" height="30" fill={NEUTRAL_COLOR} rx="6" />
+        <text x={ramoXEnd} y={sopra ? ramoYEnd - 14 : ramoYEnd + 24} textAnchor="middle" fill="white" fontSize="15" fontWeight="bold">
+          {ramo.label}{cause.length ? ` (${cause.length})` : ''}
+        </text>
+        {cause.slice(0, maxCause).map((causa, j) => {
+          const t = (j + 1) / (maxCause + 1)
+          const cx1 = ramoX - ramoDx * t
+          const cy1 = centerY + (ramoYEnd - centerY) * t
+          const cx2 = cx1 - 34
+          const lines = wrapText(causa.label || '—', 16, 2)
+          return (
+            <g key={causa.id}>
+              <line x1={cx1} y1={cy1} x2={cx2} y2={cy1} stroke={NEUTRAL_COLOR} strokeWidth="1.5" opacity="0.8" />
+              <text x={cx2 - 6} y={cy1 + 4 - (lines.length - 1) * 7} textAnchor="end" fontSize="13" fill="#1f2937" fontWeight={causa.is_root_cause ? 'bold' : 'normal'}>
+                {lines.map((line, k) => (
+                  <tspan key={k} x={cx2 - 6} dy={k === 0 ? 0 : 15}>{line}</tspan>
+                ))}
+                <title>{causa.label || ''}</title>
+              </text>
+            </g>
+          )
+        })}
+        {extra > 0 && (
+          <text x={ramoX - ramoDx * 0.08 + 8} y={centerY + (sopra ? -26 : 34)} fontSize="12" fill="#6b7280">+{extra}</text>
+        )}
+      </g>
+    )
+  }
+
   return (
     <div className="overflow-x-auto">
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="w-full">
-        <line x1={spineStart} y1={centerY} x2={spineEnd} y2={centerY} stroke={NEUTRAL_COLOR} strokeWidth="3" />
-        <polygon points={`${spineEnd},${centerY - 10} ${spineEnd + 25},${centerY} ${spineEnd},${centerY + 10}`} fill={NEUTRAL_COLOR} />
-        <rect x={spineEnd + 30} y={centerY - 25} width="100" height="50" fill={PRIMARY_COLOR} rx="6" />
-        <foreignObject x={spineEnd + 30} y={centerY - 25} width="100" height="50">
-          <div style={{ color: 'white', fontSize: '11px', fontWeight: 'bold', padding: '4px', textAlign: 'center', lineHeight: '1.2', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', wordBreak: 'break-word' }}>
-            {effetto || 'Effetto'}
-          </div>
-        </foreignObject>
-        
-        {ramiSopra.map((ramo, i) => {
-          const ramoX = spineStart + 100 + i * 150
-          const ramoYEnd = 60
-          const ramoXEnd = ramoX - 80
-          const cause = causeMap[ramo.id] || []
-          return (
-            <g key={ramo.id}>
-              <line x1={ramoX} y1={centerY} x2={ramoXEnd} y2={ramoYEnd} stroke={NEUTRAL_COLOR} strokeWidth="2" />
-              <rect x={ramoXEnd - 50} y={ramoYEnd - 18} width="100" height="22" fill={NEUTRAL_COLOR} rx="4" />
-              <text x={ramoXEnd} y={ramoYEnd - 3} textAnchor="middle" fill="white" fontSize="11" fontWeight="bold">{ramo.label}</text>
-              {cause.slice(0, 4).map((causa, j) => {
-                const t = (j + 1) / 5
-                const cx1 = ramoX - (ramoX - ramoXEnd) * t
-                const cy1 = centerY - (centerY - ramoYEnd) * t
-                const cx2 = cx1 - 40
-                const cy2 = cy1 + 5
-                return (
-                  <g key={causa.id}>
-                    <line x1={cx1} y1={cy1} x2={cx2} y2={cy2} stroke={NEUTRAL_COLOR} strokeWidth="1" opacity="0.7" />
-                    <text x={cx2 - 4} y={cy2 + 3} textAnchor="end" fontSize="9" fill="#374151">
-                      {(causa.label || '—').slice(0, 20)}
-                    </text>
-                  </g>
-                )
-              })}
-            </g>
-          )
-        })}
-        
-        {ramiSotto.map((ramo, i) => {
-          const ramoX = spineStart + 100 + i * 150
-          const ramoYEnd = height - 60
-          const ramoXEnd = ramoX - 80
-          const cause = causeMap[ramo.id] || []
-          return (
-            <g key={ramo.id}>
-              <line x1={ramoX} y1={centerY} x2={ramoXEnd} y2={ramoYEnd} stroke={NEUTRAL_COLOR} strokeWidth="2" />
-              <rect x={ramoXEnd - 50} y={ramoYEnd} width="100" height="22" fill={NEUTRAL_COLOR} rx="4" />
-              <text x={ramoXEnd} y={ramoYEnd + 15} textAnchor="middle" fill="white" fontSize="11" fontWeight="bold">{ramo.label}</text>
-              {cause.slice(0, 4).map((causa, j) => {
-                const t = (j + 1) / 5
-                const cx1 = ramoX - (ramoX - ramoXEnd) * t
-                const cy1 = centerY + (ramoYEnd - centerY) * t
-                const cx2 = cx1 - 40
-                const cy2 = cy1 - 5
-                return (
-                  <g key={causa.id}>
-                    <line x1={cx1} y1={cy1} x2={cx2} y2={cy2} stroke={NEUTRAL_COLOR} strokeWidth="1" opacity="0.7" />
-                    <text x={cx2 - 4} y={cy2 + 3} textAnchor="end" fontSize="9" fill="#374151">
-                      {(causa.label || '—').slice(0, 20)}
-                    </text>
-                  </g>
-                )
-              })}
-            </g>
-          )
-        })}
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full min-w-[640px] h-auto" role="img" aria-label="Diagramma a spina di pesce">
+        <line x1={spineStart} y1={centerY} x2={spineEnd} y2={centerY} stroke={NEUTRAL_COLOR} strokeWidth="4" />
+        <polygon points={`${spineEnd},${centerY - 12} ${spineEnd + 26},${centerY} ${spineEnd},${centerY + 12}`} fill={NEUTRAL_COLOR} />
+        <rect x={effectX} y={centerY - effectH / 2} width={effectW} height={effectH} fill={PRIMARY_COLOR} className="fill-primary" rx="10" />
+        <text x={effectX + effectW / 2} y={centerY - (effettoLines.length - 1) * 10 + 6} textAnchor="middle" fill="white" fontSize="16" fontWeight="bold">
+          {effettoLines.map((line, k) => (
+            <tspan key={k} x={effectX + effectW / 2} dy={k === 0 ? 0 : 20}>{line}</tspan>
+          ))}
+          <title>{effetto || ''}</title>
+        </text>
+        {rami.slice(0, 3).map((ramo, i) => renderRamo(ramo, i, true))}
+        {rami.slice(3, 6).map((ramo, i) => renderRamo(ramo, i, false))}
       </svg>
     </div>
   )
