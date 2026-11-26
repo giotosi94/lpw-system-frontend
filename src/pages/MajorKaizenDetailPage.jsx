@@ -119,13 +119,13 @@ export default function MajorKaizenDetailPage() {
   return (
     <div className="mx-auto w-full max-w-6xl px-0 sm:px-2">
       <MajorHeader major={major} onOpenData={() => setDataOpen(true)}>
-        <section className="mb-3 overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <section className="mb-3">
           <button
             type="button"
             onClick={toggleGantt}
             aria-expanded={ganttOpen}
             aria-controls="major-master-plan-panel"
-            className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-left text-white hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/60 sm:px-4"
+            className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-left text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:px-4"
           >
             <span className="flex items-center gap-2">
               <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 4v16h16M8 7h8M11 12h9M7 17h7" /></svg>
@@ -163,15 +163,12 @@ export default function MajorKaizenDetailPage() {
           })}
         </nav>
       </MajorHeader>
-
-
       <div className="rounded-lg border border-gray-200 bg-white p-3 sm:p-5">
         {activeStep ? (
           <MajorStepContainer key={activeStep.step_id} step={activeStep} stepData={stepsData[activeStep.step_id]}
             allStepsData={stepsData} major={major} onSaveStep={saveStep} onApproveGate={approveGate} />
         ) : <p className="py-6 text-gray-600">Nessuna fase configurata per questa Route.</p>}
       </div>
-
       {dataOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" onClick={event => { if (event.target === event.currentTarget) setDataOpen(false) }}>
           <section role="dialog" aria-modal="true" aria-labelledby="major-data-title" className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-t-xl bg-white p-4 sm:rounded-xl sm:p-5">
