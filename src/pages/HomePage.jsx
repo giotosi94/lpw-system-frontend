@@ -214,7 +214,7 @@ export default function HomePage() {
           <button type="button" aria-pressed={true} className={`${tabClass(true)} ${oplDaLeggere.length ? 'home-opl-pending-tab' : ''}`}>Da leggere ({oplDaLeggere.length})</button>
           <button type="button" aria-haspopup="dialog" aria-expanded={showReadingHistory} onClick={() => setShowReadingHistory(true)} className={tabClass(false)}>Storico letture</button>
         </div>}>
-        {errors.opl ? <LoadError onRetry={loadData} /> : !shownOpl.length ? <Empty>Nessuna OPL da leggere.</Empty> : <FiveRowScroll label="OPL da leggere" rows={LIST_PREVIEW} rowSelector=".home-opl-row"><div className="divide-y">{shownOpl.map(renderOplRow)}</div></FiveRowScroll>}
+        {errors.opl ? <LoadError onRetry={loadData} /> : !shownOpl.length ? <Empty><span aria-hidden="true">—</span><span className="sr-only">Nessuna OPL da leggere.</span></Empty> : <FiveRowScroll label="OPL da leggere" rows={LIST_PREVIEW} rowSelector=".home-opl-row"><div className="divide-y">{shownOpl.map(renderOplRow)}</div></FiveRowScroll>}
       </HomeSection>
       <HomeSection section="reports" title="Segnalazioni" more={!errors.reports && <MoreLink count={ownReports.length} limit={LIST_PREVIEW} onClick={() => setListModal('reports')} />} headerContent={<div className="home-report-inline"><Link to="/segnalazioni?nuova=Sicurezza">+ Sicurezza</Link><Link to="/segnalazioni?nuova=Ambiente">+ Ambiente</Link></div>}>
         {errors.reports ? <LoadError onRetry={loadData} /> : !reportList.length ? <Empty>Nessuna segnalazione personale.</Empty> : <FiveRowScroll label="Segnalazioni personali" rows={LIST_PREVIEW} rowSelector=".home-report-row"><div className="divide-y">{reportList.map(renderReportRow)}</div></FiveRowScroll>}
