@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useState, useMemo } from 'react'
+
 export function isAPLocked(ap, statiConfig = []) {
   if (!ap) return false
   if (ap.is_cancelled) return true
@@ -8,6 +9,7 @@ export function isAPLocked(ap, statiConfig = []) {
   if (['Done', 'Chiuso', 'Cancelled'].includes(ap.stato)) return true
   return false
 }
+
 function Avatar({ name, showName = true }) {
   if (!name) {
     return showName ? <span className="text-xs text-gray-400">—</span> : null
@@ -22,6 +24,7 @@ export function getActionPlanOrigin(ap) {
   if (ap.parent_type === 'segnalazione') return 'segnalazione'
   return !ap.parent_type || ap.parent_type === 'standalone' ? 'manuale' : 'other'
 }
+
 export function isActionPlanOverdue(ap, states = []) {
   if (isAPLocked(ap, states) || ['Annullato', 'Completed', 'Closed'].includes(ap.stato) || !ap.data_scadenza) return false
   const due = new Date(ap.data_scadenza)
@@ -30,16 +33,24 @@ export function isActionPlanOverdue(ap, states = []) {
   today.setHours(0, 0, 0, 0)
   return due < today
 }
+
 function CollegatoBadge({ ap }) {
   const origin = getActionPlanOrigin(ap)
   const labels = { kaizen: 'Kaizen', dashboard: 'Meeting', pillar: 'Pilastro', segnalazione: 'Segnalazione', manuale: 'Non collegato', other: 'Altro' }
   const paths = { kaizen: '/kaizen/', dashboard: '/dashboard/', pillar: '/pillars/', segnalazione: '/segnalazioni?open=' }
   const path = ['major_kaizen', 'major-kaizen'].includes(ap.parent_type) ? '/major-kaizen/' : paths[origin]
-  const label = String(ap.parent_label || '')
+  const label = String(ap.parent_label || '').trim()
   const code = ap.parent_numero || ap.parent_code || label.match(/\b[A-Z][A-Z0-9]*-\d+\b/i)?.[0] || (label && !/\s/.test(label) ? label : '')
-  const content = <span className="inline-block bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs whitespace-nowrap">{code || '—'}</span>
-  return path && ap.parent_id ? <Link to={`${path}${encodeURIComponent(ap.parent_id)}`} title={label || labels[origin]} aria-label={`Apri ${labels[origin]} ${code || ''}`} onClick={event => event.stopPropagation()} className="hover:underline">{content}</Link> : content
+  const isMeeting = origin === 'dashboard'
+  const text = isMeeting ? (label || code) : code
+  const content = text
+    ? <span className="inline-block max-w-[16rem] truncate align-bottom bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs whitespace-nowrap">{text}</span>
+    : <span className="text-xs text-gray-500" aria-label="Non collegato">—</span>
+  return path && ap.parent_id && text
+    ? <Link to={`${path}${encodeURIComponent(ap.parent_id)}`} title={label || labels[origin]} aria-label={`Apri ${labels[origin]} ${text}`} onClick={event => event.stopPropagation()} className="hover:underline">{content}</Link>
+    : content
 }
+
 function getStatoStyle(stato, statiConfig = []) {
   const cfg = statiConfig.find(s => s.label === stato)
   if (cfg?.color) {
@@ -49,7 +60,7 @@ function getStatoStyle(stato, statiConfig = []) {
       style: {
         backgroundColor: hex + '20',
         color: hex,
-        borderColor: hex + '60',    
+        borderColor: hex + '60',
       },
     }
   }
@@ -136,7 +147,6 @@ export default function ActionPlanViews({
 
   return (
     <div className="space-y-3">
-      
       {showCalendar && !hideViewSwitch && (
         <div className="flex justify-end">
           <ActionPlanViewSwitch value={viewMode} onChange={setViewMode} />
@@ -161,6 +171,7 @@ export default function ActionPlanViews({
           readOnly={readOnly}
         />
       )}
+
       {viewMode === 'calendar' && (
         <CalendarView
           plans={plans}
@@ -172,6 +183,7 @@ export default function ActionPlanViews({
     </div>
   )
 }
+
 function ListView({
   plans, statiConfig, gantSteps, onSelectAP, onEditAP, onDeleteAP, onUnlinkAP,
   onChangeStato, onChangeStepGant, unlinkLabel, showCollegato, showStepGant, compact, readOnly,
@@ -253,14 +265,13 @@ function ListView({
     </div>
   )
 }
+
 function CalendarView({ plans, calendarDays, setCalendarDays, onSelectAP }) {
   const oggi = new Date()
   oggi.setHours(0, 0, 0, 0)
-
   const fineSettimana = new Date(oggi)
   fineSettimana.setDate(fineSettimana.getDate() + (7 - oggi.getDay()))
   fineSettimana.setHours(23, 59, 59, 999)
-
   const fineProssimePeriodo = new Date(fineSettimana)
   fineProssimePeriodo.setDate(fineProssimePeriodo.getDate() + calendarDays)
 
