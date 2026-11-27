@@ -185,6 +185,19 @@ function SearchableMultiSelect({ title, field, options, filters, setFilters, dis
 }
 
 
+function macchineDiLinea(linea) {
+  const trovate = []
+  const viste = new Set()
+  const aggiungi = macchina => {
+    if (!macchina || macchina.attivo === false || !macchina.nome || viste.has(macchina.nome)) return
+    viste.add(macchina.nome)
+    trovate.push(macchina)
+  }
+  ;(linea?.macchine || []).forEach(aggiungi)
+  ;(linea?.aree || []).filter(area => area.attivo !== false).forEach(area => (area.macchine || []).forEach(aggiungi))
+  return trovate
+}
+
 function usePerditeKaizen() {
   const [perdite, setPerdite] = useState([])
   useEffect(() => {
@@ -381,7 +394,7 @@ const { pillars } = usePillars()
   const macchineFormDisponibili = useMemo(() => {
     if (!newKaizen.linea) return []
     const linea = lineeFormDisponibili.find(l => l.nome === newKaizen.linea)
-    return linea?.macchine?.filter(m => m.attivo !== false) || []
+    return macchineDiLinea(linea)
   }, [newKaizen.linea, lineeFormDisponibili])
 
   useLayoutEffect(() => {
@@ -432,8 +445,8 @@ const { pillars } = usePillars()
   const macchineFilterDisponibili = useMemo(() => {
     return lineeFilterDisponibili
       .filter(l => filters.linea.length === 0 || filters.linea.includes(l.nome))
-      .flatMap(l => l.macchine || [])
-      .filter((macchina, index, array) => macchina.attivo !== false && array.findIndex(item => item.nome === macchina.nome) === index)
+      .flatMap(l => macchineDiLinea(l))
+      .filter((macchina, index, array) => array.findIndex(item => item.nome === macchina.nome) === index)
   }, [filters.linea, lineeFilterDisponibili])
 
   function handleRepartoChange(nuovoReparto) {
@@ -1197,7 +1210,7 @@ const majorKaizens =
                   <option value="">Nessuno</option>
                   {pillars.map(p => (
                     <option key={p._id} value={p._id}>
-                      {p.sigla} — {p.label}{p.leader ? ` (${p.leader})` : ''}
+                      {p.sigla} — {p.label}
                     </option>
                   ))}
                 </select>
