@@ -53,6 +53,19 @@ async function compressImage(file, maxSize = 1280, quality = 0.8) {
   })
 }
 
+function macchineDiLinea(linea) {
+  const trovate = []
+  const viste = new Set()
+  const aggiungi = macchina => {
+    if (!macchina || macchina.attivo === false || !macchina.nome || viste.has(macchina.nome)) return
+    viste.add(macchina.nome)
+    trovate.push(macchina)
+  }
+  ;(linea?.macchine || []).forEach(aggiungi)
+  ;(linea?.aree || []).filter(area => area.attivo !== false).forEach(area => (area.macchine || []).forEach(aggiungi))
+  return trovate
+}
+
 export default function OplNativaModal({ onClose, onSaved, initial = {} }) {
   const [saving, setSaving] = useState(false)
   const [step, setStep] = useState(1)
@@ -93,7 +106,7 @@ export default function OplNativaModal({ onClose, onSaved, initial = {} }) {
   }, [])
 
   const lineeAvailable = (reparti.find(r => r.nome === form.reparto)?.linee || [])
-  const macchineAvailable = (lineeAvailable.find(l => l.nome === form.linea)?.macchine || [])
+  const macchineAvailable = macchineDiLinea(lineeAvailable.find(l => l.nome === form.linea))
 
   function handleAreaChange(id) {
     const a = areaOptions.find(x => x._id === id)
