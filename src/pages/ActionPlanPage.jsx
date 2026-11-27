@@ -7,6 +7,19 @@ import ActionPlanFormShared from '../components/ActionPlanFormShared'
 import ActionPlanDetailPanel from '../components/ActionPlanDetailPanel'
 import ActionPlanViews, { ActionPlanViewSwitch } from '../components/ActionPlanViews'
 
+function macchineDiLinea(linea) {
+  const trovate = []
+  const viste = new Set()
+  const aggiungi = macchina => {
+    if (!macchina || macchina.attivo === false || !macchina.nome || viste.has(macchina.nome)) return
+    viste.add(macchina.nome)
+    trovate.push(macchina)
+  }
+  ;(linea?.macchine || []).forEach(aggiungi)
+  ;(linea?.aree || []).filter(area => area.attivo !== false).forEach(area => (area.macchine || []).forEach(aggiungi))
+  return trovate
+}
+
 export default function ActionPlanPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [plans, setPlans] = useState([])
@@ -86,8 +99,8 @@ export default function ActionPlanPage() {
     .filter((item, index, array) => item.attivo !== false && array.findIndex(other => other.nome === item.nome) === index)
   const macchineDisponibili = lineeDisponibili
     .filter(item => filters.linea.length === 0 || filters.linea.includes(item.nome))
-    .flatMap(item => item.macchine || [])
-    .filter((item, index, array) => item.attivo !== false && array.findIndex(other => other.nome === item.nome) === index)
+    .flatMap(item => macchineDiLinea(item))
+    .filter((item, index, array) => array.findIndex(other => other.nome === item.nome) === index)
   const responsabiliUnici = [...new Set(plans.map(item => item.responsabile).filter(Boolean))].sort()
 
   function resetFilters() {
