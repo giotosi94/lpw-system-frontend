@@ -200,7 +200,7 @@ export default function PillarListPage() {
         <>
           <Defs />
           <div className="pt-stage">
-            <Roof />
+            <Link to="/pillars/hoshin" className="block rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" aria-label="Apri Hoshin Kanri"><Roof /></Link>
             <Beam pillar={costPillar} />
             <div className="pillar-row" role="list">
               {COLUMNS.map(column => (
