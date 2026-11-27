@@ -266,7 +266,17 @@ export default function SegnalazioniPage() {
 }
 
 function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
-  const [form, setForm] = useState(segnalazione)
+  const [form, setForm] = useState(() => {
+    if (segnalazione._id) return segnalazione
+
+    const now = new Date()
+    const pad = value => String(value).padStart(2, '0')
+    return {
+      ...segnalazione,
+      data_evento: todayIso(now),
+      ora_evento: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
+    }
+  })
   const [reparti, setReparti] = useState([])
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(false)
@@ -581,15 +591,17 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
               )}
             </div>
             <div className="divide-y divide-gray-200">
-              <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                <ReadField label="Segnalatore" value={form.segnalatore_nome} />
-                <ReadField label="Inviata il" value={form.created_at ? new Date(form.created_at).toLocaleString('it-IT') : ''} />
-                <div>
-                  <FieldLabel>Stato</FieldLabel>
-                  <span className={`inline-block px-3 py-1.5 rounded text-sm font-medium ${STATO_BADGE[form.stato] || 'bg-gray-100'}`}>{form.stato}</span>
+              {form._id && (
+                <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <ReadField label="Segnalatore" value={form.segnalatore_nome} />
+                  <ReadField label="Inviata il" value={form.created_at ? new Date(form.created_at).toLocaleString('it-IT') : ''} />
+                  <div>
+                    <FieldLabel>Stato</FieldLabel>
+                    <span className={`inline-block px-3 py-1.5 rounded text-sm font-medium ${STATO_BADGE[form.stato] || 'bg-gray-100'}`}>{form.stato}</span>
+                  </div>
+                  <ReadField label="Data chiusura" value={form.data_chiusura ? new Date(form.data_chiusura).toLocaleString('it-IT') : ''} />
                 </div>
-                <ReadField label="Data chiusura" value={form.data_chiusura ? new Date(form.data_chiusura).toLocaleString('it-IT') : ''} />
-              </div>
+              )}
               <SubBlock title="Dettaglio dell'evento">
             {canEdit ? (
               <>
@@ -929,8 +941,7 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
   )
 }
 
-function todayIso() {
-  const d = new Date()
+function todayIso(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
