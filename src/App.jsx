@@ -16,6 +16,7 @@ import OplReadPage from './pages/OplReadPage'
 import SettingsPage from './pages/SettingsPage'
 import PillarListPage from './pages/PillarListPage'
 import PillarDetailPage from './pages/PillarDetailPage'
+import HoshinPage from './pages/HoshinPage'
 import AdminPage from './pages/AdminPage'
 import UsersPage from './pages/UsersPage'
 import SegnalazioniPage from './pages/SegnalazioniPage'
@@ -48,6 +49,7 @@ export default function App() {
           <Route path="documenti" element={<DocumentiPage />} />
           <Route path="da-leggere" element={<OplReadPage />} />
           <Route path="pillars" element={<PillarListPage />} />
+          <Route path="pillars/hoshin" element={<HoshinPage />} />
           <Route path="pillars/:id" element={<PillarDetailPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="/segnalazioni" element={<SegnalazioniPage />} />
