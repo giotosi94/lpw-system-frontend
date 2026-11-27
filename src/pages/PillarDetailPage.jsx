@@ -1,6 +1,6 @@
 import MpInfoPanel from '../components/pillar/MpInfoPanel'
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAllConfigurations } from '../hooks/useConfigurations'
 import { ArrowLeft, User, Calendar, Users, Edit2, Plus, Trash2, ClipboardList, Link2, AlertCircle, CheckSquare, Bug, TrendingUp, Shield, Wrench, X } from 'lucide-react'
@@ -13,6 +13,7 @@ import BridgeChart from '../components/pillar/BridgeChart'
 import CloseTheLoopChart from '../components/pillar/CloseTheLoopChart'
 import SkillMatrixTab from '../components/pillar/SkillMatrixTab'
 import StoricoAnalisiModal from '../components/pillar/StoricoAnalisiModal'
+import HoshinKpiTab from '../components/pillar/HoshinKpiTab'
 
 function readableColor(value) {
   const match = /^#?([0-9a-f]{6})$/i.exec(String(value || '').trim())
@@ -26,12 +27,13 @@ function readableColor(value) {
 export default function PillarDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [pillar, setPillar] = useState(null)
   const [stats, setStats] = useState(null)
   const [kaizens, setKaizens] = useState([])
   const [actionPlans, setActionPlans] = useState([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('anagrafica')
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'anagrafica')
 
   useEffect(() => { loadAll() }, [id])
 
@@ -76,6 +78,7 @@ export default function PillarDetailPage() {
     { id: 'action_plan', label: `Action Plan (${actionPlans.length})` },
     { id: 'skill_matrix', label: 'Skill Matrix' },
     { id: 'maturity', label: 'Maturity Grid' },
+    { id: 'hoshin', label: 'KPI Hoshin' },
     ...(pillar.kpi_management_enabled !== false ? [{ id: 'kpi', label: `5 Step KPI (${stepsCompleted}/${stepsTotal})` }] : []),
     ...(pillar.mp_info_enabled ? [{ id: 'mp_info', label: 'MP Info' }] : []),
   ]
@@ -108,6 +111,7 @@ export default function PillarDetailPage() {
       {activeTab === 'mp_info' && pillar.mp_info_enabled && <MpInfoPanel pillar={pillar} />}
       {activeTab === 'anagrafica' && <AnagraficaTab key={pillar._id} pillar={pillar} color={color} onSaved={loadAll} />}
       {activeTab === 'kpi' && pillar.kpi_management_enabled !== false && <KpiManagementTab pillar={pillar} color={color} onSaved={loadAll} />}
+    {activeTab === 'hoshin' && <HoshinKpiTab pillar={pillar} focusId={searchParams.get('kpi')} />}
       {activeTab === 'masterplan' && <MasterPlanTab pillar={pillar} color={color} onSaved={loadAll} />}
       {activeTab === 'kaizen' && <KaizenList kaizens={kaizens} pillar={pillar} />}
       {activeTab === 'action_plan' && <ActionPlanTab actionPlans={actionPlans} pillar={pillar} color={color} onReload={loadAll} />}
