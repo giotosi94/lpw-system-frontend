@@ -58,6 +58,8 @@ export default function DashboardDetailPage() {
   const [activeTabId, setActiveTabId] = useState(null)
   const [editMode, setEditMode] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [savingMemo, setSavingMemo] = useState(false)
+  const [memoError, setMemoError] = useState('')
   const [showAddWidget, setShowAddWidget] = useState(false)
   const [editingWidget, setEditingWidget] = useState(null)
   const [editingTitolo, setEditingTitolo] = useState(false)
@@ -96,6 +98,7 @@ export default function DashboardDetailPage() {
   }
 
   const saveDashboard = async () => {
+    if (savingMemo) return
     setSaving(true)
     try {
       const tabsToSave = tabs.map((t, i) => ({ ...t, ordine: i }))
@@ -184,6 +187,30 @@ export default function DashboardDetailPage() {
     }))
   }
 
+  const saveMemo = async (widgetId, config) => {
+    if (saving || savingMemo || !activeTab?.layout?.some(widget => widget.widget_id === widgetId)) return false
+    const applyMemo = source => source.map(tab => tab.id !== activeTab.id ? tab : {
+      ...tab,
+      layout: tab.layout.map(widget => widget.widget_id === widgetId
+        ? { ...widget, config: { ...widget.config, ...config } }
+        : widget),
+    })
+    setSavingMemo(true)
+    setMemoError('')
+    try {
+      const next = applyMemo(tabs).map((tab, ordine) => ({ ...tab, ordine }))
+      await api.put(`/dashboards/${id}`, { tabs: next, layout: next[0]?.layout || [] })
+      setTabs(applyMemo)
+      return true
+    } catch (error) {
+      console.error(error)
+      setMemoError('Memo non salvato. Riprova.')
+      return false
+    } finally {
+      setSavingMemo(false)
+    }
+  }
+
   const renderWidget = (widget) => {
     switch (widget.tipo) {
       case 'action_plan':
@@ -193,7 +220,7 @@ export default function DashboardDetailPage() {
       case 'kpi_card':
         return <KPICard config={widget.config} />
       case 'text_block':
-        return <TextBlock config={widget.config} />
+        return <TextBlock config={widget.config} disabled={savingMemo || saving} onSave={!editMode ? config => saveMemo(widget.widget_id, config) : undefined} />
       case 'bi_embed':
         return <BIEmbed config={widget.config} />
       case 'table':
@@ -277,7 +304,7 @@ export default function DashboardDetailPage() {
               <button onClick={() => setShowAddWidget(true)} className="bg-white text-primary px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-100">
                 <Plus size={16} /> Widget
               </button>
-              <button onClick={saveDashboard} disabled={saving} className="bg-green-500 text-white px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600">
+              <button onClick={saveDashboard} disabled={saving || savingMemo} className="bg-green-500 text-white px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600">
                 <Save size={16} /> {saving ? '...' : 'Salva'}
               </button>
             </>
@@ -390,7 +417,7 @@ export default function DashboardDetailPage() {
                     type="button"
                     onMouseDown={(e) => e.stopPropagation()}
                     onTouchStart={(e) => e.stopPropagation()}
-                    onClick={(e) => { e.stopPropagation(); setEditingWidget(widget) }}
+                    onClick={(e) => { e.stopPropagation(); setMemoError(''); setEditingWidget(widget) }}
                     className="widget-action-btn bg-blue-500 text-white rounded p-1 hover:bg-blue-600 cursor-pointer shadow"
                   >
                     <Settings size={12} />
@@ -442,7 +469,7 @@ export default function DashboardDetailPage() {
           <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
             <div className="flex justify-between items-center mb-4 sticky top-0 bg-white">
               <h2 className="text-lg font-bold">Configura Widget</h2>
-              <button onClick={() => setEditingWidget(null)}><X size={20} /></button>
+              <button type="button" disabled={savingMemo} aria-label="Chiudi configurazione" onClick={() => setEditingWidget(null)}><X size={20} /></button>
             </div>
             <div className="space-y-3">
               <div>
@@ -450,7 +477,7 @@ export default function DashboardDetailPage() {
                 <input
                   value={editingWidget.config.titolo || ''}
                   onChange={(e) => {
-                    updateWidgetConfig(editingWidget.widget_id, { titolo: e.target.value })
+                    if (editingWidget.tipo !== 'text_block') updateWidgetConfig(editingWidget.widget_id, { titolo: e.target.value })
                     setEditingWidget({ ...editingWidget, config: { ...editingWidget.config, titolo: e.target.value } })
                   }}
                   className="w-full border rounded-lg px-3 py-2"
@@ -503,7 +530,6 @@ export default function DashboardDetailPage() {
                     rows={6}
                     value={editingWidget.config.contenuto || ''}
                     onChange={(e) => {
-                      updateWidgetConfig(editingWidget.widget_id, { contenuto: e.target.value })
                       setEditingWidget({ ...editingWidget, config: { ...editingWidget.config, contenuto: e.target.value } })
                     }}
                     className="w-full border rounded-lg px-3 py-2"
@@ -587,12 +613,17 @@ export default function DashboardDetailPage() {
                   />
                 </div>
               )}
-              <button
-                onClick={() => setEditingWidget(null)}
-                className="w-full bg-primary text-white py-2 rounded-lg mt-4"
-              >
-                Chiudi
-              </button>
+              {editingWidget.tipo === 'text_block' ? (
+                <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+                  {memoError && <p role="alert" className="mr-auto text-sm text-red-700">{memoError}</p>}
+                  <button type="button" disabled={savingMemo} onClick={() => setEditingWidget(null)} className="rounded-lg border px-4 py-2 text-sm">Annulla</button>
+                  <button type="button" disabled={savingMemo || saving} onClick={async () => {
+                    if (await saveMemo(editingWidget.widget_id, editingWidget.config)) setEditingWidget(null)
+                  }} className="rounded-lg bg-primary px-4 py-2 text-sm text-white disabled:opacity-50">{savingMemo ? 'Salvataggio...' : 'Salva'}</button>
+                </div>
+              ) : (
+                <button onClick={() => setEditingWidget(null)} className="mt-4 w-full rounded-lg bg-primary py-2 text-white">Chiudi</button>
+              )}
             </div>
           </div>
         </div>
