@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { useState, useEffect } from 'react'
 import api from '../../services/api'
 import { Plus } from 'lucide-react'
@@ -143,28 +144,30 @@ export default function ActionPlanWidget({ filterReparto, filterStato, dashboard
         )}
       </div>
 
-      {/* Modal form AP */}
-      {showForm && (
-        <ActionPlanFormShared
-          plan={editingAP}
-          prefilledKaizen={null}
-          prefilledParent={editingAP ? null : prefilledParent}
-          onClose={() => { setShowForm(false); setEditingAP(null) }}
-          onSaved={() => { setShowForm(false); setEditingAP(null); load() }}
-        />
-      )}
-
-      {/* Pannello dettaglio AP */}
-      {selectedAP && (
-        <ActionPlanDetailPanel
-          plan={selectedAP}
-          onClose={() => setSelectedAP(null)}
-          onUpdated={load}
-          onEdit={(p) => { setSelectedAP(null); setEditingAP(p); setShowForm(true) }}
-          onCancel={async (p) => { await cancelAP(p); setSelectedAP(null) }}
-          onRestore={async (p) => { await restoreAP(p); setSelectedAP(null) }}
-          onDelete={async (apId) => { await deleteAP({ _id: apId, numero: selectedAP.numero }); setSelectedAP(null) }}
-        />
+      {(showForm || selectedAP) && createPortal(
+        <div className="fixed inset-0 z-[1000]" onClick={event => event.stopPropagation()}>
+          {showForm && (
+            <ActionPlanFormShared
+              plan={editingAP}
+              prefilledKaizen={null}
+              prefilledParent={editingAP ? null : prefilledParent}
+              onClose={() => { setShowForm(false); setEditingAP(null) }}
+              onSaved={() => { setShowForm(false); setEditingAP(null); load() }}
+            />
+          )}
+    
+          {selectedAP && (
+            <ActionPlanDetailPanel
+              plan={selectedAP}
+              onClose={() => setSelectedAP(null)}
+              onUpdated={load}
+              onEdit={(p) => { setSelectedAP(null); setEditingAP(p); setShowForm(true) }}
+              onCancel={async (p) => { await cancelAP(p); setSelectedAP(null) }}
+              onRestore={async (p) => { await restoreAP(p); setSelectedAP(null) }}
+              onDelete={async (apId) => { await deleteAP({ _id: apId, numero: selectedAP.numero }); setSelectedAP(null) }}
+            />
+          )}
+        </div>, document.body
       )}
     </div>
   )
