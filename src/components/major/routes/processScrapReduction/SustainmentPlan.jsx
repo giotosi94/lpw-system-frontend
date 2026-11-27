@@ -6,7 +6,7 @@ import UserPicker from '../../../UserPicker'
 import OplPublishModal from '../../../opl/OplPublishModal'
 import OplNativaModal from '../../../opl/OplNativaModal'
 import OplImportModal from '../../../opl/OplImportModal'
-import { OplChoiceModal, SopUploadModal, PreviewModal, readUser } from '../../../../pages/DocumentiPage'
+import { OplChoiceModal, SopUploadModal, PreviewModal } from '../../../../pages/DocumentiPage'
 
 const input = 'w-full min-w-0 border border-gray-300 rounded px-2 py-2 text-sm bg-white'
 const smallButton = 'rounded border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50 disabled:opacity-50'
@@ -46,6 +46,19 @@ function outputs(form) {
 function shortNumber(value) { return String(value || '').replace(/^(OPL|SOP)-/i, '') }
 function documentLabel(doc) { return `${doc.tipo} ${shortNumber(doc.numero)} - ${doc.titolo || ''}` }
 function documentNumber(doc) { return parseInt(shortNumber(doc.numero), 10) || 0 }
+
+function macchineDiLinea(linea) {
+  const trovate = []
+  const viste = new Set()
+  const aggiungi = macchina => {
+    if (!macchina || macchina.attivo === false || !macchina.nome || viste.has(macchina.nome)) return
+    viste.add(macchina.nome)
+    trovate.push(macchina)
+  }
+  ;(linea?.macchine || []).forEach(aggiungi)
+  ;(linea?.aree || []).filter(area => area.attivo !== false).forEach(area => (area.macchine || []).forEach(aggiungi))
+  return trovate
+}
 
 export default function SustainmentPlan({ stepData, onChange, allStepsData = {}, major }) {
   const [form, setForm] = useState(() => buildForm(stepData?.dati || {}))
@@ -132,7 +145,7 @@ export default function SustainmentPlan({ stepData, onChange, allStepsData = {},
     loadDocuments()
     api.get('/reparti/').then(response => setDepartments(list(response.data))).catch(() => setLoadError('Anagrafica linee non disponibile: ricarica la pagina.'))
   }, [])
-  const lineOptions = departments.filter(dep => dep.attivo !== false).flatMap(dep => list(dep.linee).filter(line => line.attivo !== false).map(line => ({ key: `${dep._id || dep.id || dep.nome}:${line.id || line.nome}`, department: dep.nome, name: line.nome, machines: list(line.macchine).filter(machine => machine.attivo !== false) })))
+  const lineOptions = departments.filter(dep => dep.attivo !== false).flatMap(dep => list(dep.linee).filter(line => line.attivo !== false).map(line => ({ key: `${dep._id || dep.id || dep.nome}:${line.id || line.nome}`, department: dep.nome, name: line.nome, machines: macchineDiLinea(line) })))
   const [plans, setPlans] = useState([])
   useEffect(() => {
     if (!major?._id) return
@@ -169,9 +182,7 @@ export default function SustainmentPlan({ stepData, onChange, allStepsData = {},
     mutate(current => ({ ...current, standards: current.standards.map(row => row.id !== rowId || list(row.documents).some(entry => entry.id === doc._id) ? row : { ...row, documents: [...list(row.documents), { id: doc._id, label: documentLabel(doc), version: doc.versione }] }) }))
   }
   const startCreate = row => {
-    const user = readUser()
-    const admin = ['admin', 'administrator', 'amministratore'].includes(String(user.role || user.ruolo || '').toLowerCase())
-    setCreating({ rowId: row.id, titolo: row.change || row.improvement || '', mode: admin ? 'choice' : 'nativa' })
+    setCreating({ rowId: row.id, titolo: row.change || row.improvement || '', mode: 'choice' })
   }
   const handleCreated = async id => {
     const current = creating
