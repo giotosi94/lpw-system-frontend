@@ -31,13 +31,24 @@ function collectLinee(allReparti, selezionati) {
   return result
 }
 
+function macchineDiLinea(linea) {
+  const trovate = []
+  const viste = new Set()
+  const aggiungi = macchina => {
+    if (!macchina || macchina.attivo === false || !macchina.nome || viste.has(macchina.nome)) return
+    viste.add(macchina.nome)
+    trovate.push(macchina)
+  }
+  ;(linea?.macchine || []).forEach(aggiungi)
+  ;(linea?.aree || []).filter(area => area.attivo !== false).forEach(area => (area.macchine || []).forEach(aggiungi))
+  return trovate
+}
+
 function collectMacchine(linee, selezionate) {
   const result = []
   selezionate.forEach(nome => {
     const linea = linee.find(l => l.nome === nome)
-    if (linea?.macchine) {
-      linea.macchine.filter(m => m.attivo !== false).forEach(m => result.push(m.nome))
-    }
+    macchineDiLinea(linea).forEach(m => result.push(m.nome))
   })
   return result
 }
