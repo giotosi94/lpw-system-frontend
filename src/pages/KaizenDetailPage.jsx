@@ -24,6 +24,19 @@ import { usePagePermissions } from '../context/pagePermissions'
 import ParetoChart from '../components/pillar/ParetoChart'
 
 
+function macchineDiLinea(linea) {
+  const trovate = []
+  const viste = new Set()
+  const aggiungi = macchina => {
+    if (!macchina || macchina.attivo === false || !macchina.nome || viste.has(macchina.nome)) return
+    viste.add(macchina.nome)
+    trovate.push(macchina)
+  }
+  ;(linea?.macchine || []).forEach(aggiungi)
+  ;(linea?.aree || []).filter(area => area.attivo !== false).forEach(area => (area.macchine || []).forEach(aggiungi))
+  return trovate
+}
+
 function usePerditeKaizen() {
   const [perdite, setPerdite] = useState([])
   useEffect(() => {
@@ -136,7 +149,7 @@ const [reparti, setReparti] = useState([])
   const macchineDisponibili = useMemo(() => {
     if (!kaizen?.linea) return []
     const linea = lineeDisponibili.find(l => l.nome === kaizen.linea)
-    return linea?.macchine?.filter(m => m.attivo !== false) || []
+    return macchineDiLinea(linea)
   }, [kaizen?.linea, lineeDisponibili])
 
   const handleRepartoChange = (v) => setKaizen(prev => ({ ...prev, reparto: v, linea: '', macchina: '' }))
@@ -1232,7 +1245,7 @@ team_leader: kaizen.team_leader_id ? { id: kaizen.team_leader_id, name: kaizen.t
   }, [form.reparto, reparti])
   const macchine = useMemo(() => {
     if (!form.linea) return []
-    return linee.find(item => item.nome === form.linea)?.macchine?.filter(item => item.attivo !== false) || []
+    return macchineDiLinea(linee.find(item => item.nome === form.linea))
   }, [form.linea, linee])
 
   const pillarLabel = pillar => pillar ? `${pillar.sigla || ''}${pillar.sigla ? ' · ' : ''}${pillar.label || pillar.nome || pillar.titolo || ''}` : ''
