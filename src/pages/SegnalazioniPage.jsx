@@ -542,16 +542,6 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
             <h2 className="text-lg font-bold">{form.codice ? `Codice ${form.codice}` : 'Nuova segnalazione'}</h2>
           </div>
           <div className="flex items-center gap-2">
-            {isBozza && (
-              <>
-                <button type="button" onClick={save} disabled={saving} className="border border-white/50 text-white px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-white/10 disabled:opacity-50">
-                  <Save size={15} /> Salva bozza
-                </button>
-                <button type="button" onClick={termina} disabled={saving} className="bg-white text-primary font-medium px-3 py-1.5 rounded text-sm flex items-center gap-1 hover:bg-gray-100 disabled:opacity-50">
-                  <Send size={15} /> Termina inserimento
-                </button>
-              </>
-            )}
             <button type="button" onClick={closeDetail} className="p-1.5 rounded hover:bg-white/10"><X size={20} /></button>
           </div>
         </div>
@@ -899,6 +889,13 @@ function SegnalazioneDetail({ segnalazione, isAdmin, onClose, onSaved }) {
             </div>
           )}
         </div>
+        {isBozza && (
+          <div className="flex shrink-0 justify-end border-t bg-white px-4 py-3 sm:px-6">
+            <button type="button" onClick={termina} disabled={saving} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-light disabled:opacity-50">
+              <Send size={15} /> {saving ? 'Invio...' : 'Invia'}
+            </button>
+          </div>
+        )}
       </div>
 
       {showApForm && (
