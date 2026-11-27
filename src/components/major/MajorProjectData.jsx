@@ -3,6 +3,19 @@ import api from '../../services/api'
 import UserPicker from '../UserPicker'
 import { Save } from 'lucide-react'
 
+function macchineDiLinea(linea) {
+  const trovate = []
+  const viste = new Set()
+  const aggiungi = macchina => {
+    if (!macchina || macchina.attivo === false || !macchina.nome || viste.has(macchina.nome)) return
+    viste.add(macchina.nome)
+    trovate.push(macchina)
+  }
+  ;(linea?.macchine || []).forEach(aggiungi)
+  ;(linea?.aree || []).filter(area => area.attivo !== false).forEach(area => (area.macchine || []).forEach(aggiungi))
+  return trovate
+}
+
 export default function MajorProjectData({ major, onSave }) {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -26,7 +39,7 @@ export default function MajorProjectData({ major, onSave }) {
 
   const macchine = useMemo(() => {
     if (!form.linea) return []
-    return linee.find(item => item.nome === form.linea)?.macchine?.filter(item => item.attivo !== false) || []
+    return macchineDiLinea(linee.find(item => item.nome === form.linea))
   }, [form.linea, linee])
 
   const save = async () => {
