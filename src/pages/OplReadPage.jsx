@@ -193,7 +193,6 @@ function OplConfirmModal({ documento, onClose, onConfirmed }) {
         setResult(res.data.test)
         return
       }
-      alert(res.data?.test ? `Test superato (${res.data.test.punteggio}%). Lettura confermata.` : 'Lettura confermata.')
       onConfirmed()
     } catch (err) {
       alert('Errore conferma: ' + (err.response?.data?.detail || err.message))
