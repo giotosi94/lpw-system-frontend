@@ -792,7 +792,7 @@ locked={isLocked}
       )}
 
       {activeTab === 'gemba' && (
-        <GembaObiettiviTab kaizen={kaizen} setKaizen={setKaizen} updateField={updateField} />
+        <GembaObiettiviTab kaizen={kaizen} setKaizen={setKaizen} updateField={updateField} basic={livelloAttuale === 'Standard'} locked={isLocked} />
       )}
 
             {activeTab === 'masterplan' && (
@@ -822,10 +822,10 @@ locked={isLocked}
 
           {/* PASSO 1 — Definizione del problema */}
                       <ProblemDefinition value={kaizen.passo1_definizione || {}} onChange={value => setKaizen(current => ({ ...current, passo1_definizione: value }))} />
-{/* PASSO 2 - Ishikawa */}
+          <GembaObiettiviTab kaizen={kaizen} setKaizen={setKaizen} updateField={updateField} quick />
           <div className="bg-white rounded-xl shadow p-6">
             <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">
-              PASSO 2 - CAUSE PROBABILI (Ishikawa)
+              PASSO 3 - CAUSE PROBABILI (Ishikawa)
             </h3>
             <IshikawaDiagram
               effetto={kaizen.passo2_cause_probabili?.effetto || ''}
@@ -843,10 +843,9 @@ locked={isLocked}
             />
           </div>
 
-          {/* PASSO 3 — Catene 5 Perché */}
           <div className="bg-white rounded-xl shadow p-6">
             <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">
-              PASSO 3 - 5 PERCHÉ (Catene Root Cause)
+              PASSO 4 - 5 PERCHÉ (Catene Root Cause)
             </h3>
             <FiveWhysFlowChart
               effetto={kaizen.passo2_cause_probabili?.effetto || ''}
@@ -879,12 +878,10 @@ locked={isLocked}
             />
           </div>
 
-          {/* FASE 6 + FASE 7 affiancate */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-            {/* FASE 6 — Risultati e Benefici */}
             <div className="bg-white rounded-xl shadow p-6">
-              <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">FASE 6 - RISULTATI E BENEFICI</h3>
+              <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">PASSO 6 - VALUTAZIONE DELL’EFFICACIA</h3>
               {livelloAttuale !== 'Quick' && (
                 <div className="mb-4 space-y-3">
                   <div className="grid grid-cols-3 gap-2 text-center">
@@ -932,9 +929,8 @@ locked={isLocked}
               </div>
             </div>
 
-            {/* FASE 7 — Standardizzazione e Replica */}
             <div className="bg-white rounded-xl shadow p-6">
-              <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">FASE 7 - STANDARDIZZAZIONE E REPLICA</h3>
+              <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">PASSO 7 - STANDARDIZZAZIONE E REPLICA</h3>
               {livelloAttuale !== 'Quick' && (
                 <div className="mb-4 space-y-2">
                   {[
@@ -2422,7 +2418,7 @@ function LossPareto({ value = [], onChange }) {
   )
 }
 
-function GembaObiettiviTab({ kaizen, setKaizen, updateField }) {
+function GembaObiettiviTab({ kaizen, setKaizen, updateField, quick = false, basic = false, locked = false }) {
   const gp = kaizen.gemba_plan || {}
   const perditeItems = kaizen.loss_pareto?.items || []
 
@@ -2458,7 +2454,7 @@ function GembaObiettiviTab({ kaizen, setKaizen, updateField }) {
 
   const smartOk = kaizen.obiettivi?.kpi && kaizen.obiettivi?.start !== undefined && kaizen.obiettivi?.start !== '' && kaizen.obiettivi?.target !== undefined && kaizen.obiettivi?.target !== '' && kaizen.obiettivi?.scadenza
 
-  const checklistItems = [
+  const previousItems = [
     { key: 'condizioni_base_rispettate', label: 'Le condizioni di base sono rispettate (5S, Pulizia e lubrificazione)?' },
     { key: 'conoscenza_macchina_processo', label: 'Le persone dimostrano conoscenza di macchina e processo?' },
     { key: 'standard_esistenti', label: 'Esistono standard legati al problema (OPL, SOP)?' },
@@ -2467,17 +2463,27 @@ function GembaObiettiviTab({ kaizen, setKaizen, updateField }) {
     { key: 'persone_conoscono_standard', label: 'Le persone conoscono gli standard?' },
   ]
 
+  const checklistItems = basic ? [
+    { key: 'base_sicurezza', label: 'Sicurezza: ripari, interblocchi, E-stop e accessi sono in ordine? Ci sono deroghe attive?' },
+    { key: 'base_pulizia', label: 'Pulizia e contaminazione: area e macchina rispettano lo standard? Sono note le fonti di sporco e i punti difficili da pulire?' },
+    { key: 'base_integrita', label: 'Serraggio e integrità meccanica: viti, staffe, sensori e connessioni sono in posizione e serrati? Ci sono usure o riparazioni provvisorie?' },
+    { key: 'base_lubrificazione', label: 'Lubrificazione: punti, tipo, quantità e frequenza sono corretti? I punti sono accessibili e identificati?' },
+    { key: 'base_regolazioni', label: 'Allineamento, regolazioni e set-point: ricette, parametri, posizioni, camme, sensori e visione rispettano il centerline documentato? Le modifiche sono tracciate?' },
+    { key: 'base_condizioni_operative', label: 'Condizioni operative e di input: DOP e OPL sono aggiornati, chiari e applicati? Il personale è formato e certificato? Materiali e semilavorati sono a specifica? La manutenzione preventiva è in regola?' },
+  ] : previousItems
+  const historical = basic ? previousItems.filter(({ key }) => kaizen.verifica_processo?.[key]?.valore || kaizen.verifica_processo?.[key]?.osservazioni) : []
+
   return (
     <div className="space-y-6">
 
       <div className="bg-white rounded-xl shadow p-6">
         <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">
-  GEMBA WALK
+  {quick ? 'PASSO 2 - GEMBA E VERIFICA DEL PROCESSO' : 'GEMBA WALK'}
 </h3>
 
 <div className="mb-4 border-l-4 border-blue-500 bg-blue-50 rounded-r-lg px-4 py-3">
   <h4 className="font-bold text-sm text-blue-900">
-    1. Preparazione
+    {quick ? 'Preparazione' : '1. Preparazione'}
   </h4>
   <p className="text-xs text-blue-700 mt-1">
     Definisci lo scopo, la data, il turno e i partecipanti al Gemba.
@@ -2511,7 +2517,7 @@ function GembaObiettiviTab({ kaizen, setKaizen, updateField }) {
         <div className="pt-5 border-t">
           <div className="mb-4 border-l-4 border-orange-500 bg-orange-50 rounded-r-lg px-4 py-3">
             <h4 className="font-bold text-sm text-orange-900">
-              2. Esecuzione
+              {quick ? 'Esecuzione' : '2. Esecuzione'}
             </h4>
             <p className="text-xs text-orange-700 mt-1">
               Verifica il processo sul campo e documenta le evidenze osservate.
@@ -2519,7 +2525,7 @@ function GembaObiettiviTab({ kaizen, setKaizen, updateField }) {
           </div>
 
           <label className="block text-xs font-bold text-gray-600 uppercase mb-3">
-            Checklist Gemba - Verifica del processo
+            {basic ? 'Checklist Gemba - Condizioni di base' : 'Checklist Gemba - Verifica del processo'}
           </label>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-3">
             {checklistItems.map(item => (
@@ -2544,7 +2550,7 @@ function GembaObiettiviTab({ kaizen, setKaizen, updateField }) {
         <div className="pt-5 border-t mt-5">
           <div className="mb-4 border-l-4 border-green-500 bg-green-50 rounded-r-lg px-4 py-3">
             <h4 className="font-bold text-sm text-green-900">
-              3. Conclusioni
+              {quick ? 'Conclusioni' : '3. Conclusioni'}
             </h4>
             <p className="text-xs text-green-700 mt-1">
               Riepiloga le osservazioni, le anomalie e le evidenze raccolte.
@@ -2590,6 +2596,17 @@ function GembaObiettiviTab({ kaizen, setKaizen, updateField }) {
         </div>
       </div>
 
+      {historical.length > 0 && (
+        <details open={locked || undefined} className="rounded-lg border px-4 py-3">
+          <summary className="cursor-pointer text-sm font-medium">Risposte alla checklist precedente</summary>
+          {historical.map(item => {
+            const answer = kaizen.verifica_processo[item.key]
+            return <p key={item.key} className="mt-2 text-xs text-gray-700">{item.label}: {answer.valore || 'Senza esito'}{answer.osservazioni ? ` · ${answer.osservazioni}` : ''}</p>
+          })}
+        </details>
+      )}
+
+      {!quick && (
       <div className="bg-white rounded-xl shadow p-6">
         <h3 className="bg-primary text-white text-center py-2 rounded-lg font-bold mb-4">
   OBIETTIVI DEL PROGETTO
@@ -2652,6 +2669,7 @@ function GembaObiettiviTab({ kaizen, setKaizen, updateField }) {
         <textarea value={kaizen.obiettivi?.smart || ''} onChange={(e) => updateField('obiettivi', 'smart', e.target.value)} rows={2} placeholder='Genera automaticamente o scrivi: "Ridurre setup Bindler 100 da 45 a 25 min entro 30/06"' className="w-full border rounded-lg px-3 py-2 text-sm" />
       </div>
 
+      )}
     </div>
   )
 }
