@@ -2481,6 +2481,8 @@ function GembaObiettiviTab({ kaizen, setKaizen, updateField, quick = false, basi
   {quick ? 'PASSO 2 - GEMBA E VERIFICA DEL PROCESSO' : 'GEMBA WALK'}
 </h3>
 
+        {!quick && (
+          <>
 <div className="mb-4 border-l-4 border-blue-500 bg-blue-50 rounded-r-lg px-4 py-3">
   <h4 className="font-bold text-sm text-blue-900">
     {quick ? 'Preparazione' : '1. Preparazione'}
@@ -2513,8 +2515,12 @@ function GembaObiettiviTab({ kaizen, setKaizen, updateField, quick = false, basi
             />
           </div>
         </div>
+          </>
+        )}
 
-        <div className="pt-5 border-t">
+        <div className={quick ? undefined : 'pt-5 border-t'}>
+        {!quick && (
+          <>
           <div className="mb-4 border-l-4 border-orange-500 bg-orange-50 rounded-r-lg px-4 py-3">
             <h4 className="font-bold text-sm text-orange-900">
               {quick ? 'Esecuzione' : '2. Esecuzione'}
@@ -2523,6 +2529,8 @@ function GembaObiettiviTab({ kaizen, setKaizen, updateField, quick = false, basi
               Verifica il processo sul campo e documenta le evidenze osservate.
             </p>
           </div>
+          </>
+        )}
 
           <label className="block text-xs font-bold text-gray-600 uppercase mb-3">
             {basic ? 'Checklist Gemba - Condizioni di base' : 'Checklist Gemba - Verifica del processo'}
@@ -2547,6 +2555,8 @@ function GembaObiettiviTab({ kaizen, setKaizen, updateField, quick = false, basi
           </div>
         </div>
 
+        {!quick && (
+          <>
         <div className="pt-5 border-t mt-5">
           <div className="mb-4 border-l-4 border-green-500 bg-green-50 rounded-r-lg px-4 py-3">
             <h4 className="font-bold text-sm text-green-900">
@@ -2594,6 +2604,9 @@ function GembaObiettiviTab({ kaizen, setKaizen, updateField, quick = false, basi
             }}
           />
         </div>
+          </>
+        )}
+
       </div>
 
       {historical.length > 0 && (
