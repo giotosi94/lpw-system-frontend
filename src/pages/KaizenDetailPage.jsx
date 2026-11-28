@@ -81,10 +81,8 @@ function buildTabsForLivello(livello, isAdmin) {
       quickTabs.push({ id: 'valutazione', label: 'Valutazione' })
     }
 
-    quickTabs.push(
-      { id: 'lavagna', label: 'Lavagna & Allegati' },
-      { id: 'feed', label: 'Storico' }
-    )
+    quickTabs.push({ id: 'lavagna', label: 'Lavagna & Allegati' })
+    if (isAdmin) quickTabs.push({ id: 'feed', label: 'Storico' })
 
     return quickTabs
   }
@@ -254,7 +252,7 @@ const [reparti, setReparti] = useState([])
       setActiveTab(tabs.find(t => t.id === 'quickkaizen')?.id || tabs[0]?.id || 'quickkaizen')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [livelloAttuale])
+  }, [livelloAttuale, isAdmin])
 
   const hasUnsavedChanges = useMemo(() => {
     if (!kaizen || !savedSnapshot || isLocked) return false
@@ -1047,7 +1045,7 @@ locked={isLocked}
   </div>
 )}
 
-      {activeTab === 'feed' && (
+      {activeTab === 'feed' && (livelloAttuale !== 'Quick' || isAdmin) && (
         <div className="bg-white rounded-xl shadow p-6">
           <div className="flex items-center justify-between gap-4 mb-5">
             <div>
